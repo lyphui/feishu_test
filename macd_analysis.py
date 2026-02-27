@@ -130,45 +130,17 @@ def _fetch_via_yfinance(symbol: str, start_date: str, end_date: str,
 
 
 # ─────────────────────────────────────────
-# 2. 技术指标计算
-# ─────────────────────────────────────────
-
-def calc_ema(series: pd.Series, period: int) -> pd.Series:
-    return series.ewm(span=period, adjust=False).mean()
-
-
-def calc_macd(close: pd.Series,
-              fast: int = 12,
-              slow: int = 26,
-              signal: int = 9) -> pd.DataFrame:
-    """
-    标准 MACD 计算
-    DIF  = EMA(12) - EMA(26)
-    DEA  = EMA(DIF, 9)      即信号线
-    MACD = (DIF - DEA) × 2  即柱状图
-    """
-    ema_fast   = calc_ema(close, fast)
-    ema_slow   = calc_ema(close, slow)
-    dif        = ema_fast - ema_slow
-    dea        = calc_ema(dif, signal)
-    histogram  = (dif - dea) * 2
-    return pd.DataFrame({"DIF": dif, "DEA": dea, "MACD": histogram})
-
-
-# ─────────────────────────────────────────
-# 3. 回测引擎
+# 2. 回测引擎
 # ─────────────────────────────────────────
 
 def run_backtest(
     symbol: str,
     start_date: str,
     end_date: str,
+    strategy=None,                      # BaseStrategy 实例，默认使用 MACDStrategy
     initial_capital: float = 100_000.0,
     commission_rate: float = 0.0003,    # 佣金：万三
     stamp_duty: float = 0.001,          # 印花税：千一（仅卖出收取）
-    fast: int = 12,
-    slow: int = 26,
-    signal_period: int = 9,
     position_size: float = 1.0,         # 每次建仓比例（1.0 = 全仓）
     stop_loss: float = None,            # 止损比例，如 0.08 = 8%，None = 不止损
     take_profit: float = None,          # 止盈比例，如 0.20 = 20%，None = 不止盈
@@ -177,28 +149,24 @@ def run_backtest(
     核心回测函数，返回回测统计结果 dict
     """
 
+    from strategies import MACDStrategy
+    if strategy is None:
+        strategy = MACDStrategy()
+
     print(f"\n{'='*55}")
-    print(f"  A股 MACD 策略回测")
+    print(f"  A股策略回测  [{strategy.name}]")
     print(f"  股票代码：{symbol}  周期：{start_date} → {end_date}")
     print(f"{'='*55}")
 
     # ── 获取数据 ──
     df = fetch_stock_data(symbol, start_date, end_date)
-    if df.empty or len(df) < slow + signal_period + 10:
+    if df.empty or len(df) < 50:
         raise ValueError("数据不足，请检查股票代码或延长时间范围")
 
     print(f"  获取到 {len(df)} 个交易日数据")
 
-    # ── 计算指标 ──
-    macd_df = calc_macd(df["close"], fast, slow, signal_period)
-    df = pd.concat([df, macd_df], axis=1).dropna()
-
-    # ── 生成交易信号 ──
-    # DIF 上穿 DEA → 金叉 → 买入
-    # DIF 下穿 DEA → 死叉 → 卖出
-    df["signal"] = 0
-    df.loc[(df["DIF"] > df["DEA"]) & (df["DIF"].shift(1) <= df["DEA"].shift(1)), "signal"] = 1   # 买
-    df.loc[(df["DIF"] < df["DEA"]) & (df["DIF"].shift(1) >= df["DEA"].shift(1)), "signal"] = -1  # 卖
+    # ── 计算指标 + 生成信号（委托给策略） ──
+    df = strategy.prepare(df)
 
     # ── 模拟交易 ──
     cash     = initial_capital
@@ -319,7 +287,7 @@ def run_backtest(
         "trades": pd.DataFrame(trades),
         "equity_curve": eq_df,
         "df": df,
-        "macd_params": (fast, slow, signal_period),
+        "strategy": strategy,
     }
 
     _print_summary(result)
@@ -376,7 +344,7 @@ def plot_backtest(result: dict, save_path: str = None):
     eq_df    = result["equity_curve"]
     trades   = result["trades"]
     symbol   = result["symbol"]
-    fast, slow, sig = result["macd_params"]
+    strategy = result["strategy"]
 
     fig = plt.figure(figsize=(16, 12), facecolor="#0d1117")
     gs  = GridSpec(4, 1, figure=fig, hspace=0.08,
@@ -404,7 +372,7 @@ def plot_backtest(result: dict, save_path: str = None):
         ax1.scatter(sells["date"], sells["price"], marker="v", color=c_red,
                     s=80, zorder=5, label="卖出")
 
-    ax1.set_title(f"A股 MACD 策略回测  |  {symbol}  |  "
+    ax1.set_title(f"A股策略回测 [{strategy.name}]  |  {symbol}  |  "
                   f"总收益 {result['total_return']:+.2f}%  "
                   f"基准 {result['benchmark_return']:+.2f}%  "
                   f"夏普 {result['sharpe_ratio']:.2f}",
@@ -412,16 +380,11 @@ def plot_backtest(result: dict, save_path: str = None):
     ax1.legend(facecolor=c_bg, labelcolor=c_fg, edgecolor=c_muted, fontsize=9)
     _style_ax(ax1, c_fg, c_muted)
 
-    # ── 子图2：MACD ──
+    # ── 子图2：策略指标（由策略对象自行绘制） ──
     ax2 = fig.add_subplot(gs[1], sharex=ax1, **ax_kwargs)
-    colors = np.where(df["MACD"] >= 0, c_green, c_red)
-    ax2.bar(df.index, df["MACD"], color=colors, alpha=0.7, width=1, label="MACD柱")
-    ax2.plot(df.index, df["DIF"], color=c_blue,  lw=1,   label=f"DIF({fast},{slow})")
-    ax2.plot(df.index, df["DEA"], color=c_gold,  lw=1,   label=f"DEA({sig})")
-    ax2.axhline(0, color=c_muted, lw=0.5, linestyle="--")
-    ax2.legend(facecolor=c_bg, labelcolor=c_fg, edgecolor=c_muted, fontsize=8,
-               ncol=3, loc="upper left")
-    ax2.set_ylabel("MACD", color=c_fg, fontsize=9)
+    _colors = dict(bg=c_bg, fg=c_fg, green=c_green, red=c_red,
+                   blue=c_blue, gold=c_gold, muted=c_muted)
+    strategy.plot_indicators(ax2, df, _colors)
     _style_ax(ax2, c_fg, c_muted)
 
     # ── 子图3：资产曲线 vs 基准 ──
@@ -528,8 +491,10 @@ proxy =
 
 
 def main():
+    from strategies import MACDStrategy
+
     print("\n" + "─"*55)
-    print("  A股 MACD 策略回测工具")
+    print("  A股策略回测工具")
     print("  数据来源：akshare（前复权）")
     print("─"*55)
 
@@ -576,10 +541,12 @@ def main():
     print(f"  初始资金：{capital:,.0f}  |  止损：{stop_loss}  |  止盈：{take_profit}")
 
     try:
+        strategy = MACDStrategy()
         result = run_backtest(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
+            strategy=strategy,
             initial_capital=capital,
             stop_loss=stop_loss,
             take_profit=take_profit,
