@@ -1,0 +1,6 @@
+*.crt
+*.key
+.idea/
+.env
+*.pyc
+authorize/feishu_key/*.txt
