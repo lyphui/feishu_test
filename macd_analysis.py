@@ -14,6 +14,7 @@ A股 MACD 策略回测工具
 
 import configparser
 import os
+from datetime import date as _date
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -79,31 +80,53 @@ def fetch_stock_data(symbol: str, start_date: str, end_date: str,
         return _fetch_via_yfinance(symbol, start_date, end_date)
 
 
-def _fetch_via_yfinance(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """yfinance 备用，自动判断沪/深，兼容新版 MultiIndex 列"""
+def _fetch_via_yfinance(symbol: str, start_date: str, end_date: str,
+                        max_retries: int = 3, retry_delay: int = 10) -> pd.DataFrame:
+    """yfinance 备用，自动判断沪/深，兼容新版 MultiIndex 列，支持限流重试"""
+    import time
     try:
         import yfinance as yf
-        suffix = ".SS" if symbol.startswith("6") else ".SZ"
-        ticker = symbol + suffix
-        start = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
-        end   = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
-        print(f"  正在从 yfinance 获取 {ticker} 数据...")
-        raw = yf.download(ticker, start=start, end=end,
-                          auto_adjust=True, progress=False)
-        if raw is None or raw.empty:
-            raise ValueError(f"未返回数据，ticker={ticker}")
-        # 新版 yfinance 返回 MultiIndex(field, ticker)，需要降级
-        if isinstance(raw.columns, pd.MultiIndex):
-            raw.columns = [c[0].lower() for c in raw.columns]
-        else:
-            raw.columns = [c.lower() for c in raw.columns]
-        raw.index = pd.to_datetime(raw.index)
-        return raw[["open", "high", "low", "close", "volume"]]
-    except Exception as e:
-        raise RuntimeError(
-            f"数据获取失败：{e}\n"
-            "建议：在 macd_config.ini 中填写 proxy（如 http://127.0.0.1:7890）"
-        )
+    except ImportError:
+        raise RuntimeError("未安装 yfinance，请运行：pip install yfinance")
+
+    suffix = ".SS" if symbol.startswith("6") else ".SZ"
+    ticker = symbol + suffix
+    start = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+    end   = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
+
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"  正在从 yfinance 获取 {ticker} 数据（第 {attempt}/{max_retries} 次）...")
+            raw = yf.download(ticker, start=start, end=end,
+                              auto_adjust=True, progress=False)
+            if raw is None or raw.empty:
+                raise ValueError(f"未返回数据，ticker={ticker}")
+            # 新版 yfinance 返回 MultiIndex(field, ticker)，需要降级
+            if isinstance(raw.columns, pd.MultiIndex):
+                raw.columns = [c[0].lower() for c in raw.columns]
+            else:
+                raw.columns = [c.lower() for c in raw.columns]
+            raw.index = pd.to_datetime(raw.index)
+            return raw[["open", "high", "low", "close", "volume"]]
+        except Exception as e:
+            last_err = e
+            err_str = str(e)
+            if "RateLimit" in type(e).__name__ or "Too Many Requests" in err_str or "429" in err_str:
+                if attempt < max_retries:
+                    wait = retry_delay * attempt
+                    print(f"  yfinance 触发限流，等待 {wait} 秒后重试...")
+                    time.sleep(wait)
+                    continue
+            break
+
+    raise RuntimeError(
+        f"数据获取失败：{last_err}\n"
+        "建议：\n"
+        "  1. 稍等几分钟后再运行（yfinance 有访问频率限制）\n"
+        "  2. 确认已安装 akshare：pip install akshare\n"
+        "  3. 在配置文件中填写 proxy（如 http://127.0.0.1:7890）"
+    )
 
 
 # ─────────────────────────────────────────
@@ -420,6 +443,24 @@ def plot_backtest(result: dict, save_path: str = None):
     ax4.legend(facecolor=c_bg, labelcolor=c_fg, edgecolor=c_muted, fontsize=8)
     _style_ax(ax4, c_fg, c_muted)
 
+    # ── 关键日期：每笔交易日期画垂直虚线并在价格图顶部标注日期 ──
+    if not trades.empty:
+        price_max = df["close"].max()
+        price_min = df["close"].min()
+        label_y   = price_max + (price_max - price_min) * 0.01
+        for _, trade in trades.iterrows():
+            t_date   = trade["date"]
+            t_action = trade["action"]
+            t_color  = c_green if t_action == "买入" else c_red
+            for ax in [ax1, ax2, ax3, ax4]:
+                ax.axvline(x=t_date, color=t_color, lw=0.7, alpha=0.45, linestyle=":")
+            ax1.text(
+                t_date, label_y,
+                t_date.strftime("%Y-%m-%d"),
+                color=t_color, fontsize=6, rotation=90,
+                va="bottom", ha="center",
+            )
+
     # 隐藏x轴刻度（除最后一张）
     for ax in [ax1, ax2, ax3]:
         plt.setp(ax.get_xticklabels(), visible=False)
@@ -459,9 +500,13 @@ def _write_default_config(path: str) -> None:
 # 股票代码（沪市6开头，深市0/3开头）
 symbol     = 600519
 
+# 股票名称（用于文件名，建议拼音或英文）
+name       = maotai
+
 # 回测区间（YYYYMMDD）
 start_date = 20200101
-end_date   = 20241231
+# end_date 留空则默认使用当天日期
+end_date   =
 
 # 初始资金（元）
 capital    = 100000
@@ -472,8 +517,11 @@ stop_loss  =
 # 止盈比例（如 0.20 表示 20%），留空则不设置
 take_profit =
 
-# 图表保存文件名（如 result.png），留空则弹窗显示
-save_chart =
+# 图表和CSV保存目录（留空则弹窗显示，不保存CSV）
+save_chart_dir = output/
+
+# HTTP 代理（如 http://127.0.0.1:7890），留空则直连
+proxy =
 """
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -486,7 +534,7 @@ def main():
     print("─"*55)
 
     # 读取配置文件
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "macd_config.ini")
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "rjgd_syr_260130.ini")
     if not os.path.exists(config_path):
         print(f"  配置文件不存在，已生成默认配置：{config_path}")
         _write_default_config(config_path)
@@ -496,19 +544,33 @@ def main():
     s = cfg["backtest"]
 
     symbol     = s.get("symbol", "600519").strip()
+    name       = s.get("name", "stock").strip()
     start_date = s.get("start_date", "20200101").strip()
-    end_date   = s.get("end_date", "20241231").strip()
+    end_date   = s.get("end_date", "").strip()
+    if not end_date:
+        end_date = _date.today().strftime("%Y%m%d")
+        print(f"  end_date 未设置，默认使用今日：{end_date}")
     capital    = float(s.get("capital", "100000"))
     stop_loss_raw  = s.get("stop_loss", "").strip()
     stop_loss      = float(stop_loss_raw) if stop_loss_raw else None
     take_profit_raw = s.get("take_profit", "").strip()
     take_profit     = float(take_profit_raw) if take_profit_raw else None
-    save       = s.get("save_chart", "").strip()
+    save_dir   = s.get("save_chart_dir", "").strip()
     proxy      = s.get("proxy", "").strip()
     if proxy:
         os.environ["HTTP_PROXY"]  = proxy
         os.environ["HTTPS_PROXY"] = proxy
         print(f"  代理：{proxy}")
+
+    # 构建保存路径
+    file_stem = f"{name}_{symbol}_{end_date}"
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        save_chart = os.path.join(save_dir, file_stem + ".png")
+        save_csv   = os.path.join(save_dir, file_stem + ".csv")
+    else:
+        save_chart = None
+        save_csv   = None
 
     print(f"  股票代码：{symbol}  |  {start_date} → {end_date}")
     print(f"  初始资金：{capital:,.0f}  |  止损：{stop_loss}  |  止盈：{take_profit}")
@@ -523,13 +585,12 @@ def main():
             take_profit=take_profit,
         )
 
-        plot_backtest(result, save_path=save if save else None)
+        plot_backtest(result, save_path=save_chart)
 
         # 保存交易记录
-        if not result["trades"].empty:
-            csv_name = f"output/trades_{symbol}_{start_date}_{end_date}.csv"
-            result["trades"].to_csv(csv_name, index=False, encoding="utf-8-sig")
-            print(f"  交易记录已保存至：{csv_name}")
+        if save_csv and not result["trades"].empty:
+            result["trades"].to_csv(save_csv, index=False, encoding="utf-8-sig")
+            print(f"  交易记录已保存至：{save_csv}")
 
     except Exception as e:
         print(f"\n  ❌ 回测失败：{e}")
