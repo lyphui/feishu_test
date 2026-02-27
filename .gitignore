@@ -4,3 +4,5 @@
 .env
 *.pyc
 authorize/feishu_key/*.txt
+.venv/
+output/
