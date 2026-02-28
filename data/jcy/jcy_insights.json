@@ -1,0 +1,673 @@
+{
+  "updated_at": "2026-02-28 17:32:20",
+  "total": 4,
+  "articles": [
+    {
+      "date": "2026-02-27",
+      "title": "Vol.260227 今日更新",
+      "link": "https://my.feishu.cn/wiki/Qo1QwwsvniVXWhkhJZ1cTAaCnVb",
+      "advice_file": "2026-02-27.md",
+      "extracted_at": "2026-02-28 17:31:44",
+      "companies": [
+        {
+          "name": "英伟达",
+          "code": "NVDA",
+          "exchange": "纳斯达克",
+          "rating": "回避",
+          "rating_reason": "财报超预期但股价大跌，风险高"
+        },
+        {
+          "name": "华工科技",
+          "code": "000988",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "受益华为产业链和数据中心建设"
+        },
+        {
+          "name": "华丰股份",
+          "code": "688379",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "华为连接器产业链资金持续布局"
+        },
+        {
+          "name": "申菱环境",
+          "code": "301018",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "华为液冷产业链受益"
+        },
+        {
+          "name": "川润股份",
+          "code": "002272",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "华为液冷产业链受益"
+        },
+        {
+          "name": "兴森科技",
+          "code": "002436",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "华为PCB产业链受益"
+        },
+        {
+          "name": "锐捷网络",
+          "code": "301165",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "华为服务器产业链受益"
+        },
+        {
+          "name": "协创数据",
+          "code": "688408",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "国产数据中心订单增长"
+        },
+        {
+          "name": "润泽科技",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "国产数据中心需求旺盛"
+        },
+        {
+          "name": "大位科技",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "国产数据中心需求旺盛"
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "看好国产半导体与数据中心，周期板块防守，回避美股高位科技",
+      "key_advice": [
+        "英伟达等美股科技股暂时回避，等待修复信号",
+        "逢低布局科技与周期双轮驱动组合，勿重仓追高",
+        "关注华为产业链与国产数据中心，等待回调再介入",
+        "周期品作为防守工具，跌了敢买涨了敢卖",
+        "观望为主，等待市场信号再做决策"
+      ]
+    },
+    {
+      "date": "2026-02-26",
+      "title": "Vol.260226 今日更新",
+      "link": "https://my.feishu.cn/wiki/JJVHwRh3ZibHRrkioKyc18JInRh",
+      "advice_file": "2026-02-26.md",
+      "extracted_at": "2026-02-28 17:31:58",
+      "companies": [
+        {
+          "name": "英伟达",
+          "code": "NVDA",
+          "exchange": "纳斯达克",
+          "rating": "持有",
+          "rating_reason": "业绩强劲但短期情绪波动大"
+        },
+        {
+          "name": "盛屯矿业",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "锂、钴、铜全产业链布局"
+        },
+        {
+          "name": "盐湖股份",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "锂资源受益新能源周期"
+        },
+        {
+          "name": "藏格矿业",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "锂资源受益新能源周期"
+        },
+        {
+          "name": "神火股份",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "电解铝景气度高"
+        },
+        {
+          "name": "宝武镁业",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "镁材料需求增长"
+        },
+        {
+          "name": "星源镁业",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "镁材料轻量化应用"
+        },
+        {
+          "name": "天孚通信",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "硅光/光模块龙头"
+        },
+        {
+          "name": "胜宏科技",
+          "code": null,
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "高端PCB受益AI算力"
+        },
+        {
+          "name": "江丰电子",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "半导体设备国产化"
+        },
+        {
+          "name": "拓荆科技",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "半导体设备国产化"
+        },
+        {
+          "name": "长川科技",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "半导体设备国产化"
+        },
+        {
+          "name": "生益科技",
+          "code": null,
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "覆铜板材料受益AI"
+        },
+        {
+          "name": "铜冠铜箔",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "覆铜板材料受益AI"
+        },
+        {
+          "name": "东材科技",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "树脂材料受益AI"
+        },
+        {
+          "name": "菲菲（Q布）",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "Q布材料受益AI"
+        },
+        {
+          "name": "鼎泰新材",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "钻针材料受益AI"
+        },
+        {
+          "name": "大族数控",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "激光钻孔设备受益AI"
+        },
+        {
+          "name": "Envicool（英皇）",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "液冷首次进入英伟达供应链"
+        },
+        {
+          "name": "申菱环境",
+          "code": null,
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "液冷龙头走势强劲"
+        },
+        {
+          "name": "润泽科技",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "算力出海平台受益"
+        },
+        {
+          "name": "华丰科技",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "算力出海平台受益"
+        },
+        {
+          "name": "应流股份",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "燃气轮机核心供应商"
+        },
+        {
+          "name": "东方电气",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "燃气轮机核心供应商"
+        },
+        {
+          "name": "望变电气（重庆之光）",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "电力设备主升浪"
+        },
+        {
+          "name": "亨通光电",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "光通信表现良好"
+        },
+        {
+          "name": "思源电气",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "机构操盘，走势稳健"
+        },
+        {
+          "name": "阿里巴巴",
+          "code": "9988.HK",
+          "exchange": "港交所",
+          "rating": "减持",
+          "rating_reason": "港股互联网板块低迷"
+        }
+      ],
+      "markets": [
+        "A股",
+        "港股",
+        "美股"
+      ],
+      "tendency": "看好上游材料与新能源周期，短期防御科技龙头，三分配置分散风险",
+      "key_advice": [
+        "短期内科技与周期跷跷板，建议选择方向坚持，不要频繁切换",
+        "优先关注上游材料、液冷、燃气轮机等真实需求板块，避免追高龙头",
+        "采用三分法分散配置：科技、周期、传媒各三分之一",
+        "关注BIAS值与均线，涨幅过大及时止盈，防止被套",
+        "有真实订单和产业逻辑的公司优先，警惕纯概念炒作"
+      ]
+    },
+    {
+      "date": "2026-02-25",
+      "title": "Vol.260225 今日更新",
+      "link": "https://my.feishu.cn/wiki/WgCYwm8kuihJKCk5oyGcbG5ongf",
+      "advice_file": "2026-02-25.md",
+      "extracted_at": "2026-02-28 17:32:10",
+      "companies": [
+        {
+          "name": "博创科技",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "向上游整合，光通信产业链受益"
+        },
+        {
+          "name": "光库科技",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "薄膜芯片、FAU等多环节卡位"
+        },
+        {
+          "name": "天通股份",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "薄膜芯片、磷化铟材料受益"
+        },
+        {
+          "name": "仕佳光子",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "AWG封装领域布局"
+        },
+        {
+          "name": "东田微",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "Z-block领域卡位"
+        },
+        {
+          "name": "腾景科技",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "Z-block领域卡位"
+        },
+        {
+          "name": "永鼎股份",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "Z-block领域卡位"
+        },
+        {
+          "name": "天孚通信",
+          "code": null,
+          "exchange": null,
+          "rating": "买入",
+          "rating_reason": "FAU及CPO上游器件龙头"
+        },
+        {
+          "name": "杰普特",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "FAU领域卡位"
+        },
+        {
+          "name": "太辰光",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "MT类产品布局"
+        },
+        {
+          "name": "炬光科技",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "高精密V槽领域卡位"
+        },
+        {
+          "name": "云南锗业",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "磷化铟材料受益"
+        },
+        {
+          "name": "新易盛",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "海外算力集成商代表"
+        },
+        {
+          "name": "旭创科技",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "海外算力集成商代表"
+        },
+        {
+          "name": "胜宏科技",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "海外算力集成商代表"
+        },
+        {
+          "name": "沪士电子",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "产能紧张，订单充足"
+        },
+        {
+          "name": "宏发股份",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "高盛目标价高，技术壁垒强"
+        },
+        {
+          "name": "鼎泰新材",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "先进PCB板材布局"
+        },
+        {
+          "name": "大族激光",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "先进PCB板材布局"
+        },
+        {
+          "name": "英伟达",
+          "code": "NVDA",
+          "exchange": "纳斯达克",
+          "rating": "持有",
+          "rating_reason": "业绩指引影响全球科技板块"
+        }
+      ],
+      "markets": [
+        "A股",
+        "港股",
+        "美股"
+      ],
+      "tendency": "看好光通信及半导体上游，科技与周期双轮驱动，重视轮动与分散配置",
+      "key_advice": [
+        "重点关注光通信与半导体上游细分龙头",
+        "科技与周期板块轮动操作，避免追高",
+        "可通过相关ETF分散风险，如国产设备ETF（588710）",
+        "关注英伟达财报等关键催化消息",
+        "跌破重要均线及时减仓，控制风险"
+      ]
+    },
+    {
+      "date": "2026-02-24",
+      "title": "Vol.260224 今日更新",
+      "link": "https://my.feishu.cn/wiki/BWU2wVNN1iGe2GkMrBLcxtTanqh",
+      "advice_file": "2026-02-24.md",
+      "extracted_at": "2026-02-28 17:32:20",
+      "companies": [
+        {
+          "name": "飞测",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "国产存储设备需求提升"
+        },
+        {
+          "name": "京仪",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "国产存储设备需求提升"
+        },
+        {
+          "name": "微导",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "国产存储设备需求提升"
+        },
+        {
+          "name": "珂玛科技",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "先进陶瓷龙头，两存扩产供应商"
+        },
+        {
+          "name": "芯原股份",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "国内芯片设计龙头，AI芯片预期"
+        },
+        {
+          "name": "中国小博通",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "AI芯片设计，合作预期"
+        },
+        {
+          "name": "东阳光",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "数据中心液冷龙头，资产整合"
+        },
+        {
+          "name": "英皇",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "数据中心液冷概念"
+        },
+        {
+          "name": "旭创",
+          "code": null,
+          "exchange": null,
+          "rating": "买入",
+          "rating_reason": "光模块龙头，业绩确定性强"
+        },
+        {
+          "name": "长飞光纤",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "光纤龙头，行业景气"
+        },
+        {
+          "name": "亨通光电",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "光纤龙头，行业景气"
+        },
+        {
+          "name": "天孚通信",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "有预期但业绩一般"
+        },
+        {
+          "name": "炬光科技",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "有预期但业绩一般"
+        },
+        {
+          "name": "东方电气",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "燃气轮机北美需求预期"
+        },
+        {
+          "name": "应流股份",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "燃气轮机及商业航天概念"
+        },
+        {
+          "name": "金盘科技",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "固态变压器弹性大"
+        },
+        {
+          "name": "山推股份",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "工程机械创新高，AI推土机"
+        },
+        {
+          "name": "潍柴动力",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "工程机械ETF重仓，海外市场"
+        },
+        {
+          "name": "恒立液压",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "工程机械周期波动"
+        },
+        {
+          "name": "光线传媒",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "春节档不及预期，等待修复"
+        },
+        {
+          "name": "阅文集团",
+          "code": "0772.HK",
+          "exchange": "港交所",
+          "rating": "增持",
+          "rating_reason": "IP储备丰富，长期看好"
+        },
+        {
+          "name": "金牛化工",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "周期商品受益"
+        },
+        {
+          "name": "云天化",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "周期商品受益"
+        },
+        {
+          "name": "润泽股份",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "科技轮动风向标"
+        },
+        {
+          "name": "华丰科技",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "华为概念核心供应商"
+        }
+      ],
+      "markets": [
+        "A股",
+        "港股"
+      ],
+      "tendency": "看好科技成长与周期板块轮动，优先业绩确定性龙头",
+      "key_advice": [
+        "科技与周期板块轮动，避免追高，等待低吸机会",
+        "优先选择有真实订单和业绩支撑的龙头公司",
+        "不确定个股时可用ETF（如159381、515970）替代",
+        "关注4月季报，题材股高位需谨慎，防止业绩落空回调",
+        "周期与科技均有机会，配置需分散，避免重仓单一方向"
+      ]
+    }
+  ]
+}
