@@ -499,7 +499,9 @@ def main():
     print("─"*55)
 
     # 读取配置文件
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "rjgd_syr_260130.ini")
+
+    config_name= "jxty_jcy_260104.ini"   ## "rjgd_syr_260130.ini"  # "jxty_jcy_260104.ini"
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", config_name)
     if not os.path.exists(config_path):
         print(f"  配置文件不存在，已生成默认配置：{config_path}")
         _write_default_config(config_path)
@@ -528,7 +530,7 @@ def main():
         print(f"  代理：{proxy}")
 
     # 构建保存路径
-    file_stem = f"{name}_{symbol}_{end_date}"
+    file_stem = f"macd_{name}_{symbol}_{end_date}"
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
         save_chart = os.path.join(save_dir, file_stem + ".png")
