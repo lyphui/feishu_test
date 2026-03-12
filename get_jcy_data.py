@@ -319,7 +319,7 @@ def main():
                 "读取时间":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "文档数据":  doc_data,
             })
-            time.sleep(0.3)
+            time.sleep(1.0)
     else:
         print("\n✅ 所有文档均已缓存，无需重新读取")
 

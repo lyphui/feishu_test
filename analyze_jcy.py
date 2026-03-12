@@ -152,7 +152,7 @@ def analyze_doc(pplx, doc):
     content = doc.get("文档内容正文", "").strip()
 
     if not content:
-        return "（文档内容为空，无法分析）", []
+        return None, []
 
     user_prompt = f"""以下是一篇股市分析文章，标题是「{title}」：
 
@@ -175,11 +175,11 @@ def analyze_doc(pplx, doc):
     )
 
     if not result:
-        return "（API 请求失败）", []
+        return None, []
 
     choices = result.get("choices", [])
     if not choices:
-        return "（响应中无内容）", []
+        return None, []
 
     raw = choices[0]["message"]["content"]
     # sonar-reasoning-pro 会在 <think>...</think> 后输出正文
@@ -223,6 +223,11 @@ def main():
         print(f"[{i}/{len(new_docs)}] 分析：{title}")
 
         advice, citations = analyze_doc(pplx, doc)
+
+        if advice is None:
+            print(f"   ❌ API 请求失败，跳过本篇\n")
+            continue
+
         analyzed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         filename = title_to_filename(title)
