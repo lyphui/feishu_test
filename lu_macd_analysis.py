@@ -23,30 +23,12 @@ from matplotlib.gridspec import GridSpec
 # 复用数据获取和回测引擎
 from macd_analysis import fetch_stock_data, run_backtest
 from strategies import LuMACDStrategy
+from utils.plotting import (
+    C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS,
+    setup_matplotlib, style_ax,
+)
 
-
-plt.rcParams["font.sans-serif"] = ["SimHei", "STHeiti", "Microsoft YaHei", "Arial Unicode MS"]
-plt.rcParams["axes.unicode_minus"] = False
-
-C_BG    = "#0d1117"
-C_FG    = "#e6edf3"
-C_GREEN = "#39d353"
-C_RED   = "#f85149"
-C_BLUE  = "#58a6ff"
-C_GOLD  = "#e3b341"
-C_MUTED = "#484f58"
-COLORS  = dict(bg=C_BG, fg=C_FG, green=C_GREEN, red=C_RED,
-               blue=C_BLUE, gold=C_GOLD, muted=C_MUTED)
-
-
-def _style_ax(ax):
-    ax.set_facecolor(C_BG)
-    ax.tick_params(colors=C_FG, labelsize=8)
-    ax.spines[:].set_color(C_MUTED)
-    for sp in ax.spines.values():
-        sp.set_linewidth(0.5)
-    ax.yaxis.label.set_color(C_FG)
-    ax.grid(color=C_MUTED, linewidth=0.3, alpha=0.5)
+setup_matplotlib()
 
 
 def _draw_macd_panel(ax, df, dif_col, dea_col, macd_col, bar_width,
@@ -97,7 +79,7 @@ def _draw_macd_panel(ax, df, dif_col, dea_col, macd_col, bar_width,
     ax.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED,
               fontsize=7, ncol=4, loc="upper left")
     ax.set_ylabel(label_prefix, color=C_FG, fontsize=9)
-    _style_ax(ax)
+    style_ax(ax)
 
 
 def plot_lu_backtest(result: dict, save_path: "str | None" = None):
@@ -151,7 +133,7 @@ def plot_lu_backtest(result: dict, save_path: "str | None" = None):
         color=C_FG, fontsize=12, pad=8,
     )
     ax1.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=9)
-    _style_ax(ax1)
+    style_ax(ax1)
 
     # ── 子图2：月线 MACD ─────────────────────────────────────────────────────
     ax2 = fig.add_subplot(gs[1], sharex=ax1)
@@ -178,7 +160,7 @@ def plot_lu_backtest(result: dict, save_path: "str | None" = None):
     ax5.axhline(100, color=C_MUTED, lw=0.5, linestyle=":")
     ax5.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=8)
     ax5.set_ylabel("净值（基准=100）", color=C_FG, fontsize=9)
-    _style_ax(ax5)
+    style_ax(ax5)
 
     # ── 子图6：回撤 ──────────────────────────────────────────────────────────
     ax6 = fig.add_subplot(gs[5], sharex=ax1)
@@ -186,7 +168,7 @@ def plot_lu_backtest(result: dict, save_path: "str | None" = None):
                      color=C_RED, alpha=0.4, label="策略回撤")
     ax6.set_ylabel("回撤 (%)", color=C_FG, fontsize=9)
     ax6.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=8)
-    _style_ax(ax6)
+    style_ax(ax6)
 
     # ── X 轴：只显示最后一张 ─────────────────────────────────────────────────
     for ax in [ax1, ax2, ax3, ax4, ax5]:

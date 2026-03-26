@@ -73,6 +73,7 @@ class LuMACDBullStrategy(BaseStrategy):
         bull_slow: int = 26,
         bull_signal: int = 9,
         shrink_exit: bool = True,
+        index_df: pd.DataFrame | None = None,
     ):
         self.fast          = fast
         self.slow          = slow
@@ -81,6 +82,7 @@ class LuMACDBullStrategy(BaseStrategy):
         self.bull_slow     = bull_slow
         self.bull_signal   = bull_signal
         self.shrink_exit   = shrink_exit
+        self._index_df     = index_df
 
     # ── 接口属性 ────────────────────────────────────────────────────────────
 
@@ -149,12 +151,15 @@ class LuMACDBullStrategy(BaseStrategy):
         ----------
         df       : 个股日线 DataFrame（DatetimeIndex，含 close）
         index_df : 大盘指数日线 DataFrame（DatetimeIndex，含 close）
-                   传 None 时跳过牛市过滤，等价于永远处于牛市（不推荐）
+                   未传时自动使用构造函数中设置的 _index_df；
+                   均为 None 时跳过牛市过滤，等价于永远处于牛市（不推荐）
 
         Returns
         -------
         附加所有指标列与信号列的 DataFrame
         """
+        if index_df is None:
+            index_df = self._index_df
         df = df.copy()
 
         # ── 1. 个股日线 MACD ─────────────────────────────────────────────────

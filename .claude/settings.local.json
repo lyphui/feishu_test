@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from utils.plotting import C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS, setup_matplotlib, style_ax; print\\(''utils.plotting OK''\\)\")",
+      "Bash(python -c \"from utils.market_data import fetch_index_data; print\\(''utils.market_data OK''\\)\")",
+      "Bash(python -c \"from utils.bull_backtest import BullStrategyAdapter, export_bull_daily_status, plot_bull_backtest; print\\(''utils.bull_backtest OK''\\)\")",
+      "Bash(python -c \"import macd_analysis; print\\(''macd_analysis OK''\\)\")",
+      "Bash(python -c \"import lu_macd_analysis; print\\(''lu_macd_analysis OK''\\)\")",
+      "Bash(python -c \"import lu_macd_bull_analysis; print\\(''lu_macd_bull_analysis OK''\\)\")",
+      "Bash(python -c \"import jcy_macd_bull_batch; print\\(''jcy_macd_bull_batch OK''\\)\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(python -c \"from utils.pplx import PerplexityAPI; print\\(''OK''\\)\")",
+      "Bash(python -c \"from utils.jcy_common import title_to_date, title_to_filename, load_docs; print\\(''jcy_common OK''\\); print\\(title_to_date\\(''Vol.260226 今日更新''\\)\\); print\\(title_to_filename\\(''Vol.260226 今日更新''\\)\\)\")",
+      "Bash(python -c \"import analyze_jcy; print\\(''analyze_jcy OK''\\)\")",
+      "Bash(python -c \"import extract_jcy_insights; print\\(''extract_jcy_insights OK''\\)\")",
+      "Bash(python -c \"from strategies import LuMACDBullStrategy; s = LuMACDBullStrategy\\(\\); print\\(''LuMACDBullStrategy OK, _index_df:'', s._index_df\\)\")",
+      "Bash(ls /c/Users/panhui9/PycharmProjects/feishu_test/*.py)",
+      "Bash(xargs -I{} basename {})"
+    ]
+  }
+}

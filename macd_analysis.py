@@ -23,11 +23,13 @@ from matplotlib.gridspec import GridSpec
 import warnings
 import sys
 
-warnings.filterwarnings("ignore")
+from utils.plotting import (
+    C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS,
+    setup_matplotlib, style_ax,
+)
 
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['SimHei', 'STHeiti', 'Microsoft YaHei', 'Arial Unicode MS']
-plt.rcParams['axes.unicode_minus'] = False
+warnings.filterwarnings("ignore")
+setup_matplotlib()
 
 
 # ─────────────────────────────────────────
@@ -346,65 +348,55 @@ def plot_backtest(result: dict, save_path: str = None):
     symbol   = result["symbol"]
     strategy = result["strategy"]
 
-    fig = plt.figure(figsize=(16, 12), facecolor="#0d1117")
+    fig = plt.figure(figsize=(16, 12), facecolor=C_BG)
     gs  = GridSpec(4, 1, figure=fig, hspace=0.08,
                    height_ratios=[3, 1.5, 1.5, 1.5])
 
-    c_bg    = "#0d1117"
-    c_fg    = "#e6edf3"
-    c_green = "#39d353"
-    c_red   = "#f85149"
-    c_blue  = "#58a6ff"
-    c_gold  = "#e3b341"
-    c_muted = "#484f58"
-
-    ax_kwargs = dict(facecolor=c_bg)
+    ax_kwargs = dict(facecolor=C_BG)
 
     # ── 子图1：K线 + 买卖点 ──
     ax1 = fig.add_subplot(gs[0], **ax_kwargs)
-    ax1.plot(df.index, df["close"], color=c_blue, lw=1.2, label="收盘价")
+    ax1.plot(df.index, df["close"], color=C_BLUE, lw=1.2, label="收盘价")
 
     if not trades.empty:
         buys  = trades[trades["action"] == "买入"]
         sells = trades[trades["action"].isin(["卖出", "止损卖出", "止盈卖出", "期末清仓"])]
-        ax1.scatter(buys["date"],  buys["price"],  marker="^", color=c_green,
+        ax1.scatter(buys["date"],  buys["price"],  marker="^", color=C_GREEN,
                     s=80, zorder=5, label="买入")
-        ax1.scatter(sells["date"], sells["price"], marker="v", color=c_red,
+        ax1.scatter(sells["date"], sells["price"], marker="v", color=C_RED,
                     s=80, zorder=5, label="卖出")
 
     ax1.set_title(f"A股策略回测 [{strategy.name}]  |  {symbol}  |  "
                   f"总收益 {result['total_return']:+.2f}%  "
                   f"基准 {result['benchmark_return']:+.2f}%  "
                   f"夏普 {result['sharpe_ratio']:.2f}",
-                  color=c_fg, fontsize=12, pad=10)
-    ax1.legend(facecolor=c_bg, labelcolor=c_fg, edgecolor=c_muted, fontsize=9)
-    _style_ax(ax1, c_fg, c_muted)
+                  color=C_FG, fontsize=12, pad=10)
+    ax1.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=9)
+    style_ax(ax1)
 
     # ── 子图2：策略指标（由策略对象自行绘制） ──
     ax2 = fig.add_subplot(gs[1], sharex=ax1, **ax_kwargs)
-    _colors = dict(bg=c_bg, fg=c_fg, green=c_green, red=c_red,
-                   blue=c_blue, gold=c_gold, muted=c_muted)
-    strategy.plot_indicators(ax2, df, _colors)
-    _style_ax(ax2, c_fg, c_muted)
+    strategy.plot_indicators(ax2, df, COLORS)
+    style_ax(ax2)
 
     # ── 子图3：资产曲线 vs 基准 ──
     ax3 = fig.add_subplot(gs[2], sharex=ax1, **ax_kwargs)
     norm_eq    = eq_df["equity"] / result["initial_capital"] * 100
     norm_bench = eq_df["close"]  / eq_df["close"].iloc[0]  * 100
-    ax3.plot(eq_df.index, norm_eq,    color=c_green, lw=1.5, label="策略净值")
-    ax3.plot(eq_df.index, norm_bench, color=c_muted, lw=1,   label="基准(买入持有)", linestyle="--")
-    ax3.axhline(100, color=c_muted, lw=0.5, linestyle=":")
-    ax3.legend(facecolor=c_bg, labelcolor=c_fg, edgecolor=c_muted, fontsize=8)
-    ax3.set_ylabel("净值（基准=100）", color=c_fg, fontsize=9)
-    _style_ax(ax3, c_fg, c_muted)
+    ax3.plot(eq_df.index, norm_eq,    color=C_GREEN, lw=1.5, label="策略净值")
+    ax3.plot(eq_df.index, norm_bench, color=C_MUTED, lw=1,   label="基准(买入持有)", linestyle="--")
+    ax3.axhline(100, color=C_MUTED, lw=0.5, linestyle=":")
+    ax3.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=8)
+    ax3.set_ylabel("净值（基准=100）", color=C_FG, fontsize=9)
+    style_ax(ax3)
 
     # ── 子图4：回撤 ──
     ax4 = fig.add_subplot(gs[3], sharex=ax1, **ax_kwargs)
     ax4.fill_between(eq_df.index, eq_df["drawdown"] * 100, 0,
-                     color=c_red, alpha=0.4, label="策略回撤")
-    ax4.set_ylabel("回撤 (%)", color=c_fg, fontsize=9)
-    ax4.legend(facecolor=c_bg, labelcolor=c_fg, edgecolor=c_muted, fontsize=8)
-    _style_ax(ax4, c_fg, c_muted)
+                     color=C_RED, alpha=0.4, label="策略回撤")
+    ax4.set_ylabel("回撤 (%)", color=C_FG, fontsize=9)
+    ax4.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=8)
+    style_ax(ax4)
 
     # ── 关键日期：每笔交易日期画垂直虚线并在价格图顶部标注日期 ──
     if not trades.empty:
@@ -414,7 +406,7 @@ def plot_backtest(result: dict, save_path: str = None):
         for _, trade in trades.iterrows():
             t_date   = trade["date"]
             t_action = trade["action"]
-            t_color  = c_green if t_action == "买入" else c_red
+            t_color  = C_GREEN if t_action == "买入" else C_RED
             for ax in [ax1, ax2, ax3, ax4]:
                 ax.axvline(x=t_date, color=t_color, lw=0.7, alpha=0.45, linestyle=":")
             ax1.text(
@@ -430,26 +422,17 @@ def plot_backtest(result: dict, save_path: str = None):
 
     ax4.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     ax4.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
-    plt.setp(ax4.get_xticklabels(), rotation=30, ha="right", color=c_fg, fontsize=8)
+    plt.setp(ax4.get_xticklabels(), rotation=30, ha="right", color=C_FG, fontsize=8)
 
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor=c_bg)
+        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor=C_BG)
         print(f"\n  图表已保存至：{save_path}")
     else:
         plt.show()
 
     return fig
-
-
-def _style_ax(ax, fg, muted):
-    ax.tick_params(colors=fg, labelsize=8)
-    ax.spines[:].set_color(muted)
-    for spine in ax.spines.values():
-        spine.set_linewidth(0.5)
-    ax.yaxis.label.set_color(fg)
-    ax.grid(color=muted, linewidth=0.3, alpha=0.5)
 
 
 # ─────────────────────────────────────────
@@ -491,17 +474,20 @@ proxy =
 
 
 def main():
+    import argparse
     from strategies import MACDStrategy
+
+    parser = argparse.ArgumentParser(description="A股 MACD 策略回测工具")
+    parser.add_argument("--config", type=str, default="jxty_jcy_260104.ini",
+                        help="配置文件名（位于 config/ 目录下），默认 jxty_jcy_260104.ini")
+    args = parser.parse_args()
 
     print("\n" + "─"*55)
     print("  A股策略回测工具")
     print("  数据来源：akshare（前复权）")
     print("─"*55)
 
-    # 读取配置文件
-
-    config_name= "jxty_jcy_260104.ini"   ## "rjgd_syr_260130.ini"  # "jxty_jcy_260104.ini"
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", config_name)
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", args.config)
     if not os.path.exists(config_path):
         print(f"  配置文件不存在，已生成默认配置：{config_path}")
         _write_default_config(config_path)
