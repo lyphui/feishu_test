@@ -25,7 +25,8 @@ class PerplexityAPI:
             "x-api-group": group_id  # 使用API Group ID
         }
 
-    def chat(self, model, messages, max_tokens=None, temperature=0.2, top_p=0.9):
+    def chat(self, model, messages, max_tokens=None, temperature=0.2, top_p=0.9,
+             request_timeout=120):
         """
         调用Perplexity API进行对话
 
@@ -39,9 +40,12 @@ class PerplexityAPI:
             max_tokens (int, optional): 最大输出token数
             temperature (float): 温度参数，控制随机性
             top_p (float): 采样概率阈值
+            request_timeout (int): HTTP 请求超时秒数（默认120），超时时向上抛出异常
 
         Returns:
             dict: API响应
+        Raises:
+            requests.exceptions.Timeout: 请求超时，由调用方决定是否重试
         """
         payload = {
             "model": model,
@@ -60,10 +64,13 @@ class PerplexityAPI:
             response = requests.post(
                 self.base_url,
                 headers=self.headers,
-                json=payload
+                json=payload,
+                timeout=request_timeout,
             )
             response.raise_for_status()
             return response.json()
+        except requests.exceptions.Timeout:
+            raise  # 超时向上传递，由调用方负责计数和终止逻辑
         except requests.exceptions.RequestException as e:
             print(f"API请求失败: {e}")
             if hasattr(e, 'response') and e.response is not None:
