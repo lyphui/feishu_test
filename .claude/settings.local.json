@@ -19,7 +19,10 @@
       "Bash(mkdir -p \"c:/Users/panhui9/PycharmProjects/feishu_test/depre\")",
       "Bash(mv \"c:/Users/panhui9/PycharmProjects/feishu_test/get_jcy_data.py\" \"c:/Users/panhui9/PycharmProjects/feishu_test/depre/\")",
       "Bash(mv \"c:/Users/panhui9/PycharmProjects/feishu_test/analyze_jcy.py\" \"c:/Users/panhui9/PycharmProjects/feishu_test/depre/\")",
-      "Bash(mv \"c:/Users/panhui9/PycharmProjects/feishu_test/extract_jcy_insights.py\" \"c:/Users/panhui9/PycharmProjects/feishu_test/depre/\")"
+      "Bash(mv \"c:/Users/panhui9/PycharmProjects/feishu_test/extract_jcy_insights.py\" \"c:/Users/panhui9/PycharmProjects/feishu_test/depre/\")",
+      "Bash(python -c \"from utils.jcy_common import JSON_PATH, load_candidates, is_ashare_code; print\\('jcy_common OK'\\); print\\('JSON_PATH:', JSON_PATH\\); print\\('is_ashare_code\\(600519\\):', is_ashare_code\\('600519'\\)\\)\")",
+      "Bash(python backtest/jcy_intraday_timing.py --help)",
+      "Bash(python backtest/jcy_macd_bull_batch.py --help)"
     ]
   }
 }

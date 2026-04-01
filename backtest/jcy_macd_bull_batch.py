@@ -36,14 +36,12 @@ JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 """
 
 import argparse
-import json
 import os
 import re
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date as _date, timedelta
 
-# 复用数据获取和回测引擎
 from macd_analysis import fetch_stock_data, run_backtest
 from strategies import LuMACDBullStrategy
 from utils.plotting import setup_matplotlib
@@ -53,61 +51,9 @@ from utils.bull_backtest import (
     export_bull_daily_status,
     plot_bull_backtest,
 )
+from utils.jcy_common import JSON_PATH, load_candidates
 
 setup_matplotlib()
-
-JSON_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "jcy", "jcy_insights.json",
-)
-
-
-# ── 工具函数 ─────────────────────────────────────────────────────────────────
-
-def is_ashare_code(code) -> bool:
-    """判断是否为 6 位纯数字的 A 股代码。"""
-    return bool(code and re.fullmatch(r"\d{6}", str(code)))
-
-
-def load_candidates(json_path: str) -> list[dict]:
-    """
-    从 JSON 文件中筛选增持 A 股，去重后返回候选列表。
-    同一股票多次出现时，保留 rating=增持 的最早记录。
-
-    返回格式：[{"code": ..., "name": ..., "date": "YYYYMMDD", "reason": ...}, ...]
-    """
-    with open(json_path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    # 按日期升序排列文章，保证 earliest 记录能被正确保留
-    articles = sorted(data.get("articles", []), key=lambda a: a.get("date", ""))
-
-    seen: dict[str, dict] = {}  # code -> first record
-    for article in articles:
-        article_date = article.get("date", "")
-        for company in article.get("companies", []):
-            code   = company.get("code")
-            name   = company.get("name", "")
-            rating = company.get("rating", "")
-            reason = company.get("rating_reason", "")
-
-            if rating != "增持":
-                continue
-            if not is_ashare_code(code):
-                continue
-
-            # 日期转 YYYYMMDD
-            date_str = article_date.replace("-", "")
-
-            if code not in seen:
-                seen[code] = {
-                    "code":   code,
-                    "name":   name,
-                    "date":   date_str,
-                    "reason": reason,
-                }
-
-    return list(seen.values())
 
 
 # ── 单只股票回测 ──────────────────────────────────────────────────────────────

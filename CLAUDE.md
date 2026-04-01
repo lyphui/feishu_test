@@ -25,6 +25,7 @@ feishu_test/
 ├── ── 回测脚本 ─────────────────────────────────
 ├── backtest/
 │   ├── jcy_macd_bull_batch.py     # Step 4: 批量 MACD 牛市策略回测（读 jcy_insights.json）
+│   ├── jcy_intraday_timing.py     # 日线信号 + 分时择时（多周期共振）
 │   ├── macd_analysis.py           # 单股 MACD 教科书策略回测 + 核心回测引擎
 │   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
 │   └── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
@@ -42,7 +43,7 @@ feishu_test/
 │   ├── plotting.py                # 共享绘图样式（GitHub Dark 配色 + matplotlib 配置）
 │   ├── market_data.py             # 共享大盘指数数据获取（akshare + yfinance 双源）
 │   ├── bull_backtest.py           # 牛市策略专用：Adapter + 绘图 + CSV 导出
-│   ├── jcy_common.py              # JCY 流水线共享工具（日期解析、文件命名、YAML 加载）
+│   ├── jcy_common.py              # JCY 流水线共享工具（日期解析、文件命名、候选股筛选、YAML 加载）
 │   └── pplx.py                    # Perplexity API 客户端封装
 │
 ├── ── 配置文件 ─────────────────────────────────
@@ -178,7 +179,7 @@ params: dict               # 参数字典（展示用）
 | `plotting.py` | `COLORS` 字典（GitHub Dark 配色）、`setup_matplotlib()`、`style_ax(ax)` |
 | `market_data.py` | `fetch_index_data(symbol, start, end)` — 大盘指数，akshare → yfinance 双源 |
 | `bull_backtest.py` | `BullStrategyAdapter`、`plot_bull_backtest()`、`export_bull_daily_status()` |
-| `jcy_common.py` | `title_to_date()`、`title_to_filename()`、`load_docs()`、路径常量 |
+| `jcy_common.py` | `title_to_date()`、`title_to_filename()`、`load_docs()`、`load_candidates()`、`is_ashare_code()`、路径常量（`JSON_PATH`） |
 | `pplx.py` | `PerplexityAPI` 客户端（`chat()`、`sonar_deep_research()`） |
 
 ---
@@ -252,6 +253,11 @@ JCY_VIEW_ID=...
 # 完整流水线（按序执行）
 python prepare_jcy_data.py                  # Step 1-3：拉取数据 → AI建议 → 结构化提取
 python backtest/jcy_macd_bull_batch.py      # Step 4：批量量化回测
+
+# 分时择时（日线信号 + 分时 MACD 共振）
+python backtest/jcy_intraday_timing.py                  # 全部候选股
+python backtest/jcy_intraday_timing.py --code 600519    # 单股分析
+python backtest/jcy_intraday_timing.py --period 60      # 60min K 线
 
 # 独立单股回测
 python backtest/macd_analysis.py --config jxty_jcy_260104.ini
