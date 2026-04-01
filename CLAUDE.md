@@ -20,14 +20,14 @@ feishu_test/
 ├── .env                           # 环境变量（API 密钥等，不提交）
 │
 ├── ── 入口脚本 ────────────────────────────────
-├── get_jcy_data.py                # Step 1: 飞书 API 数据采集
-├── analyze_jcy.py                 # Step 2: Perplexity AI 投资建议生成
-├── extract_jcy_insights.py        # Step 3: Azure GPT 结构化信息提取
-├── jcy_macd_bull_batch.py         # Step 4: 批量 MACD 牛市策略回测
+├── prepare_jcy_data.py            # Step 1-3 一体化流水线（数据采集→AI建议→结构化提取）
 │
-├── macd_analysis.py               # 单股 MACD 教科书策略回测（独立工具）
-├── lu_macd_analysis.py            # 单股卢式 MACD 三级底部策略回测
-├── lu_macd_bull_analysis.py       # 单股卢式 MACD 牛市动能截取策略回测
+├── ── 回测脚本 ─────────────────────────────────
+├── backtest/
+│   ├── jcy_macd_bull_batch.py     # Step 4: 批量 MACD 牛市策略回测（读 jcy_insights.json）
+│   ├── macd_analysis.py           # 单股 MACD 教科书策略回测 + 核心回测引擎
+│   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
+│   └── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
 │
 ├── ── 策略包 ──────────────────────────────────
 ├── strategies/
@@ -64,6 +64,12 @@ feishu_test/
 ├── authorize/feishu_key/
 │   └── feishu_token.txt           # 飞书 Bearer Token（手动维护）
 │
+├── deprecated/                    # 已废弃脚本（被 prepare_jcy_data.py 整合替代）
+│   ├── get_jcy_data.py
+│   ├── analyze_jcy.py
+│   ├── extract_jcy_insights.py
+│   └── ...
+│
 └── output/                        # 回测图表和 CSV 输出目录
 ```
 
@@ -71,52 +77,28 @@ feishu_test/
 
 ## 核心功能模块
 
-### 1. 飞书数据采集 (`get_jcy_data.py`)
+### 1. 数据准备一体化流水线 (`prepare_jcy_data.py`)
 
-**职责：** 从飞书 API 读取多维表格 → 提取文档链接 → 读取文档正文 → 保存本地缓存
+**职责：** 整合 Step 1-3，单脚本完成飞书数据采集 → AI 投资建议 → 结构化提取
 
-**流程：**
+**Step 1 — 飞书数据采集：**
 ```
 wiki_token → bitable app_token
-    → get_all_records()       # 分页读取多维表格所有记录
-    → extract_links_from_records()  # 正则提取飞书文档 URL
-    → fetch_doc_content_json()      # 按文档类型（docx/wiki）调用对应 API
-    → save_data()             # 表格 → JSON，文档 → YAML
+    → get_all_records()            # 分页读取多维表格所有记录
+    → extract_links_from_records() # 正则提取飞书文档 URL
+    → fetch_doc_content_json()     # 按文档类型（docx/wiki）调用对应 API
+    → save_data()                  # 表格 → JSON，文档 → YAML
 ```
 
-**增量机制：** 已存在于 `jcy_docs.yaml` 的文档链接自动跳过
+**Step 2 — AI 投资建议生成（Perplexity）：**
+- 模型：`sonar-reasoning-pro`（联网搜索 + 推理，去掉 `<think>` 标签后保留正文）
+- 增量机制：扫描 `advice/` 目录，已存在的 `.md` 文件跳过
+- 输出格式：今日核心观点 / 股票行业详解 / 投资小白行动建议 / 风险提示 / 一句话总结
+- 超时保护：连续超时 `MAX_CONSECUTIVE_TIMEOUTS` 次时终止，不写入无效响应
 
-**环境变量：**
-- `JCY_WIKI_TOKEN` — 飞书 Wiki 节点 token
-- `JCY_APP_TABLE_ID` — 多维表格 ID
-- `JCY_VIEW_ID` — 视图 ID（可选）
-
----
-
-### 2. AI 投资建议生成 (`analyze_jcy.py`)
-
-**职责：** 逐篇调用 Perplexity API，生成面向投资小白的 Markdown 建议文件
-
-**模型：** `sonar-reasoning-pro`（联网搜索 + 推理，去掉 `<think>` 标签后保留正文）
-
-**增量机制：** `SKIP_MODE = "files"` — 扫描 `advice/` 目录，已存在的 `.md` 文件跳过
-
-**输出格式（固定结构）：**
-- 今日核心观点 / 股票行业详解 / 投资小白行动建议 / 风险提示 / 一句话总结
-
-**环境变量：**
-- `PPLX_API_KEY` — Perplexity API 密钥
-- `PPLX_GROUP_ID` — API Group ID
-
----
-
-### 3. 结构化信息提取 (`extract_jcy_insights.py`)
-
-**职责：** 原文 + 建议文档 → Azure GPT → 提取公司/代码/评级/市场/建议 JSON
-
-**模型：** Azure OpenAI `gpt-5`（`response_format=json_object`，强制 JSON 输出）
-
-**输出 schema：**
+**Step 3 — 结构化信息提取（Azure GPT）：**
+- 原文 + 建议文档 → Azure OpenAI `gpt-5`（`response_format=json_object`）
+- 输出 schema：
 ```json
 {
   "companies": [{"name", "code", "exchange", "rating", "rating_reason"}],
@@ -125,17 +107,21 @@ wiki_token → bitable app_token
   "key_advice": ["建议1", "建议2", ...]
 }
 ```
-
-**增量机制：** 按 `date` 字段去重，已提取的文章跳过
+- 增量机制：按 `date` 字段去重，已提取的文章跳过
 
 **环境变量：**
+- `JCY_WIKI_TOKEN` — 飞书 Wiki 节点 token
+- `JCY_APP_TABLE_ID` — 多维表格 ID
+- `JCY_VIEW_ID` — 视图 ID（可选）
+- `PPLX_API_KEY` — Perplexity API 密钥
+- `PPLX_GROUP_ID` — API Group ID
 - `AZURE_OPENAI_KEY` — Azure OpenAI API 密钥
 
 ---
 
-### 4. MACD 策略回测引擎 (`macd_analysis.py`)
+### 2. MACD 策略回测引擎 (`backtest/macd_analysis.py`)
 
-**职责：** 核心回测引擎，被所有入口脚本复用
+**职责：** 核心回测引擎，被所有回测入口脚本复用
 
 **关键函数：**
 - `fetch_stock_data(symbol, start, end)` — akshare 获取 A 股日线（前复权），yfinance 兜底
@@ -144,11 +130,11 @@ wiki_token → bitable app_token
   - 持仓期间按收盘价估值，生成权益曲线和回撤序列
 - `plot_backtest(result, save_path)` — 标准 4 面板图（价格+信号、指标、权益、回撤）
 
-**CLI：** `python macd_analysis.py --config jxty_jcy_260104.ini`
+**CLI：** `python backtest/macd_analysis.py --config jxty_jcy_260104.ini`
 
 ---
 
-### 5. 策略体系 (`strategies/`)
+### 3. 策略体系 (`strategies/`)
 
 | 策略类 | 文件 | 适用场景 |
 |--------|------|----------|
@@ -171,7 +157,7 @@ params: dict               # 参数字典（展示用）
 
 ---
 
-### 6. 批量回测 (`jcy_macd_bull_batch.py`)
+### 4. 批量回测 (`backtest/jcy_macd_bull_batch.py`)
 
 **职责：** 读取 `jcy_insights.json` → 筛选 A 股推荐 → 批量执行牛市策略回测
 
@@ -181,11 +167,11 @@ params: dict               # 参数字典（展示用）
 - `backtest_one()` — 单股回测，从 `trade_start_date`（推荐日）开始计算
 - 批量输出：图表 + 交易 CSV + 每日状态 CSV 到 `output/batch_YYYYMMDD/`
 
-**CLI：** `python jcy_macd_bull_batch.py [--date 20260226] [--output output/]`
+**CLI：** `python backtest/jcy_macd_bull_batch.py [--date 20260226] [--output output/]`
 
 ---
 
-### 7. 共享工具包 (`utils/`)
+### 5. 共享工具包 (`utils/`)
 
 | 模块 | 核心内容 |
 |------|----------|
@@ -201,26 +187,27 @@ params: dict               # 参数字典（展示用）
 
 ```
 飞书多维表格
-    │ get_jcy_data.py
-    ▼
-data/jcy/jcy_docs.yaml          (原始文档正文)
     │
-    ├─ analyze_jcy.py ──────────► data/jcy/advice/YYYY-MM-DD.md
-    │   (Perplexity sonar)
+    ▼ prepare_jcy_data.py（Step 1）
+data/jcy/jcy_docs.yaml          （原始文档正文）
     │
-    └─ extract_jcy_insights.py ──► data/jcy/jcy_insights.json
-        (Azure GPT)                 {companies, rating, markets, key_advice}
-                                        │
-                                jcy_macd_bull_batch.py
-                                        │
-                                akshare/yfinance 行情
-                                        │
-                                LuMACDBullStrategy 回测
-                                        │
-                                output/batch_YYYYMMDD/
-                                    ├── *.png  (5面板图表)
-                                    ├── *.csv  (交易记录)
-                                    └── *_daily_status.csv
+    ├─ prepare_jcy_data.py（Step 2，Perplexity sonar）
+    │                    ──────────► data/jcy/advice/YYYY-MM-DD.md
+    │
+    └─ prepare_jcy_data.py（Step 3，Azure GPT）
+                         ──────────► data/jcy/jcy_insights.json
+                                         {companies, rating, markets, key_advice}
+                                                 │
+                                  backtest/jcy_macd_bull_batch.py（Step 4）
+                                                 │
+                                      akshare/yfinance 行情
+                                                 │
+                                      LuMACDBullStrategy 回测
+                                                 │
+                                      output/batch_YYYYMMDD/
+                                          ├── *.png  （5面板图表）
+                                          ├── *.csv  （交易记录）
+                                          └── *_daily_status.csv
 ```
 
 ---
@@ -263,13 +250,11 @@ JCY_VIEW_ID=...
 
 ```bash
 # 完整流水线（按序执行）
-python get_jcy_data.py           # 拉取飞书数据
-python analyze_jcy.py            # 生成 AI 投资建议
-python extract_jcy_insights.py   # 提取结构化信息
-python jcy_macd_bull_batch.py    # 批量量化回测
+python prepare_jcy_data.py                  # Step 1-3：拉取数据 → AI建议 → 结构化提取
+python backtest/jcy_macd_bull_batch.py      # Step 4：批量量化回测
 
 # 独立单股回测
-python macd_analysis.py --config jxty_jcy_260104.ini
-python lu_macd_analysis.py
-python lu_macd_bull_analysis.py
+python backtest/macd_analysis.py --config jxty_jcy_260104.ini
+python backtest/lu_macd_analysis.py
+python backtest/lu_macd_bull_analysis.py
 ```

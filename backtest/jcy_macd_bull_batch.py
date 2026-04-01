@@ -5,7 +5,7 @@ JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
   - rating == "增持"
   - code 为 6 位纯数字的 A 股代码
 
-同一股票多次出现时，保留日期最早的那条记录。
+同一股票多次出现时，保留 rating=增持 的最早记录。
 
 回测参数
 --------
@@ -40,6 +40,7 @@ import json
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date as _date, timedelta
 
 # 复用数据获取和回测引擎
@@ -56,7 +57,7 @@ from utils.bull_backtest import (
 setup_matplotlib()
 
 JSON_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "jcy", "jcy_insights.json",
 )
 
@@ -71,6 +72,7 @@ def is_ashare_code(code) -> bool:
 def load_candidates(json_path: str) -> list[dict]:
     """
     从 JSON 文件中筛选增持 A 股，去重后返回候选列表。
+    同一股票多次出现时，保留 rating=增持 的最早记录。
 
     返回格式：[{"code": ..., "name": ..., "date": "YYYYMMDD", "reason": ...}, ...]
     """
@@ -113,7 +115,7 @@ def load_candidates(json_path: str) -> list[dict]:
 def backtest_one(candidate: dict, end_date: str, index_symbol: str,
                  capital: float, stop_loss: float, take_profit: float,
                  shrink_exit: bool, base_output_dir: str,
-                 warmup_days: int = 365) -> bool:
+                 warmup_days: int = 600) -> bool:
     """
     对单只股票执行回测并保存结果。
     返回 True 表示成功，False 表示失败。
@@ -240,7 +242,7 @@ def main():
         print("  ❌ 未找到满足条件的增持 A 股，请检查 JSON 数据")
         sys.exit(1)
 
-    print(f"\n  共找到 {len(candidates)} 只增持 A 股（已去重，保留最早记录）：")
+    print(f"\n  共找到 {len(candidates)} 只增持 A 股（已去重，保留 rating=增持 的最早记录）：")
     for c in candidates:
         print(f"    {c['code']}  {c['name']:8s}  起始日期：{c['date'][:4]}-{c['date'][4:6]}-{c['date'][6:]}")
 

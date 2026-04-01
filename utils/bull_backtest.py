@@ -49,6 +49,15 @@ class BullStrategyAdapter(BaseStrategy):
         if self._trade_start_date:
             cutoff = pd.to_datetime(self._trade_start_date, format="%Y%m%d")
             result.loc[result.index < cutoff, "signal"] = 0
+
+        # 第一次操作必须是买入：清除首次买入信号之前的所有卖出信号
+        buy_indices = result.index[result["signal"] == 1]
+        if len(buy_indices) > 0:
+            first_buy = buy_indices[0]
+            result.loc[(result.index < first_buy) & (result["signal"] == -1), "signal"] = 0
+        else:
+            result.loc[result["signal"] == -1, "signal"] = 0
+
         return result
 
     def plot_indicators(self, ax, df, colors):

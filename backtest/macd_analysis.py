@@ -22,6 +22,7 @@ import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 import warnings
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS,
@@ -487,7 +488,7 @@ def main():
     print("  数据来源：akshare（前复权）")
     print("─"*55)
 
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", args.config)
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", args.config)
     if not os.path.exists(config_path):
         print(f"  配置文件不存在，已生成默认配置：{config_path}")
         _write_default_config(config_path)

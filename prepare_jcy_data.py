@@ -17,7 +17,7 @@ import requests
 from datetime import datetime
 
 from dotenv import load_dotenv, find_dotenv
-from openai import AzureOpenAI, APITimeoutError
+from openai import AzureOpenAI
 
 from utils.pplx import PerplexityAPI
 from utils.jcy_common import title_to_date, title_to_filename, load_docs, ADVICE_DIR
@@ -77,8 +77,17 @@ S3_AZURE_ENDPOINT   = "https://llm-east-us2-test.openai.azure.com/"
 S3_AZURE_DEPLOYMENT = "gpt-5"
 S3_AZURE_API_KEY    = os.getenv("AZURE_OPENAI_KEY", "")
 S3_AZURE_API_VER    = "2024-12-01-preview"
+S3_COZE_API_KEY     = os.getenv("COZE_API_KEY", "")
+S3_COZE_URL         = os.getenv("COZE_URL", "https://99p6x2gyv9.coze.site/run")
+S3_COZE_MODEL       = os.getenv("COZE_MODEL", "doubao-pro")
 S3_OUTPUT_FILE      = os.path.join(_DATA_DIR, "jcy_insights.json")
 S3_SLEEP            = 2
+
+# LLM providers in fallback order; disable by leaving the API key env var empty
+S3_PROVIDERS = [
+    # {"name": "Azure OpenAI", "type": "azure", "enabled": bool(S3_AZURE_API_KEY)},
+    {"name": "Coze",         "type": "coze",  "enabled": bool(S3_COZE_API_KEY)},
+]
 
 S3_SYSTEM_PROMPT = """你是一位专业的股票市场分析助手。请从提供的股市分析文章和投资建议中，提取关键的结构化信息。
 
@@ -568,37 +577,16 @@ def _s3_load_output():
 
 def _s3_save_output(articles):
     os.makedirs(os.path.dirname(S3_OUTPUT_FILE), exist_ok=True)
+    sorted_articles = sorted(articles, key=lambda a: a.get("date", ""), reverse=True)
     with open(S3_OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump({
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "total":      len(articles),
-            "articles":   articles,
+            "total":      len(sorted_articles),
+            "articles":   sorted_articles,
         }, f, ensure_ascii=False, indent=2)
 
 
-def _s3_extract_insights(client, doc, advice_text):
-    """调用 Azure GPT 提取结构化信息。
-
-    Returns dict on success.
-    Raises APITimeoutError on timeout, other exceptions on other failures.
-    """
-    title   = doc.get("文档标题", "")
-    content = doc.get("文档内容正文", "").strip()
-    user_prompt = (
-        f"【原文标题】{title}\n\n"
-        f"【原文内容】\n{content}\n\n"
-        f"【AI生成的投资建议】\n{advice_text or '（暂无建议文档）'}"
-    )
-    response = client.chat.completions.create(
-        model=S3_AZURE_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": S3_SYSTEM_PROMPT},
-            {"role": "user",   "content": user_prompt},
-        ],
-        max_completion_tokens=16000,
-        response_format={"type": "json_object"},
-    )
-    raw = response.choices[0].message.content.strip()
+def _s3_parse_json(raw):
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -608,19 +596,102 @@ def _s3_extract_insights(client, doc, advice_text):
         raise ValueError(f"无法解析 JSON 响应: {raw[:200]}")
 
 
+def _s3_coze_extract_content(data):
+    """Extract text content from Coze response, trying common response shapes."""
+    # OpenAI-compatible
+    if "choices" in data:
+        return data["choices"][0]["message"]["content"].strip()
+    # Coze bot/workflow formats
+    for key in ("output", "answer", "content", "text", "result"):
+        if key in data and isinstance(data[key], str):
+            return data[key].strip()
+    if "data" in data and isinstance(data["data"], dict):
+        inner = data["data"]
+        for key in ("output", "answer", "content", "text"):
+            if key in inner and isinstance(inner[key], str):
+                return inner[key].strip()
+    # Last resort: dump the whole response so we can inspect it
+    raise ValueError(f"无法从 Coze 响应中提取内容，完整响应：{json.dumps(data, ensure_ascii=False)[:500]}")
+
+
+def _s3_call_provider(provider, user_prompt):
+    """Call one LLM provider. Returns dict or raises on any error."""
+    if provider["type"] == "azure":
+        client = AzureOpenAI(
+            api_version=S3_AZURE_API_VER,
+            azure_endpoint=S3_AZURE_ENDPOINT,
+            api_key=S3_AZURE_API_KEY,
+        )
+        response = client.chat.completions.create(
+            model=S3_AZURE_DEPLOYMENT,
+            messages=[
+                {"role": "system", "content": S3_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_prompt},
+            ],
+            max_completion_tokens=16000,
+            response_format={"type": "json_object"},
+        )
+        return _s3_parse_json(response.choices[0].message.content.strip())
+
+    if provider["type"] == "coze":
+        r = requests.post(
+            S3_COZE_URL,
+            headers={"Authorization": f"Bearer {S3_COZE_API_KEY}",
+                     "Content-Type": "application/json"},
+            json={
+                "messages": [
+                    {"role": "system", "content": S3_SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_prompt},
+                ],
+                "model": S3_COZE_MODEL,
+                "temperature": 0.3,
+                "max_tokens": 16000,
+            },
+            timeout=120,
+        )
+        r.raise_for_status()
+        data = r.json()
+        raw = _s3_coze_extract_content(data)
+        return _s3_parse_json(raw)
+
+    raise ValueError(f"未知 provider 类型: {provider['type']}")
+
+
+def _s3_extract_insights(doc, advice_text):
+    """Try each enabled LLM provider in order.
+
+    Returns (insights_dict, provider_name) or raises if all fail.
+    """
+    title   = doc.get("文档标题", "")
+    content = doc.get("文档内容正文", "").strip()
+    user_prompt = (
+        f"【原文标题】{title}\n\n"
+        f"【原文内容】\n{content}\n\n"
+        f"【AI生成的投资建议】\n{advice_text or '（暂无建议文档）'}"
+    )
+    active = [p for p in S3_PROVIDERS if p["enabled"]]
+    if not active:
+        raise RuntimeError("没有可用的 LLM Provider（请检查 API Key 环境变量）")
+    last_err = None
+    for provider in active:
+        try:
+            return _s3_call_provider(provider, user_prompt), provider["name"]
+        except Exception as e:
+            print(f"   ⚠️  {provider['name']} 失败: {type(e).__name__}: {e}")
+            last_err = e
+    raise last_err
+
+
 def run_step3(docs):
-    """Azure GPT 结构化提取。连续超时 MAX_CONSECUTIVE_TIMEOUTS 次时终止。"""
+    """LLM 结构化提取，按 S3_PROVIDERS 顺序自动回退。"""
+    active_names = [p["name"] for p in S3_PROVIDERS if p["enabled"]]
+    print(f"🤖 LLM 顺序：{' → '.join(active_names) or '无（请配置 API Key）'}\n")
+
     articles, date_index = _s3_load_output()
     print(f"已提取：{len(articles)} 篇，本次跳过已有记录\n")
 
-    client = AzureOpenAI(
-        api_version=S3_AZURE_API_VER,
-        azure_endpoint=S3_AZURE_ENDPOINT,
-        api_key=S3_AZURE_API_KEY,
-    )
-
-    new_count            = 0
-    consecutive_timeouts = 0
+    new_count       = 0
+    consec_failures = 0
 
     for doc in docs:
         title    = doc.get("文档标题", "（无标题）")
@@ -639,27 +710,24 @@ def run_step3(docs):
         print(f"[{new_count + 1}] 提取：{title} ...")
 
         try:
-            insights = _s3_extract_insights(client, doc, advice_text)
-        except APITimeoutError:
-            consecutive_timeouts += 1
-            print(f"   ⏰ 请求超时（连续第 {consecutive_timeouts}/{MAX_CONSECUTIVE_TIMEOUTS} 次）")
-            if consecutive_timeouts >= MAX_CONSECUTIVE_TIMEOUTS:
-                print(f"   ❌ 连续超时 {MAX_CONSECUTIVE_TIMEOUTS} 次，终止 Step 3")
+            insights, used = _s3_extract_insights(doc, advice_text)
+        except Exception as e:
+            consec_failures += 1
+            print(f"   ❌ 所有 Provider 均失败: {e}")
+            if consec_failures >= MAX_CONSECUTIVE_TIMEOUTS:
+                print(f"   ❌ 连续失败 {MAX_CONSECUTIVE_TIMEOUTS} 次，终止 Step 3")
                 break
             time.sleep(S3_SLEEP)
             continue
-        except Exception as e:
-            print(f"   !! 失败: {e}")
-            consecutive_timeouts = 0
-            continue
 
-        consecutive_timeouts = 0
+        consec_failures = 0
         record = {
             "date":         date_str or title,
             "title":        title,
             "link":         link,
             "advice_file":  os.path.abspath(os.path.join(ADVICE_DIR, filename)),
             "extracted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "llm_provider": used,
             **insights,
         }
         articles.append(record)
@@ -671,7 +739,7 @@ def run_step3(docs):
         rated     = [c for c in companies if c.get("rating")]
         print(f"   ✅ 已保存（公司:{len(companies)}个，有评级:{len(rated)}个，"
               f"市场:{insights.get('markets', [])}，"
-              f"建议:{len(insights.get('key_advice', []))}条）")
+              f"建议:{len(insights.get('key_advice', []))}条）[{used}]")
 
         time.sleep(S3_SLEEP)
 

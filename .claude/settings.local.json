@@ -15,7 +15,11 @@
       "Bash(python -c \"import extract_jcy_insights; print\\(''extract_jcy_insights OK''\\)\")",
       "Bash(python -c \"from strategies import LuMACDBullStrategy; s = LuMACDBullStrategy\\(\\); print\\(''LuMACDBullStrategy OK, _index_df:'', s._index_df\\)\")",
       "Bash(ls /c/Users/panhui9/PycharmProjects/feishu_test/*.py)",
-      "Bash(xargs -I{} basename {})"
+      "Bash(xargs -I{} basename {})",
+      "Bash(mkdir -p \"c:/Users/panhui9/PycharmProjects/feishu_test/depre\")",
+      "Bash(mv \"c:/Users/panhui9/PycharmProjects/feishu_test/get_jcy_data.py\" \"c:/Users/panhui9/PycharmProjects/feishu_test/depre/\")",
+      "Bash(mv \"c:/Users/panhui9/PycharmProjects/feishu_test/analyze_jcy.py\" \"c:/Users/panhui9/PycharmProjects/feishu_test/depre/\")",
+      "Bash(mv \"c:/Users/panhui9/PycharmProjects/feishu_test/extract_jcy_insights.py\" \"c:/Users/panhui9/PycharmProjects/feishu_test/depre/\")"
     ]
   }
 }

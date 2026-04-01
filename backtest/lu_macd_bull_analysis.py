@@ -13,6 +13,7 @@
 import configparser
 import os
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date as _date
 
 # 复用数据获取和回测引擎
@@ -75,7 +76,7 @@ def main():
     print("─" * 55)
 
     config_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "config", "lu_macd_bull_config.ini"
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "lu_macd_bull_config.ini"
     )
     if not os.path.exists(config_path):
         print(f"  配置文件不存在，已生成默认配置：{config_path}")
