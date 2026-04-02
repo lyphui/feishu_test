@@ -48,7 +48,6 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 warnings.filterwarnings("ignore")
 
 from macd_analysis import fetch_stock_data
@@ -136,7 +135,7 @@ def fetch_intraday(symbol: str, start_date: str, end_date: str,
         df = df.set_index("datetime").sort_index()
         cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
         return df[cols]
-    except Exception as e:
+    except (ValueError, KeyError, OSError, RuntimeError) as e:
         print(f"    ⚠ 分时数据获取失败：{e}")
         return pd.DataFrame()
 

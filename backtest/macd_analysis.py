@@ -14,6 +14,7 @@ A股 MACD 策略回测工具
 
 import configparser
 import os
+import sys
 from datetime import date as _date
 import pandas as pd
 import numpy as np
@@ -21,115 +22,15 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 import warnings
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS,
     setup_matplotlib, style_ax,
 )
+from utils.market_data import fetch_stock_data   # noqa: F401 — re-export for backward compat
 
 warnings.filterwarnings("ignore")
 setup_matplotlib()
-
-
-# ─────────────────────────────────────────
-# 1. 数据获取
-# ─────────────────────────────────────────
-
-def fetch_stock_data(symbol: str, start_date: str, end_date: str,
-                     proxy: str = "") -> pd.DataFrame:
-    """
-    获取A股历史行情数据（前复权）
-
-    symbol: 股票代码，如 "600519"（茅台）、"000858"（五粮液）
-    start_date / end_date: 格式 "YYYYMMDD"
-    proxy: HTTP 代理地址，如 "http://127.0.0.1:7890"，留空则不使用
-    """
-    # akshare 底层用 requests，设置环境变量即可让它走代理
-    if proxy:
-        os.environ["HTTP_PROXY"]  = proxy
-        os.environ["HTTPS_PROXY"] = proxy
-
-    try:
-        import akshare as ak
-        print(f"  正在从 akshare 获取 {symbol} 数据...")
-        df = ak.stock_zh_a_hist(
-            symbol=symbol,
-            period="daily",
-            start_date=start_date,
-            end_date=end_date,
-            adjust="qfq",
-        )
-        df = df.rename(columns={
-            "日期": "date",
-            "开盘": "open",
-            "收盘": "close",
-            "最高": "high",
-            "最低": "low",
-            "成交量": "volume",
-            "成交额": "amount",
-        })
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.set_index("date").sort_index()
-        return df[["open", "high", "low", "close", "volume"]]
-
-    except ImportError:
-        print("  未找到 akshare，尝试使用 yfinance 作为备用...")
-        return _fetch_via_yfinance(symbol, start_date, end_date)
-
-    except Exception as e:
-        print(f"  akshare 获取失败：{e}，尝试 yfinance 备用...")
-        return _fetch_via_yfinance(symbol, start_date, end_date)
-
-
-def _fetch_via_yfinance(symbol: str, start_date: str, end_date: str,
-                        max_retries: int = 3, retry_delay: int = 10) -> pd.DataFrame:
-    """yfinance 备用，自动判断沪/深，兼容新版 MultiIndex 列，支持限流重试"""
-    import time
-    try:
-        import yfinance as yf
-    except ImportError:
-        raise RuntimeError("未安装 yfinance，请运行：pip install yfinance")
-
-    suffix = ".SS" if symbol.startswith("6") else ".SZ"
-    ticker = symbol + suffix
-    start = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
-    end   = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
-
-    last_err = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            print(f"  正在从 yfinance 获取 {ticker} 数据（第 {attempt}/{max_retries} 次）...")
-            raw = yf.download(ticker, start=start, end=end,
-                              auto_adjust=True, progress=False)
-            if raw is None or raw.empty:
-                raise ValueError(f"未返回数据，ticker={ticker}")
-            # 新版 yfinance 返回 MultiIndex(field, ticker)，需要降级
-            if isinstance(raw.columns, pd.MultiIndex):
-                raw.columns = [c[0].lower() for c in raw.columns]
-            else:
-                raw.columns = [c.lower() for c in raw.columns]
-            raw.index = pd.to_datetime(raw.index)
-            return raw[["open", "high", "low", "close", "volume"]]
-        except Exception as e:
-            last_err = e
-            err_str = str(e)
-            if "RateLimit" in type(e).__name__ or "Too Many Requests" in err_str or "429" in err_str:
-                if attempt < max_retries:
-                    wait = retry_delay * attempt
-                    print(f"  yfinance 触发限流，等待 {wait} 秒后重试...")
-                    time.sleep(wait)
-                    continue
-            break
-
-    raise RuntimeError(
-        f"数据获取失败：{last_err}\n"
-        "建议：\n"
-        "  1. 稍等几分钟后再运行（yfinance 有访问频率限制）\n"
-        "  2. 确认已安装 akshare：pip install akshare\n"
-        "  3. 在配置文件中填写 proxy（如 http://127.0.0.1:7890）"
-    )
 
 
 # ─────────────────────────────────────────
@@ -316,7 +217,7 @@ def _calc_trade_stats(trades: list):
     avg_loss     = np.mean(losses) if losses else 0
     total_win    = sum(wins)
     total_loss   = abs(sum(losses))
-    profit_factor = total_win / total_loss if total_loss > 0 else float("inf")
+    profit_factor = total_win / total_loss if total_loss > 0 else 0.0
     return win_rate, avg_win, avg_loss, profit_factor
 
 
@@ -334,7 +235,8 @@ def _print_summary(r: dict):
     print(f"  胜率          : {r['win_rate']:>8.1f}%")
     print(f"  平均盈利      : {r['avg_win']:>+8.2f}%")
     print(f"  平均亏损      : {r['avg_loss']:>+8.2f}%")
-    print(f"  盈亏比        : {r['profit_factor']:>8.2f}")
+    pf = r['profit_factor']
+    print(f"  盈亏比        : {'    N/A' if pf == 0 else f'{pf:>8.2f}'}")
     print(f"  ──────────────────────────────────────────")
 
 

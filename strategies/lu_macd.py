@@ -134,10 +134,6 @@ class LuMACDStrategy(BaseStrategy):
 
     # ── 内部工具 ─────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _ema(series: pd.Series, period: int) -> pd.Series:
-        return series.ewm(span=period, adjust=False).mean()
-
     def _calc_macd(self, close: pd.Series) -> pd.DataFrame:
         """计算 DIF / DEA / MACD 柱，列名不带后缀。"""
         ema_fast  = self._ema(close, self.fast)
@@ -193,12 +189,7 @@ class LuMACDStrategy(BaseStrategy):
         低频信号在下一个交易日生效（shift(1) 后 ffill）。
         """
         # reindex 到日线，只保留低频信号发出后的日期
-        aligned = (
-            signal_series
-            .reindex(daily_index, method=None)   # 先对齐（大量 NaN）
-        )
-        # 将低频信号日期对应的值填入最近的日线位置
-        aligned = signal_series.reindex(daily_index, method="ffill")
+        aligned = signal_series.reindex(daily_index).ffill()
         return aligned.fillna(False).astype(bool)
 
     def _calc_phase(self, close: pd.Series, bottom_price: float) -> pd.Series:
@@ -259,7 +250,7 @@ class LuMACDStrategy(BaseStrategy):
         for col, src in [("DIF_W", macd_weekly["DIF"]),
                          ("DEA_W", macd_weekly["DEA"]),
                          ("MACD_W", macd_weekly["MACD"])]:
-            df[col] = src.reindex(df.index, method="ffill")
+            df[col] = src.reindex(df.index).ffill()
 
         df["vol_expanding"]    = self._align_to_daily(vol_exp_weekly,  df.index)
         df["weekly_confirmed"] = False   # 后面逐步标记
@@ -272,7 +263,7 @@ class LuMACDStrategy(BaseStrategy):
         for col, src in [("DIF_M", macd_monthly["DIF"]),
                          ("DEA_M", macd_monthly["DEA"]),
                          ("MACD_M", macd_monthly["MACD"])]:
-            df[col] = src.reindex(df.index, method="ffill")
+            df[col] = src.reindex(df.index).ffill()
 
         df["monthly_confirmed"] = False  # 后面逐步标记
 

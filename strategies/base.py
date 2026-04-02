@@ -15,6 +15,11 @@ import pandas as pd
 
 class BaseStrategy(ABC):
 
+    @staticmethod
+    def _ema(series: pd.Series, period: int) -> pd.Series:
+        """指数移动平均线（EMA），所有 MACD 策略共用。"""
+        return series.ewm(span=period, adjust=False).mean()
+
     @property
     @abstractmethod
     def name(self) -> str:

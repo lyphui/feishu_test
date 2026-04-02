@@ -22,7 +22,12 @@
       "Bash(mv \"c:/Users/panhui9/PycharmProjects/feishu_test/extract_jcy_insights.py\" \"c:/Users/panhui9/PycharmProjects/feishu_test/depre/\")",
       "Bash(python -c \"from utils.jcy_common import JSON_PATH, load_candidates, is_ashare_code; print\\('jcy_common OK'\\); print\\('JSON_PATH:', JSON_PATH\\); print\\('is_ashare_code\\(600519\\):', is_ashare_code\\('600519'\\)\\)\")",
       "Bash(python backtest/jcy_intraday_timing.py --help)",
-      "Bash(python backtest/jcy_macd_bull_batch.py --help)"
+      "Bash(python backtest/jcy_macd_bull_batch.py --help)",
+      "Bash(pip install:*)",
+      "Bash(python -c \"from strategies import MACDStrategy; from utils.market_data import fetch_stock_data; print\\('OK'\\)\")",
+      "Bash(python -c \"from strategies import MACDStrategy, LuMACDStrategy, LuMACDBullStrategy; from utils.market_data import fetch_stock_data, fetch_index_data; from utils.jcy_common import load_candidates; print\\('All imports OK'\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(python backtest/macd_analysis.py --help)"
     ]
   }
 }

@@ -39,7 +39,6 @@ import argparse
 import os
 import re
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date as _date, timedelta
 
 from macd_analysis import fetch_stock_data, run_backtest

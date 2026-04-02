@@ -35,10 +35,6 @@ class MACDStrategy(BaseStrategy):
 
     # ── 指标计算（内部） ─────────────────────────────────────
 
-    @staticmethod
-    def _ema(series: pd.Series, period: int) -> pd.Series:
-        return series.ewm(span=period, adjust=False).mean()
-
     def _calc_macd(self, close: pd.Series) -> pd.DataFrame:
         ema_fast  = self._ema(close, self.fast)
         ema_slow  = self._ema(close, self.slow)

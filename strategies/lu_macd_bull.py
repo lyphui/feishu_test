@@ -104,10 +104,6 @@ class LuMACDBullStrategy(BaseStrategy):
 
     # ── 内部工具 ─────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _ema(series: pd.Series, period: int) -> pd.Series:
-        return series.ewm(span=period, adjust=False).mean()
-
     def _calc_macd(
         self, close: pd.Series, fast: int, slow: int, sig: int
     ) -> pd.DataFrame:
@@ -172,15 +168,15 @@ class LuMACDBullStrategy(BaseStrategy):
         if index_df is not None:
             bull_monthly = self._bull_market_filter(index_df)
             # 月线信号对齐到日线（ffill，月初信号持续到下月初）
-            bull_daily = bull_monthly.reindex(df.index, method="ffill").fillna(False)
+            bull_daily = bull_monthly.reindex(df.index).ffill().fillna(False)
 
             # 大盘月线 DIF/DEA 写入 df 供绘图参考
             idx_monthly = self._resample_monthly(index_df)
             idx_macd    = self._calc_macd(
                 idx_monthly["close"], self.bull_fast, self.bull_slow, self.bull_signal
             )
-            df["DIF_IDX"] = idx_macd["DIF"].reindex(df.index, method="ffill")
-            df["DEA_IDX"] = idx_macd["DEA"].reindex(df.index, method="ffill")
+            df["DIF_IDX"] = idx_macd["DIF"].reindex(df.index).ffill()
+            df["DEA_IDX"] = idx_macd["DEA"].reindex(df.index).ffill()
         else:
             # 无大盘数据：降级，默认始终处于牛市（打印警告）
             import warnings
