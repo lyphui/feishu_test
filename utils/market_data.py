@@ -1,9 +1,59 @@
-"""共享行情数据获取：个股 + 指数，akshare 优先，yfinance 备用。"""
+"""共享行情数据获取：个股 + 指数，akshare → baostock → yfinance 三源。"""
 
 import os
 import time
 
 import pandas as pd
+
+
+# ── baostock 辅助 ──────────────────────────────────────────────────────────────
+
+def _to_baostock_code(symbol: str) -> str:
+    """A 股代码 → baostock 格式（sh.600519 / sz.002202）。"""
+    prefix = "sh" if symbol.startswith("6") or symbol.startswith("9") else "sz"
+    return f"{prefix}.{symbol}"
+
+
+def _to_baostock_index(symbol: str) -> str:
+    """指数代码 → baostock 格式（sh.000300 / sz.399006）。"""
+    prefix = "sz" if symbol.startswith("399") else "sh"
+    return f"{prefix}.{symbol}"
+
+
+def _baostock_query(code: str, start: str, end: str,
+                    frequency: str = "d",
+                    fields: str = "date,open,high,low,close,volume",
+                    adjustflag: str = "2") -> pd.DataFrame:
+    """
+    通用 baostock 查询，返回标准 DataFrame。
+
+    code       : baostock 格式 "sh.600519"
+    start/end  : "YYYY-MM-DD"
+    frequency  : "d"=日线, "5"/"15"/"30"/"60"=分钟线
+    adjustflag : "2"=前复权, "1"=后复权, "3"=不复权
+    """
+    import baostock as bs
+
+    lg = bs.login()
+    try:
+        rs = bs.query_history_k_data_plus(
+            code, fields,
+            start_date=start, end_date=end,
+            frequency=frequency, adjustflag=adjustflag,
+        )
+        rows = []
+        while (rs.error_code == "0") and rs.next():
+            rows.append(rs.get_row_data())
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows, columns=rs.fields)
+        # 数值列转换
+        for col in ["open", "high", "low", "close", "volume"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        return df
+    finally:
+        bs.logout()
 
 
 # ── 共享 yfinance 下载（含限流重试） ─────────────────────────────────────────
@@ -112,10 +162,26 @@ def fetch_stock_data(
         df = df.set_index("date").sort_index()
         return df[["open", "high", "low", "close", "volume"]]
     except ImportError:
-        print("  未找到 akshare，尝试使用 yfinance 作为备用...")
+        print("  未找到 akshare，尝试 baostock 备用...")
     except (ValueError, KeyError, OSError, RuntimeError) as e:
-        print(f"  akshare 获取失败：{e}，尝试 yfinance 备用...")
+        print(f"  akshare 获取失败：{e}，尝试 baostock 备用...")
 
+    # ── baostock 备用 ──
+    try:
+        bs_code = _to_baostock_code(symbol)
+        start_dash = _date_yyyymmdd_to_dash(start_date)
+        end_dash = _date_yyyymmdd_to_dash(end_date)
+        print(f"  正在从 baostock 获取 {bs_code} 日线数据...")
+        df = _baostock_query(bs_code, start_dash, end_dash, frequency="d")
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date").sort_index()
+            return df[["open", "high", "low", "close", "volume"]]
+        print("  baostock 返回空数据，尝试 yfinance 备用...")
+    except Exception as e:
+        print(f"  baostock 获取失败：{e}，尝试 yfinance 备用...")
+
+    # ── yfinance 备用 ──
     ticker = _to_yfinance_ticker(symbol, is_index=False)
     raw = _yfinance_download(
         ticker,
@@ -155,10 +221,28 @@ def fetch_index_data(
                     if c in df.columns]
             return df[cols]
     except ImportError:
-        pass
+        print("  未找到 akshare，尝试 baostock 备用...")
     except (ValueError, KeyError, OSError, RuntimeError) as e:
-        print(f"  akshare 指数获取失败：{e}，尝试 yfinance 备用...")
+        print(f"  akshare 指数获取失败：{e}，尝试 baostock 备用...")
 
+    # ── baostock 备用 ──
+    try:
+        bs_code = _to_baostock_index(symbol)
+        start_dash = _date_yyyymmdd_to_dash(start_date)
+        end_dash = _date_yyyymmdd_to_dash(end_date)
+        print(f"  正在从 baostock 获取指数 {bs_code} 日线数据...")
+        df = _baostock_query(bs_code, start_dash, end_dash, frequency="d")
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date").sort_index()
+            cols = [c for c in ["open", "high", "low", "close", "volume"]
+                    if c in df.columns]
+            return df[cols]
+        print("  baostock 指数返回空数据，尝试 yfinance 备用...")
+    except Exception as e:
+        print(f"  baostock 指数获取失败：{e}，尝试 yfinance 备用...")
+
+    # ── yfinance 备用 ──
     ticker = _to_yfinance_ticker(symbol, is_index=True)
     raw = _yfinance_download(
         ticker,

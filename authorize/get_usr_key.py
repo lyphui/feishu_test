@@ -14,7 +14,7 @@ load_dotenv(find_dotenv())
 APP_ID       = os.getenv("FEISHU_APP_ID")
 APP_SECRET   = os.getenv("FEISHU_APP_SECRET")
 REDIRECT_URI = "https://localhost:8080/callback"
-TOKEN_FILE   = os.path.join(os.path.dirname(__file__), "feishu_key", "feishu_token.txt")
+TOKEN_FILE   = os.getenv("TOKEN_FILE")
 
 # 所有需要的权限
 SCOPES = [

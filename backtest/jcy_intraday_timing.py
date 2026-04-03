@@ -38,6 +38,7 @@ import argparse
 import os
 import re
 import sys
+import time
 import warnings
 from dataclasses import dataclass, field
 from datetime import date as _date, timedelta
@@ -103,41 +104,374 @@ class SignalTimingResult:
     go_count: int
 
 
+# ── 仓位管理 ────────────────────────────────────────────────────────────────
+
+@dataclass
+class TradeRecord:
+    """单笔交易记录。"""
+    date: pd.Timestamp
+    action: str          # 买入 / 减仓 / 清仓
+    reason: str          # 金叉+红柱拉长 / 红柱缩短 / 死叉 / DIF<0 / 期末清算
+    price: float
+    shares: int
+    amount: float        # 正=收入，负=支出（含手续费）
+    position_pct: float  # 操作后剩余仓位占比（%）
+    realized_pnl: float  # 本笔已实现盈亏
+
+
+class PositionTracker:
+    """
+    分级买入 + 三级递进卖出仓位管理器。
+
+    买入 ── 分两阶段进场（根据 DIF 位置调整初仓比例）：
+      初仓：DIF < 0（零轴下方弱信号）→ 买入 1/3 可用资金
+            DIF ≥ 0（零轴上方标准信号）→ 买入 1/2 可用资金
+      加仓：初仓次日起，若红柱持续拉长 → 买入剩余资金补满仓
+      退出：初仓阶段遇红柱缩短/死叉/DIF<0 → 直接全退，不等满仓
+
+    卖出 ── 三级递进（满仓后）：
+      Level 1: 红柱缩短      → 卖出 1/3 满仓股数
+      Level 2: 死叉(DIF<DEA) → 卖出 1/3 满仓股数
+      Level 3: DIF < 0       → 清仓剩余
+
+    费用：佣金 0.03% 双边 + 印花税 0.1% 卖方单边（A 股标准）
+    """
+
+    COMMISSION_RATE = 0.0003   # 佣金（买卖各收）
+    STAMP_TAX_RATE  = 0.001    # 印花税（仅卖方）
+
+    def __init__(self, capital: float = 100_000):
+        self.initial_capital = capital
+        self.cash = capital
+        self.shares = 0
+        self._buy_shares = 0       # 满仓时的股数（用于计算 1/3）
+        self._avg_cost = 0.0
+        self._sell_level = 0       # 0=满仓/空仓, 1=已卖1/3, 2=已卖2/3
+        self._buy_level = 0        # 0=空仓, 1=初仓(半仓), 2=满仓
+        self._buy_date = None      # 初仓日期（防止当日重复操作）
+        self.trades: list[TradeRecord] = []
+
+    # ── 核心入口 ─────────────────────────────────────────────────────────────
+
+    def run(self, df_sig: pd.DataFrame,
+            intraday_map: "dict | None" = None) -> list[TradeRecord]:
+        """
+        遍历日线数据，按分级买入 + 三级递进卖出规则模拟交易。
+
+        intraday_map: {sig_date: {"exec_date", "exec_price", "action", "dif"}}
+          - 覆盖 lookback 窗口内的信号日执行时机和价格
+          - buy + exec_price None → 跳过（分时无 GO，不买）
+          - buy/sell + exec_price float → 在 exec_date 以该价格执行
+          - 不在 map 中的信号日 → 历史回退，使用日线收盘价当日执行
+        """
+        intraday_map = intraday_map or {}
+
+        # pending_ops: exec_date → {action, price, dif[, level, reason]}
+        _pending: dict[pd.Timestamp, dict] = {}
+        # 记录已被 intraday_map 覆盖的信号日，避免重复执行
+        _overridden_sig_dates: set = set(intraday_map.keys())
+
+        for date, row in df_sig.iterrows():
+            price = row["close"]
+            dif   = row.get("DIF", 0)
+            dea   = row.get("DEA", 0)
+
+            # ── 执行待定操作（由前一信号日推迟到今天）────────────────────────
+            if date in _pending:
+                op = _pending.pop(date)  # type: ignore[call-overload]
+                exec_p = op["price"]
+                if op["action"] == "buy" and self.shares == 0:
+                    self._buy_initial(date, exec_p, op["dif"])
+                elif op["action"] == "sell" and self.shares > 0:
+                    if op.get("level") == 1:
+                        self._sell_portion(date, exec_p, 1, op["reason"])
+                    else:
+                        self._sell_remaining(date, exec_p, op["reason"])
+
+            # ── 空仓：等买入信号 ─────────────────────────────────────────────
+            if self.shares == 0:
+                if row.get("signal") == 1:
+                    if date in intraday_map:
+                        info = intraday_map[date]
+                        if info["exec_price"] is None:
+                            pass  # 分时无 GO，跳过买入
+                        elif info["exec_date"] == date:
+                            self._buy_initial(date, info["exec_price"], info["dif"])
+                        else:
+                            _pending[info["exec_date"]] = {
+                                "action": "buy",
+                                "price":  info["exec_price"],
+                                "dif":    info["dif"],
+                            }
+                    elif date not in _overridden_sig_dates:
+                        # 历史信号（不在 lookback 窗口）：用日线收盘价
+                        self._buy_initial(date, price, dif)
+
+            # ── 初仓阶段：等候次日确认加仓，或提前退出 ──────────────────────
+            elif self._buy_level == 1:
+                if date == self._buy_date:
+                    pass  # 初仓当日不重复操作
+                elif dif < 0:
+                    self._sell_remaining(date, price, "DIF<0")
+                elif row.get("hist_expanding", False):
+                    self._buy_add(date, price)
+                elif row.get("hist_shrinking", False) or dif < dea:
+                    self._sell_remaining(date, price, "初仓退出")
+
+            # ── 满仓阶段：三级递进卖出 ───────────────────────────────────────
+            else:
+                if dif < 0:
+                    self._sell_remaining(date, price, "DIF<0")
+                elif self._sell_level == 0 and row.get("hist_shrinking", False):
+                    if date in intraday_map:
+                        info   = intraday_map[date]
+                        exec_p = info["exec_price"] or price   # 无 GO 兜底用日线价
+                        if info["exec_date"] == date:
+                            self._sell_portion(date, exec_p, 1, "红柱缩短")
+                        else:
+                            _pending[info["exec_date"]] = {
+                                "action": "sell", "level": 1,
+                                "price":  exec_p, "reason": "红柱缩短", "dif": dif,
+                            }
+                    else:
+                        self._sell_portion(date, price, 1, "红柱缩短")
+                elif self._sell_level == 1 and dif < dea:
+                    self._sell_portion(date, price, 2, "死叉")
+                elif self._sell_level == 2 and dif < 0:
+                    self._sell_remaining(date, price, "DIF<0")
+
+        # 期末仍有持仓 → 按最新价清算
+        if self.shares > 0:
+            last_date  = df_sig.index[-1]
+            last_price = df_sig["close"].iloc[-1]
+            self._sell_remaining(last_date, last_price, "期末清算")
+
+        return self.trades
+
+    # ── 买入 ─────────────────────────────────────────────────────────────────
+
+    def _buy_initial(self, date, price, dif: float):
+        """
+        初仓：根据 DIF 位置决定仓位比例。
+          DIF < 0 → 1/3 可用资金（零轴下方，弱信号，保守）
+          DIF ≥ 0 → 1/2 可用资金（零轴上方，标准信号）
+        """
+        fraction    = 1 / 3 if dif < 0 else 1 / 2
+        target_cash = self.cash * fraction
+        shares      = int(target_cash / price / 100) * 100
+        if shares <= 0:
+            return
+        reason = f"金叉+红柱拉长（DIF{'<0，保守1/3' if dif < 0 else '≥0，标准1/2'}）"
+        self._do_buy(date, price, shares, "初仓", reason)
+        self._buy_level = 1
+        self._buy_date  = date
+
+    def _buy_add(self, date, price):
+        """加仓：用剩余可用资金买入，补至满仓。"""
+        shares = int(self.cash / price / 100) * 100
+        if shares <= 0:
+            self._buy_level = 2   # 资金不足，仍视为满仓
+            return
+        self._do_buy(date, price, shares, "加仓", "红柱持续拉长")
+        self._buy_level  = 2
+        self._buy_shares = self.shares   # 更新满仓基准
+
+    def _do_buy(self, date, price, buy_shares: int, action: str, reason: str):
+        cost       = buy_shares * price
+        commission = cost * self.COMMISSION_RATE
+        self.cash -= (cost + commission)
+        prev_shares     = self.shares
+        self.shares    += buy_shares
+        # 加权均价
+        if prev_shares > 0:
+            self._avg_cost = (self._avg_cost * prev_shares + cost) / self.shares
+        else:
+            self._avg_cost = price
+        self._buy_shares = self.shares
+        self._sell_level = 0
+        pos_pct = self._pos_pct(price)
+        self.trades.append(TradeRecord(
+            date=date, action=action, reason=reason,
+            price=price, shares=buy_shares,
+            amount=-(cost + commission),
+            position_pct=pos_pct, realized_pnl=0.0,
+        ))
+
+    # ── 卖出（按级别） ───────────────────────────────────────────────────────
+
+    def _sell_portion(self, date, price, level: int, reason: str):
+        """卖出 1/3 满仓股数。level: 1 或 2。"""
+        sell_shares = int(self._buy_shares / 3 / 100) * 100
+        if sell_shares <= 0 or sell_shares > self.shares:
+            sell_shares = self.shares
+        self._do_sell(date, price, sell_shares, "减仓", reason)
+        self._sell_level = level
+
+    def _sell_remaining(self, date, price, reason: str):
+        """清仓所有剩余持仓。"""
+        self._do_sell(date, price, self.shares, "清仓", reason)
+        self._sell_level = 0
+        self._buy_level  = 0
+        self._buy_shares = 0
+
+    def _do_sell(self, date, price, sell_shares: int, action: str, reason: str):
+        if sell_shares <= 0:
+            return
+        revenue    = sell_shares * price
+        commission = revenue * self.COMMISSION_RATE
+        stamp_tax  = revenue * self.STAMP_TAX_RATE
+        net        = revenue - commission - stamp_tax
+        pnl        = (price - self._avg_cost) * sell_shares - commission - stamp_tax
+        self.cash   += net
+        self.shares -= sell_shares
+        self.trades.append(TradeRecord(
+            date=date, action=action, reason=reason,
+            price=price, shares=sell_shares,
+            amount=net, position_pct=self._pos_pct(price), realized_pnl=pnl,
+        ))
+
+    # ── 辅助 ─────────────────────────────────────────────────────────────────
+
+    def _pos_pct(self, price: float) -> float:
+        """当前股票市值占总资产的百分比。"""
+        total = self.cash + self.shares * price
+        return (self.shares * price / total * 100) if total > 0 else 0.0
+
+    # ── 汇总 ─────────────────────────────────────────────────────────────────
+
+    @property
+    def total_pnl(self) -> float:
+        return sum(t.realized_pnl for t in self.trades)
+
+    @property
+    def total_return_pct(self) -> float:
+        return self.total_pnl / self.initial_capital * 100
+
+    @property
+    def final_capital(self) -> float:
+        return self.cash
+
+
 # ── 分时数据获取 ──────────────────────────────────────────────────────────────
 
+def _fetch_intraday_akshare(symbol: str, start_date: str, end_date: str,
+                            period: int, max_retries: int = 1,
+                            retry_delay: float = 5) -> pd.DataFrame | None:
+    """akshare 分时数据获取，含限流重试。成功返回 DataFrame，失败返回 None。"""
+    try:
+        import akshare as ak
+    except ImportError:
+        return None
+
+    s = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]} 09:30:00"
+    e = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]} 15:00:00"
+
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            if attempt > 1:
+                wait = retry_delay * attempt
+                print(f"    akshare 等待 {wait:.0f} 秒后重试（第 {attempt}/{max_retries} 次）...")
+                time.sleep(wait)
+            else:
+                time.sleep(1)
+
+            df = ak.stock_zh_a_hist_min_em(
+                symbol=symbol, period=str(period),
+                start_date=s, end_date=e, adjust="qfq",
+            )
+            df = df.rename(columns={
+                "时间": "datetime", "开盘": "open", "收盘": "close",
+                "最高": "high", "最低": "low", "成交量": "volume",
+            })
+            df["datetime"] = pd.to_datetime(df["datetime"])
+            df = df.set_index("datetime").sort_index()
+            cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
+            return df[cols]
+        except (ValueError, KeyError, OSError, RuntimeError) as err:
+            last_err = err
+            err_str = str(err)
+            if any(kw in err_str for kw in ("RemoteDisconnected", "Connection",
+                                             "reset", "Timeout", "timed out")):
+                if attempt < max_retries:
+                    continue
+            break
+
+    print(f"    ⚠ akshare 分时获取失败：{last_err}")
+    return None
+
+
+def _fetch_intraday_baostock(symbol: str, start_date: str, end_date: str,
+                             period: int) -> pd.DataFrame | None:
+    """baostock 分时数据获取。成功返回 DataFrame，失败返回 None。"""
+    try:
+        import baostock as bs
+    except ImportError:
+        return None
+
+    prefix = "sh" if symbol.startswith("6") or symbol.startswith("9") else "sz"
+    bs_code = f"{prefix}.{symbol}"
+    start_dash = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+    end_dash = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
+
+    print(f"    正在从 baostock 获取 {bs_code} 分时({period}min)数据...")
+    try:
+        lg = bs.login()
+        rs = bs.query_history_k_data_plus(
+            bs_code,
+            "time,open,high,low,close,volume",
+            start_date=start_dash, end_date=end_dash,
+            frequency=str(period), adjustflag="2",
+        )
+        rows = []
+        while (rs.error_code == "0") and rs.next():
+            rows.append(rs.get_row_data())
+        bs.logout()
+
+        if not rows:
+            print(f"    baostock 分时返回空数据")
+            return None
+
+        df = pd.DataFrame(rows, columns=rs.fields)
+        # baostock time 格式：20260305093000000 → datetime
+        df["datetime"] = pd.to_datetime(df["time"], format="%Y%m%d%H%M%S%f")
+        df = df.drop(columns=["time"])
+        for col in ["open", "high", "low", "close", "volume"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+        df = df.set_index("datetime").sort_index()
+        # 过滤掉全零行（baostock 偶尔返回空行）
+        df = df[(df["close"] > 0) & (df["volume"] > 0)]
+        if df.empty:
+            return None
+        return df[["open", "high", "low", "close", "volume"]]
+    except Exception as e:
+        print(f"    ⚠ baostock 分时获取失败：{e}")
+        try:
+            bs.logout()
+        except Exception:
+            pass
+        return None
+
+
 def fetch_intraday(symbol: str, start_date: str, end_date: str,
-                   period: int = 30) -> pd.DataFrame:
+                   period: int = 5) -> pd.DataFrame:
     """
-    获取分时 K 线（前复权）。
+    获取分时 K 线（前复权），akshare → baostock 双源。
     start_date / end_date: YYYYMMDD 格式
     period: 分钟数，5 / 15 / 30 / 60
     """
-    try:
-        import akshare as ak
-        s = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]} 09:30:00"
-        e = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]} 15:00:00"
-        df = ak.stock_zh_a_hist_min_em(
-            symbol=symbol,
-            period=str(period),
-            start_date=s,
-            end_date=e,
-            adjust="qfq",
-        )
-        df = df.rename(columns={
-            "时间":  "datetime",
-            "开盘":  "open",
-            "收盘":  "close",
-            "最高":  "high",
-            "最低":  "low",
-            "成交量": "volume",
-        })
-        df["datetime"] = pd.to_datetime(df["datetime"])
-        df = df.set_index("datetime").sort_index()
-        cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
-        return df[cols]
-    except (ValueError, KeyError, OSError, RuntimeError) as e:
-        print(f"    ⚠ 分时数据获取失败：{e}")
-        return pd.DataFrame()
+    # 优先 akshare
+    result = _fetch_intraday_akshare(symbol, start_date, end_date, period)
+    if result is not None and not result.empty:
+        return result
+
+    # baostock 备用
+    print(f"    尝试 baostock 备用...")
+    result = _fetch_intraday_baostock(symbol, start_date, end_date, period)
+    if result is not None and not result.empty:
+        return result
+
+    return pd.DataFrame()
 
 
 # ── 分时 MACD 计算 ────────────────────────────────────────────────────────────
@@ -464,10 +798,16 @@ def _determine_exec_date(df_sig: pd.DataFrame,
 
 def _analyze_single_signal(
     code: str, exec_date: pd.Timestamp, action: str, period: int,
-) -> tuple[pd.DataFrame, pd.DataFrame, TimingSummary] | None:
+) -> tuple[pd.DataFrame, pd.DataFrame, TimingSummary, float | None] | None:
     """
     获取分时数据 → 计算 MACD → 择时分类。
-    返回 (intra_df, exec_bars, summary) 或 None（数据缺失时打印原因）。
+    返回 (intra_df, exec_bars, summary, exec_price) 或 None（数据缺失时打印原因）。
+
+    exec_price:
+      买入 + 有 GO → 首个 GO 柱收盘价
+      买入 + 无 GO → None（不执行）
+      卖出 + 有 GO → 首个 GO 柱收盘价
+      卖出 + 无 GO → 当日最后一柱收盘价（兜底，不宜持仓不动）
     """
     intra_start = (exec_date - timedelta(days=INTRADAY_WARMUP_DAYS)).strftime("%Y%m%d")
     intra_end   = exec_date.strftime("%Y%m%d")
@@ -488,7 +828,15 @@ def _analyze_single_signal(
 
     exec_bars = classify_timing(exec_bars, action)
     summary   = summarize_timing(exec_bars)
-    return intra_df, exec_bars, summary
+
+    if summary.has_go and summary.first_go is not None:
+        exec_price: float | None = float(exec_bars["close"][summary.first_go])  # type: ignore[arg-type]
+    elif action == "sell":
+        exec_price = float(exec_bars["close"].iloc[-1])   # 卖出兜底
+    else:
+        exec_price = None   # 买入无 GO → 跳过
+
+    return intra_df, exec_bars, summary, exec_price
 
 
 def _save_signal_chart(intra_df: pd.DataFrame, exec_date: pd.Timestamp,
@@ -515,6 +863,88 @@ def _save_signal_chart(intra_df: pd.DataFrame, exec_date: pd.Timestamp,
 
 # ── 单股分析（编排函数） ─────────────────────────────────────────────────────
 
+def _print_trade_log(tracker: PositionTracker, code: str, name: str):
+    """打印单只股票的交易记录。"""
+    if not tracker.trades:
+        return
+    print(f"\n    ── {code} {name} 交易记录（三级递进卖出） ──")
+    print(f"    {'日期':12s}  {'操作':4s}  {'原因':12s}  "
+          f"{'价格':>8s}  {'数量':>6s}  {'金额':>12s}  "
+          f"{'剩余仓位':>8s}  {'本笔盈亏':>10s}")
+    print(f"    {'─' * 88}")
+    for t in tracker.trades:
+        print(f"    {t.date.strftime('%Y-%m-%d'):12s}  "
+              f"{t.action:4s}  {t.reason:12s}  "
+              f"{t.price:>8.2f}  {t.shares:>6d}  "
+              f"{t.amount:>+12.2f}  "
+              f"{t.position_pct:>7.0f}%  "
+              f"{t.realized_pnl:>+10.2f}")
+    print(f"    {'─' * 88}")
+    print(f"    累计盈亏：{tracker.total_pnl:>+.2f}  "
+          f"收益率：{tracker.total_return_pct:>+.2f}%  "
+          f"期末资金：{tracker.final_capital:>.2f}")
+
+
+def _tracker_to_rows(code: str, name: str, tracker: PositionTracker) -> list[dict]:
+    """将单只股票的 PositionTracker 转为 CSV 行列表。"""
+    rows = []
+    cum_pnl = 0.0
+    for t in tracker.trades:
+        cum_pnl += t.realized_pnl
+        rows.append({
+            "代码":        code,
+            "名称":        name,
+            "日期":        t.date.strftime("%Y-%m-%d"),
+            "操作":        t.action,
+            "原因":        t.reason,
+            "价格":        round(t.price, 3),
+            "数量(股)":    t.shares,
+            "金额":        round(t.amount, 2),
+            "仓位%":       round(t.position_pct, 1),
+            "本笔盈亏":    round(t.realized_pnl, 2),
+            "累计盈亏":    round(cum_pnl, 2),
+            "累计收益率%": round(cum_pnl / tracker.initial_capital * 100, 2),
+        })
+    return rows
+
+
+def save_stock_trades_csv(
+    code: str, name: str, tracker: PositionTracker, save_dir: str
+) -> str:
+    """单只股票交易完成后立即保存其 CSV，返回保存路径（无交易则返回空字符串）。"""
+    rows = _tracker_to_rows(code, name, tracker)
+    if not rows:
+        return ""
+    safe_name  = re.sub(r'[\\/:*?"<>|]', "_", name)
+    stock_path = os.path.join(save_dir, f"trades_{code}_{safe_name}.csv")
+    pd.DataFrame(rows).to_csv(stock_path, index=False, encoding="utf-8-sig")
+    print(f"    [{code}] {name} 交易记录已保存 → {stock_path}")
+    return stock_path
+
+
+def export_trades_csv(
+    all_trackers: list[tuple[str, str, PositionTracker]],
+    save_dir: str,
+) -> str:
+    """汇总所有股票交易记录，保存 trades_summary_{today}.csv。"""
+    from datetime import date as _d
+    today = _d.today().strftime("%Y%m%d")
+
+    all_rows = []
+    for code, name, tracker in all_trackers:
+        rows = _tracker_to_rows(code, name, tracker)
+        all_rows.extend(rows)
+
+    if not all_rows:
+        print("  ⚠ 无交易记录，跳过汇总 CSV 导出")
+        return ""
+
+    summary_path = os.path.join(save_dir, f"trades_summary_{today}.csv")
+    pd.DataFrame(all_rows).to_csv(summary_path, index=False, encoding="utf-8-sig")
+    print(f"\n  汇总交易记录已导出至：{summary_path}")
+    return summary_path
+
+
 def analyze_candidate(
     candidate: dict,
     lookback_days: int,
@@ -522,12 +952,13 @@ def analyze_candidate(
     period: int,
     exec_day_mode: str,
     save_dir: str,
-) -> list[SignalTimingResult]:
+) -> tuple[list[SignalTimingResult], PositionTracker | None]:
     """
     对单只股票：
       1. 获取日线数据，运行 LuMACDBull 策略
-      2. 找出 lookback_days 内的买 / 卖信号日
-      3. 逐个信号日：获取分时数据 → MACD → 择时分析 → 绘图
+      2. 运行三级递进仓位管理器，计算收益
+      3. 找出 lookback_days 内的买 / 卖信号日
+      4. 逐个信号日：获取分时数据 → MACD → 择时分析 → 绘图
     """
     code = candidate["code"]
     name = candidate["name"]
@@ -537,10 +968,14 @@ def analyze_candidate(
         fetched = _fetch_daily_signals(
             code, name, candidate["date"], index_symbol, lookback_days)
         if fetched is None:
-            return []
+            return [], None
         df_sig, signal_days = fetched
 
+        # ── 第一阶段：分时择时分析，收集执行价格 ──────────────────────────────
+        # 必须先于 tracker.run()，只有分时有 GO 的信号才计入实际交易
         results: list[SignalTimingResult] = []
+        intraday_map: dict[pd.Timestamp, dict] = {}   # sig_date → 执行信息
+
         for sig_date, sig_row in signal_days.iterrows():
             action    = "buy" if sig_row["signal"] == 1 else "sell"
             action_cn = "买入" if action == "buy" else "卖出"
@@ -549,10 +984,26 @@ def analyze_candidate(
             print(f"    {action_cn}信号：{sig_date.strftime('%Y-%m-%d')}  "
                   f"执行日：{exec_date.strftime('%Y-%m-%d')}")
 
+            sig_dif = float(df_sig.loc[sig_date, "DIF"]) if sig_date in df_sig.index else 0.0  # type: ignore[arg-type]
             analysis = _analyze_single_signal(code, exec_date, action, period)
+
             if analysis is None:
+                # 无分时数据：买入跳过，卖出兜底用日线收盘
+                intraday_map[sig_date] = {
+                    "exec_date":  exec_date,
+                    "exec_price": None if action == "buy" else float(df_sig.loc[exec_date, "close"]) if exec_date in df_sig.index else None,  # type: ignore[arg-type]
+                    "action":     action,
+                    "dif":        sig_dif,
+                }
                 continue
-            intra_df, exec_bars, summary = analysis
+
+            intra_df, exec_bars, summary, exec_price = analysis
+            intraday_map[sig_date] = {
+                "exec_date":  exec_date,
+                "exec_price": exec_price,
+                "action":     action,
+                "dif":        sig_dif,
+            }
 
             print_timing_table(exec_bars, summary, action_cn, code, name,
                                sig_date, exec_date)
@@ -566,13 +1017,20 @@ def analyze_candidate(
                 go_count=summary.go_count,
             ))
 
-        return results
+        # ── 第二阶段：仓位管理，使用分时确认后的价格计算收益 ─────────────────
+        tracker = PositionTracker(capital=100_000)
+        tracker.run(df_sig, intraday_map)
+        _print_trade_log(tracker, code, name)
+        if tracker.trades:
+            save_stock_trades_csv(code, name, tracker, save_dir)
+
+        return results, tracker
 
     except Exception as e:
         print(f"    ❌ 分析失败：{e}")
         import traceback
         traceback.print_exc()
-        return []
+        return [], None
 
 
 # ── 主入口 ────────────────────────────────────────────────────────────────────
@@ -581,9 +1039,9 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="JCY 日线信号 + 分时择时（多周期共振）"
     )
-    parser.add_argument("--lookback",  type=int, default=30,
-                        help="向前查找信号的天数，默认 30 天")
-    parser.add_argument("--period",    type=int, default=30,
+    parser.add_argument("--lookback",  type=int, default=None,
+                        help="向前查找信号的天数；不指定时，按各股首次增持日起算")
+    parser.add_argument("--period",    type=int, default=5,
                         choices=[5, 15, 30, 60],
                         help="分时 K 线周期（分钟），默认 30")
     parser.add_argument("--index",     type=str, default="000300",
@@ -591,7 +1049,7 @@ def parse_args():
     parser.add_argument("--exec_day",  type=str, default="next",
                         choices=["next", "same"],
                         help="执行日：next=信号次日（默认），same=信号当日")
-    parser.add_argument("--code",      type=str, default=None,
+    parser.add_argument("--code",      type=str, default="300274",
                         help="只分析指定股票代码，留空则分析全部")
     parser.add_argument("--output",    type=str, default="output/intraday",
                         help="输出目录，默认 output/intraday/")
@@ -604,7 +1062,7 @@ def main():
     print("\n" + "─" * 65)
     print("  JCY 日线信号 + 分时择时（多周期共振）")
     print("─" * 65)
-    print(f"  信号查找窗口  ：最近 {args.lookback} 天")
+    print(f"  信号查找窗口  ：{'最近 ' + str(args.lookback) + ' 天' if args.lookback else '首次增持日起（各股独立）'}")
     print(f"  分时 K 线周期 ：{args.period} 分钟")
     print(f"  执行日模式    ：{args.exec_day}"
           f"（{'信号次日' if args.exec_day == 'next' else '信号当日'}）")
@@ -631,18 +1089,29 @@ def main():
     print(f"  共 {len(candidates)} 只候选股票\n")
 
     all_results: list[SignalTimingResult] = []
+    all_trackers: list[tuple[str, str, PositionTracker]] = []  # (code, name, tracker)
+
     for candidate in candidates:
-        results = analyze_candidate(
+        if args.lookback is not None:
+            lookback_days = args.lookback
+        else:
+            first_rating_date = _date.fromisoformat(
+                f"{candidate['date'][:4]}-{candidate['date'][4:6]}-{candidate['date'][6:]}"
+            )
+            lookback_days = (_date.today() - first_rating_date).days + 1
+        results, tracker = analyze_candidate(
             candidate=candidate,
-            lookback_days=args.lookback,
+            lookback_days=lookback_days,
             index_symbol=args.index,
             period=args.period,
             exec_day_mode=args.exec_day,
             save_dir=args.output,
         )
         all_results.extend(results)
+        if tracker and tracker.trades:
+            all_trackers.append((candidate["code"], candidate["name"], tracker))
 
-    # ── 汇总 ─────────────────────────────────────────────────────────────────
+    # ── 分时择时汇总 ─────────────────────────────────────────────────────────
     print("\n" + "═" * 65)
     print("  分时择时汇总")
     print("═" * 65)
@@ -661,8 +1130,54 @@ def main():
                   f"{r.exec_date.strftime('%Y-%m-%d'):12s}  "
                   f"{first_go_str:8s}  {status}")
     else:
-        print(f"  最近 {args.lookback} 天内无买/卖信号")
-        print(f"  → 可通过 --lookback 扩大查找窗口，例如 --lookback 60")
+        if args.lookback:
+            print(f"  最近 {args.lookback} 天内无买/卖信号")
+            print(f"  → 可通过 --lookback 扩大查找窗口，例如 --lookback 60")
+        else:
+            print(f"  首次增持日起至今无买/卖信号")
+
+    # ── 仓位管理收益汇总 ─────────────────────────────────────────────────────
+    if all_trackers:
+        print("\n" + "═" * 65)
+        print("  三级递进卖出 — 收益汇总")
+        print("═" * 65)
+        print(f"  {'代码':8s}  {'名称':8s}  {'交易数':>6s}  "
+              f"{'累计盈亏':>12s}  {'收益率':>8s}  {'期末资金':>12s}")
+        print(f"  {'─' * 65}")
+
+        total_pnl = 0.0
+        total_capital = 0.0
+        total_initial = 0.0
+        winners = 0
+
+        for code, name, tracker in all_trackers:
+            pnl     = tracker.total_pnl
+            ret_pct = tracker.total_return_pct
+            final   = tracker.final_capital
+            n_trades = len(tracker.trades)
+            total_pnl     += pnl
+            total_capital  += final
+            total_initial  += tracker.initial_capital
+            if pnl > 0:
+                winners += 1
+
+            flag = "✅" if pnl > 0 else ("⚠️ " if pnl == 0 else "❌")
+            print(f"  {code:8s}  {name:8s}  {n_trades:>6d}  "
+                  f"{pnl:>+12.2f}  {ret_pct:>+7.2f}%  {final:>12.2f}  {flag}")
+
+        n_stocks = len(all_trackers)
+        avg_ret  = total_pnl / total_initial * 100 if total_initial > 0 else 0
+        win_rate = winners / n_stocks * 100 if n_stocks > 0 else 0
+
+        print(f"  {'─' * 65}")
+        print(f"  合计  {n_stocks} 只股票  |  "
+              f"总盈亏 {total_pnl:>+.2f}  |  "
+              f"平均收益率 {avg_ret:>+.2f}%  |  "
+              f"胜率 {win_rate:.0f}%（{winners}/{n_stocks}）")
+
+    # ── 交易记录导出 CSV ─────────────────────────────────────────────────────
+    if all_trackers:
+        export_trades_csv(all_trackers, args.output)
 
     print("\n" + "─" * 65)
     print(f"  完成。结果已保存至：{os.path.abspath(args.output)}/")

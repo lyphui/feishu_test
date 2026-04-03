@@ -27,7 +27,10 @@
       "Bash(python -c \"from strategies import MACDStrategy; from utils.market_data import fetch_stock_data; print\\('OK'\\)\")",
       "Bash(python -c \"from strategies import MACDStrategy, LuMACDStrategy, LuMACDBullStrategy; from utils.market_data import fetch_stock_data, fetch_index_data; from utils.jcy_common import load_candidates; print\\('All imports OK'\\)\")",
       "Bash(python -c ':*)",
-      "Bash(python backtest/macd_analysis.py --help)"
+      "Bash(python backtest/macd_analysis.py --help)",
+      "Bash(pip show:*)",
+      "Bash(python -c \"from backtest.jcy_intraday_timing import PositionTracker, TradeRecord; print\\('Import OK'\\)\")",
+      "Bash(python -c \"from jcy_intraday_timing import PositionTracker, TradeRecord; print\\('Import OK'\\)\")"
     ]
   }
 }

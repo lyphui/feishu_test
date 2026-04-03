@@ -34,7 +34,7 @@ _BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 _DATA_DIR  = os.path.join(_BASE_DIR, "data", "jcy")
 
 # ─── Step 1 ──────────────────────────────────────────────────────────────────
-S1_TOKEN_FILE   = os.path.join(_BASE_DIR, "authorize", "feishu_key", "feishu_token.txt")
+S1_TOKEN_FILE   = os.getenv("TOKEN_FILE")
 S1_TABLE_FILE   = os.path.join(_DATA_DIR, "jcy_table.json")
 S1_DOCS_FILE    = os.path.join(_DATA_DIR, "jcy_docs.yaml")
 S1_WIKI_TOKEN   = os.getenv("JCY_WIKI_TOKEN")

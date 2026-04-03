@@ -1,7 +1,205 @@
 {
-  "updated_at": "2026-04-01 16:52:34",
-  "total": 79,
+  "updated_at": "2026-04-03 15:15:02",
+  "total": 81,
   "articles": [
+    {
+      "date": "2026-04-02",
+      "title": "Vol.260402 今日更新",
+      "link": "https://my.feishu.cn/wiki/MAHLwLqZOiofGlktNiYc8YD6nJh",
+      "advice_file": "C:\\Users\\panhui9\\PycharmProjects\\feishu_test\\data\\jcy\\advice\\2026-04-02.md",
+      "extracted_at": "2026-04-03 15:15:02",
+      "llm_provider": "Coze",
+      "companies": [
+        {
+          "name": "LITE",
+          "code": "LITE",
+          "exchange": "纳斯达克",
+          "rating": null
+        },
+        {
+          "name": "美光",
+          "code": "MU",
+          "exchange": "纳斯达克",
+          "rating": null
+        },
+        {
+          "name": "光库科技",
+          "code": "300620",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "机构有意布局，需等待调整充分后再介入"
+        },
+        {
+          "name": "福晶科技",
+          "code": "002222",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "机构有意布局，需等待调整充分后再介入"
+        },
+        {
+          "name": "腾景科技",
+          "code": "688195",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "机构有意布局，需等待调整充分后再介入"
+        },
+        {
+          "name": "阳光电源",
+          "code": "300274",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "储能龙头地位稳固，建议躺平以时间换空间"
+        },
+        {
+          "name": "润泽科技",
+          "code": "300442",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "需观察支撑位是否站稳，暂不建议加仓"
+        },
+        {
+          "name": "环旭电子",
+          "code": "601231",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "处于箱体底部，洗盘后或有机会"
+        },
+        {
+          "name": "菲利华",
+          "code": "300395",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "需站稳箱体底部支撑，跟随光板块表现"
+        },
+        {
+          "name": "太辰光",
+          "code": "300570",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "暂未站稳平台，调整未到位"
+        },
+        {
+          "name": "博创科技",
+          "code": "300548",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "东阳光",
+          "code": "600673",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "均线逐步粘合，待回踩确认买点"
+        },
+        {
+          "name": "中芯国际",
+          "code": "688981",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "国产芯片核心标的，可在支撑位附近做T"
+        },
+        {
+          "name": "芯原股份",
+          "code": "688521",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "MACD站零轴，可在缺口支撑上方做T"
+        },
+        {
+          "name": "泰晶科技",
+          "code": "603738",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "不建议追高，等待调整后低吸机会"
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "短期观望防御，规避追高风险，长期看好光学材料、国产芯片产业链机会",
+      "key_advice": [
+        "不追高，待看好个股跌幅达6%-8%的大幅调整机会再低吸",
+        "持仓个股关注支撑位，无明确支撑的弱势品种可考虑止损",
+        "警惕冲高回落、放量滞涨、高换手率三类风险信号，不被诱多",
+        "留有现金仓位，可对有支撑的核心标的做波段T操作",
+        "长期跟踪光学材料、国产芯片产业链，调整充分后逢低布局"
+      ]
+    },
+    {
+      "date": "2026-04-01",
+      "title": "Vol.260401今日更新",
+      "link": "https://my.feishu.cn/wiki/JawKwspKCiRAL6kwELFcySUVn8g",
+      "advice_file": "C:\\Users\\panhui9\\PycharmProjects\\feishu_test\\data\\jcy\\advice\\2026-04-01.md",
+      "extracted_at": "2026-04-02 18:31:41",
+      "llm_provider": "Coze",
+      "companies": [
+        {
+          "name": "阳光电源",
+          "code": "300274",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "储能业务领先，AI电源获认证，估值具备优势"
+        },
+        {
+          "name": "天孚通信",
+          "code": "300394",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "光通信主线标的，基本面优质走势向好"
+        },
+        {
+          "name": "北京通美",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "腾景科技",
+          "code": "688195",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "高端光学材料赛道，产业和图形向好"
+        },
+        {
+          "name": "芯原股份",
+          "code": "688521",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": " semiconductor赛道，长期成长性向好"
+        },
+        {
+          "name": "共创草坪",
+          "code": "605099",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "图形走势健康，可持有等待行情"
+        },
+        {
+          "name": "Marvell",
+          "code": "MRVL",
+          "exchange": "纳斯达克",
+          "rating": null
+        },
+        {
+          "name": "英伟达",
+          "code": "NVDA",
+          "exchange": "纳斯达克",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看好光通信、新能源赛道，市场处于W底构建期，需谨慎操作",
+      "key_advice": [
+        "当前维持半仓操作，待机构明确入场信号后再动用预备队",
+        "板块内去弱留强，重点布局光通信、新能源主线优质标的",
+        "操作上避免追高，主线标的可采用冰点低吸、冲高止盈的波段策略",
+        "警惕高位品种放量诱多，低位机构品种放量可视为入场信号",
+        "创新药板块需观察突破有效性，待回调充分后再考虑布局"
+      ]
+    },
     {
       "date": "2026-03-31",
       "title": "Vol.260331今日更新",

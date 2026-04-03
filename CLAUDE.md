@@ -17,6 +17,7 @@
 ```
 feishu_test/
 ├── CLAUDE.md                      # 本文件
+├── pyproject.toml                 # 可编辑安装配置（pip install -e .）
 ├── .env                           # 环境变量（API 密钥等，不提交）
 │
 ├── ── 入口脚本 ────────────────────────────────
@@ -33,7 +34,7 @@ feishu_test/
 ├── ── 策略包 ──────────────────────────────────
 ├── strategies/
 │   ├── __init__.py                # 导出三个策略类
-│   ├── base.py                    # BaseStrategy 抽象基类
+│   ├── base.py                    # BaseStrategy 抽象基类（含共享 _ema() 方法）
 │   ├── macd.py                    # MACDStrategy（金叉/死叉，教科书版）
 │   ├── lu_macd.py                 # LuMACDStrategy（三级底部确认，长线建仓）
 │   └── lu_macd_bull.py            # LuMACDBullStrategy（牛市截陡坡，高频战术）
@@ -41,7 +42,7 @@ feishu_test/
 ├── ── 工具包 ──────────────────────────────────
 ├── utils/
 │   ├── plotting.py                # 共享绘图样式（GitHub Dark 配色 + matplotlib 配置）
-│   ├── market_data.py             # 共享大盘指数数据获取（akshare + yfinance 双源）
+│   ├── market_data.py             # 共享行情数据获取：个股 + 指数（akshare → yfinance 双源，含限流重试）
 │   ├── bull_backtest.py           # 牛市策略专用：Adapter + 绘图 + CSV 导出
 │   ├── jcy_common.py              # JCY 流水线共享工具（日期解析、文件命名、候选股筛选、YAML 加载）
 │   └── pplx.py                    # Perplexity API 客户端封装
@@ -117,6 +118,10 @@ wiki_token → bitable app_token
 - `PPLX_API_KEY` — Perplexity API 密钥
 - `PPLX_GROUP_ID` — API Group ID
 - `AZURE_OPENAI_KEY` — Azure OpenAI API 密钥
+- `AZURE_OPENAI_ENDPOINT` — Azure OpenAI 端点 URL
+- `AZURE_OPENAI_DEPLOYMENT` — Azure 部署名称（默认 `gpt-5`）
+- `AZURE_OPENAI_API_VERSION` — API 版本（默认 `2024-12-01-preview`）
+- `COZE_URL` — Coze API URL（可选）
 
 ---
 
@@ -125,7 +130,7 @@ wiki_token → bitable app_token
 **职责：** 核心回测引擎，被所有回测入口脚本复用
 
 **关键函数：**
-- `fetch_stock_data(symbol, start, end)` — akshare 获取 A 股日线（前复权），yfinance 兜底
+- `fetch_stock_data(symbol, start, end)` — 从 `utils.market_data` 再导出（canonical 位置已移至 `utils/market_data.py`）
 - `run_backtest(symbol, strategy, capital, stop_loss, take_profit)` — 执行回测
   - 按信号买卖，100 股整数手，A 股印花税（单边 0.1%）+ 佣金（双边 0.03%）
   - 持仓期间按收盘价估值，生成权益曲线和回撤序列
@@ -150,6 +155,9 @@ plot_indicators(ax, df, colors) -> None
 name: str                   # 策略名（图表标题）
 params: dict               # 参数字典（展示用）
 ```
+
+**BaseStrategy 共享方法：**
+- `_ema(series, period)` — 静态方法，EMA 计算，所有 MACD 策略子类共用（避免各子类重复定义）
 
 **LuMACDBullStrategy 特殊设计：**
 - 构造函数接受 `index_df`（大盘数据），`prepare()` 参数中的 `index_df` 优先，否则 fallback 到构造函数传入的值
@@ -177,7 +185,7 @@ params: dict               # 参数字典（展示用）
 | 模块 | 核心内容 |
 |------|----------|
 | `plotting.py` | `COLORS` 字典（GitHub Dark 配色）、`setup_matplotlib()`、`style_ax(ax)` |
-| `market_data.py` | `fetch_index_data(symbol, start, end)` — 大盘指数，akshare → yfinance 双源 |
+| `market_data.py` | `fetch_stock_data()` + `fetch_index_data()` — 个股/指数行情，akshare → yfinance 双源（含限流重试） |
 | `bull_backtest.py` | `BullStrategyAdapter`、`plot_bull_backtest()`、`export_bull_daily_status()` |
 | `jcy_common.py` | `title_to_date()`、`title_to_filename()`、`load_docs()`、`load_candidates()`、`is_ashare_code()`、路径常量（`JSON_PATH`） |
 | `pplx.py` | `PerplexityAPI` 客户端（`chat()`、`sonar_deep_research()`） |
@@ -238,12 +246,28 @@ shrink_exit = true         # true=红柱缩短即走，false=等死叉
 
 ```
 AZURE_OPENAI_KEY=...
+AZURE_OPENAI_ENDPOINT=...          # Azure OpenAI 端点 URL
+AZURE_OPENAI_DEPLOYMENT=gpt-5     # Azure 部署名称
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
+COZE_URL=...                       # Coze API URL（可选）
 PPLX_API_KEY=pplx-...
 PPLX_GROUP_ID=...
 JCY_WIKI_TOKEN=...
 JCY_APP_TABLE_ID=...
 JCY_VIEW_ID=...
 ```
+
+---
+
+## 包安装
+
+项目使用 `pyproject.toml` 支持可编辑安装，消除 `sys.path.insert` hack：
+
+```bash
+pip install -e .
+```
+
+安装后 `strategies/`、`utils/` 等包可在任意目录直接 import。
 
 ---
 
