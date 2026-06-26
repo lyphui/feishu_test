@@ -155,6 +155,20 @@
 > record，Step 2 先创建 `{date,title,link,advice_file}` 的占位 record，
 > Step 3 再补 `insights`。这样三步共用同一清单。
 
+**Step 2/3 互不耦合，单步失败不牵连另一步**（关键保证）：
+两步看 record 的不同字段，判断互相独立——
+- Step 3 挂了（record 有 `advice_file` 无 `insights`）：重跑时 Step 2
+  **跳过**（advice 已存在），Step 3 **只补这一条**。Step 2 **无需重跑**。
+- Step 2 也没成（两字段皆无）：Step 2 补 advice，Step 3 补 insights。
+
+**原子性约束（保证上面这条成立）**：Step 2 顺序固定为
+**先落 advice 文件 → 再更新 record 的 `advice_file` 字段并存盘**。
+跳过判断**以 record 字段为准、文件存在为辅**。
+最坏情况（文件已落但 record 未记上就崩）退化为"重调一次 pplx 覆盖同名
+文件"——幂等，不产生坏数据；绝不会"以为做了其实没做"。
+这修复了现有 `prepare_jcy_data.py:548-550`"先存 md 再写 cache、中间崩则
+不一致"的隐患。
+
 ### 4.3 纯逻辑抽离 + 测试
 
 把以下纯函数从 IO 中剥离到可单测位置（`utils/jcy_common.py` 或新
@@ -230,6 +244,8 @@
   `_s1_blocks_to_text`/`_s3_parse_json` 到可测位置 + 单测。无行为变更。
 - **Phase B（复合键 + 命名 + 单一真值源）**：§4.1 + §4.2 一次到位。
   改 `prepare_jcy_data.py` 的去重/命名/跳过逻辑，废弃 `advice_cache.json`。
+  **含 §4.2 原子性约束**（Step 2 先落文件再更新 record 字段；Step 2/3
+  互不牵连）——单测覆盖"Step 3 缺失时 Step 2 跳过、仅 Step 3 补做"。
   **代码改完后立即写 §4.4 迁移脚本并跑 dry-run**，确认存量可零调用迁移。
 - **Phase C（迁移执行）**：跑 `migrate_compound_key.py --apply`，git 留可
   回滚点。迁移后跑一次 `prepare_jcy_data.py` 冒烟，确认无重复 append、
