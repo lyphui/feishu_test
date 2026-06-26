@@ -30,7 +30,10 @@
       "Bash(python backtest/macd_analysis.py --help)",
       "Bash(pip show:*)",
       "Bash(python -c \"from backtest.jcy_intraday_timing import PositionTracker, TradeRecord; print\\('Import OK'\\)\")",
-      "Bash(python -c \"from jcy_intraday_timing import PositionTracker, TradeRecord; print\\('Import OK'\\)\")"
+      "Bash(python -c \"from jcy_intraday_timing import PositionTracker, TradeRecord; print\\('Import OK'\\)\")",
+      "mcp__playwright__browser_navigate",
+      "Bash(claude mcp *)",
+      "Skill(update-config)"
     ]
   }
 }

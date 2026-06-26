@@ -17,7 +17,7 @@ import requests
 from datetime import datetime
 
 from dotenv import load_dotenv, find_dotenv
-from openai import AzureOpenAI
+from openai import AzureOpenAI, OpenAI
 
 from utils.pplx import PerplexityAPI
 from utils.jcy_common import title_to_date, title_to_filename, load_docs, ADVICE_DIR
@@ -80,13 +80,17 @@ S3_AZURE_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"
 S3_COZE_API_KEY     = os.getenv("COZE_API_KEY", "")
 S3_COZE_URL         = os.getenv("COZE_URL", "")
 S3_COZE_MODEL       = os.getenv("COZE_MODEL", "doubao-pro")
+S3_DASHSCOPE_API_KEY  = os.getenv("DASHSCOPE_API_KEY", "")
+S3_DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+S3_DASHSCOPE_MODEL    = os.getenv("DASHSCOPE_MODEL", "deepseek-v4-pro")
 S3_OUTPUT_FILE      = os.path.join(_DATA_DIR, "jcy_insights.json")
 S3_SLEEP            = 2
 
 # LLM providers in fallback order; disable by leaving the API key env var empty
 S3_PROVIDERS = [
+    {"name": "DashScope", "type": "dashscope", "enabled": bool(S3_DASHSCOPE_API_KEY)},
     # {"name": "Azure OpenAI", "type": "azure", "enabled": bool(S3_AZURE_API_KEY)},
-    {"name": "Coze",         "type": "coze",  "enabled": bool(S3_COZE_API_KEY)},
+    # {"name": "Coze",         "type": "coze",  "enabled": bool(S3_COZE_API_KEY)},
 ]
 
 S3_SYSTEM_PROMPT = """你是一位专业的股票市场分析助手。请从提供的股市分析文章和投资建议中，提取关键的结构化信息。
@@ -616,6 +620,22 @@ def _s3_coze_extract_content(data):
 
 def _s3_call_provider(provider, user_prompt):
     """Call one LLM provider. Returns dict or raises on any error."""
+    if provider["type"] == "dashscope":
+        client = OpenAI(
+            api_key=S3_DASHSCOPE_API_KEY,
+            base_url=S3_DASHSCOPE_BASE_URL,
+        )
+        response = client.chat.completions.create(
+            model=S3_DASHSCOPE_MODEL,
+            messages=[
+                {"role": "system", "content": S3_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_prompt},
+            ],
+            max_tokens=16000,
+            response_format={"type": "json_object"},
+        )
+        return _s3_parse_json(response.choices[0].message.content.strip())
+
     if provider["type"] == "azure":
         client = AzureOpenAI(
             api_version=S3_AZURE_API_VER,

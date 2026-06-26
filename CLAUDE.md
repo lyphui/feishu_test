@@ -1,11 +1,25 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
 # feishu_test — 代码库架构文档
+
+## 环境要求
+
+- Python **≥ 3.11**
+- 安装依赖（可编辑模式，使 `strategies/`、`utils/` 可直接 import）：
+  ```bash
+  pip install -e .
+  ```
 
 ## 项目概述
 
 飞书股市分析 + MACD 量化回测一体化平台。
 
 **完整流水线：**
-1. **数据采集**：从飞书多维表格读取卢麒元（JCY）股市分析文章
+1. **数据采集**：从飞书多维表格读取（JCY）股市分析文章
 2. **AI 分析**：用 Perplexity sonar-reasoning-pro 生成投资建议（面向小白）
 3. **结构化提取**：用 Azure OpenAI GPT 提取公司/代码/评级等结构化信息
 4. **量化回测**：对推荐股票执行 MACD 策略回测，验证实际收益
