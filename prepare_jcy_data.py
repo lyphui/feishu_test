@@ -12,6 +12,8 @@ import os
 import re
 import json
 import time
+import argparse
+import logging
 import yaml
 import requests
 from datetime import datetime
@@ -30,6 +32,18 @@ load_dotenv(find_dotenv())
 # ════════════════════════════════════════════════════════════════
 
 MAX_CONSECUTIVE_TIMEOUTS = 3   # 连续超时达到此次数时终止当前步骤
+
+log = logging.getLogger("jcy")
+
+
+def _setup_logging(log_file: str | None):
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if log_file:
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(message)s",
+                        handlers=handlers)
+
 
 _BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 _DATA_DIR  = os.path.join(_BASE_DIR, "data", "jcy")
@@ -771,17 +785,26 @@ def run_step3(docs):
 # ════════════════════════════════════════════════════════════════
 
 def main():
+    parser = argparse.ArgumentParser(description="JCY 数据准备流水线（Step 1-3）")
+    parser.add_argument("--strict", action="store_true",
+                        help="Step 1 采集失败时硬中止（默认继续用旧缓存）")
+    parser.add_argument("--log-file", type=str, default="",
+                        help="日志同时写入该文件")
+    args = parser.parse_args()
+    _setup_logging(args.log_file or None)
+
     print("\n" + "=" * 60)
     print("  JCY 数据准备流水线（Step 1 → 2 → 3）")
     print("=" * 60)
 
-    # ── Step 1 ───────────────────────────────────────────────────
-    print("\n" + "─" * 60)
-    print("  Step 1: 飞书数据采集")
-    print("─" * 60)
-    run_step1()   # 失败时仍尝试后续步骤（利用已有缓存）
+    print("\n" + "─" * 60 + "\n  Step 1: 飞书数据采集\n" + "─" * 60)
+    step1_ok = run_step1()
+    if not step1_ok:
+        log.warning("⚠️ Step 1 采集失败，后续步骤将使用已有旧缓存（数据可能不是最新）")
+        if args.strict:
+            log.error("--strict 已启用，终止流水线")
+            return
 
-    # ── 加载文档（Steps 2 & 3 共用）────────────────────────────
     try:
         docs = load_docs()
         print(f"\n📂 读取到 {len(docs)} 篇文档")
@@ -789,20 +812,13 @@ def main():
         print("❌ 未找到文档缓存（jcy_docs.yaml），无法执行 Step 2/3")
         return
 
-    # ── Step 2 ───────────────────────────────────────────────────
-    print("\n" + "─" * 60)
-    print("  Step 2: Perplexity 投资建议生成")
-    print("─" * 60)
+    print("\n" + "─" * 60 + "\n  Step 2: Perplexity 投资建议生成\n" + "─" * 60)
     run_step2(docs)
-
-    # ── Step 3 ───────────────────────────────────────────────────
-    print("\n" + "─" * 60)
-    print("  Step 3: Azure GPT 结构化提取")
-    print("─" * 60)
+    print("\n" + "─" * 60 + "\n  Step 3: LLM 结构化提取\n" + "─" * 60)
     run_step3(docs)
 
     print("\n" + "=" * 60)
-    print("  全部流程完成")
+    print(f"  全部流程完成（Step 1 采集：{'成功' if step1_ok else '失败-用旧缓存'}）")
     print("=" * 60)
 
 
