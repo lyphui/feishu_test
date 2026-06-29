@@ -440,15 +440,21 @@ def run_step2(docs):
     articles = _load_articles()
     index    = _record_index(articles)
 
-    # 跳过：该文档对应 record 已有 advice 文件
+    # 跳过：该文档对应 record 已有 advice 文件；或正文为空（无法分析，避免每次空跑重试）
     pending = []
+    empty_count = 0
     for d in docs:
         title = d.get("文档标题", "")
+        if not d.get("文档内容正文", "").strip():
+            empty_count += 1
+            continue
         key   = record_key(title_to_date(title), title)
         rec   = articles[index[key]] if key in index else {}
         if not _step2_done(rec):
             pending.append(d)
-    print(f"📋 Step 2 本次需分析：{len(pending)} 篇（已跳过 {len(docs) - len(pending)} 篇）\n")
+    done_count = len(docs) - len(pending) - empty_count
+    print(f"📋 Step 2 本次需分析：{len(pending)} 篇"
+          f"（已完成 {done_count} 篇，空正文跳过 {empty_count} 篇）\n")
 
     if not pending:
         print("✅ 所有文档均已生成建议，无需重新处理")
@@ -483,12 +489,12 @@ def run_step2(docs):
         filename    = title_to_filename(title)
         # ── 原子性：先落文件 ──
         path = _s2_save_md(filename, _s2_build_md(title, link, analyzed_at, advice, citations))
-        # ── 再更新权威清单 ──
+        # ── 再更新权威清单（存相对文件名，跨机器可移植）──
         _upsert_record(articles, {
             "date":        date,
             "title":       title,
             "link":        link,
-            "advice_file": os.path.abspath(path),
+            "advice_file": filename,
         })
         _save_articles(articles)
         index = _record_index(articles)
@@ -520,9 +526,20 @@ def _record_index(articles: list) -> dict:
     }
 
 
+def _advice_path(advice_file: str | None) -> str | None:
+    """把 record 的 advice_file 解析为本机可用路径。
+
+    advice 文件统一平铺在 ADVICE_DIR，故只取 basename 再拼当前 ADVICE_DIR——
+    既支持新存的相对文件名，也兼容历史存量的绝对路径（跨机器可移植）。
+    """
+    if not advice_file:
+        return None
+    return os.path.join(ADVICE_DIR, os.path.basename(advice_file.replace("\\", "/")))
+
+
 def _step2_done(record: dict) -> bool:
     """Step 2 是否已完成：record 有 advice_file 且文件实际存在。"""
-    path = record.get("advice_file")
+    path = _advice_path(record.get("advice_file"))
     return bool(path) and os.path.exists(path)
 
 
@@ -540,15 +557,17 @@ def _load_articles() -> list:
 
 
 def _save_articles(articles: list) -> None:
-    """按 date 倒序写回权威清单。"""
+    """按 date 倒序写回权威清单。原子写：先写临时文件再 os.replace，避免半写损坏。"""
     os.makedirs(os.path.dirname(S3_OUTPUT_FILE), exist_ok=True)
     sorted_articles = sorted(articles, key=lambda a: a.get("date") or "", reverse=True)
-    with open(S3_OUTPUT_FILE, "w", encoding="utf-8") as f:
+    tmp_path = f"{S3_OUTPUT_FILE}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump({
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "total":      len(sorted_articles),
             "articles":   sorted_articles,
         }, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, S3_OUTPUT_FILE)
 
 
 def _upsert_record(articles: list, record: dict) -> list:
@@ -661,7 +680,7 @@ def _s3_extract_insights(doc, advice_text):
         except (OSError, RuntimeError, ValueError, TimeoutError) as e:
             print(f"   ⚠️  {provider['name']} 失败: {type(e).__name__}: {e}")
             last_err = e
-    raise last_err
+    raise last_err or RuntimeError("所有 LLM Provider 均失败（无具体异常）")
 
 
 def run_step3(docs):
@@ -707,7 +726,7 @@ def run_step3(docs):
             "date":         date_str,
             "title":        title,
             "link":         link,
-            "advice_file":  os.path.abspath(os.path.join(ADVICE_DIR, filename)),
+            "advice_file":  filename,
             "extracted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "llm_provider": used,
             **insights,

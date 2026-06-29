@@ -1310,43 +1310,6 @@ git commit -m "docs: align CLAUDE.md with actual providers, env vars, dedup mech
 
 ---
 
-## Phase F — git 卫生
-
-### Task F1: 生成数据加入 .gitignore
-
-**Files:**
-- Modify: `.gitignore`
-
-**Interfaces:** 无代码。
-
-- [ ] **Step 1: 追加忽略规则**
-
-在 `.gitignore` 末尾追加（注意现有文件末尾无换行，先补换行）：
-
-```
-data/jcy/advice/
-data/jcy/jcy_insights.json
-data/jcy/jcy_table.json
-data/jcy/jcy_docs.yaml
-.playwright-mcp/
-```
-
-- [ ] **Step 2: 从 git 索引移除已追踪的生成数据（保留磁盘文件）**
-
-Run: `git rm -r --cached data/jcy/advice data/jcy/jcy_insights.json data/jcy/jcy_table.json data/jcy/jcy_docs.yaml 2>/dev/null; git status --short | head`
-Expected: 这些路径显示为 deleted（仅从索引移除，磁盘仍在）。
-
-> 注：若团队需要少量样本入库，可在 `data/jcy/sample/` 另存几条并不忽略。本计划默认全部移出。
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add .gitignore
-git commit -m "chore: gitignore generated jcy data and playwright artifacts"
-```
-
----
-
 ## Self-Review
 
 **1. Spec coverage**
