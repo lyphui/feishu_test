@@ -49,7 +49,8 @@ def setup_logging(log_file: str | None):
 
 _BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA_DIR    = os.path.join(_BASE_DIR, "data", "jcy")
-_PROMPTS_DIR = os.path.join(_BASE_DIR, "prompts")
+# prompts 随 jcy 包内置（jcy/prompts/），故取本文件所在目录，不走仓库根
+_PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts")
 
 
 def read_prompt(name: str) -> str:

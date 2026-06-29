@@ -9,9 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 环境要求
 
 - Python **≥ 3.11**
-- 安装依赖（可编辑模式，使 `strategies/`、`utils/` 可直接 import）：
+- **纯源码运行，无需安装本项目**：所有命令从仓库根目录执行，`jcy/`、`utils/`、`strategies/` 等包直接被 Python 解析（仓库根已在 `sys.path`），`backtest/` 脚本以 `python backtest/x.py` 运行（脚本目录自动入 path）。
+- 仅需安装第三方依赖：
   ```bash
-  pip install -e .
+  pip install pandas numpy matplotlib requests openai python-dotenv pyyaml akshare yfinance pytest
   ```
 
 ## 项目概述
@@ -31,7 +32,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 feishu_test/
 ├── CLAUDE.md                      # 本文件
-├── pyproject.toml                 # 可编辑安装配置（pip install -e .）
 ├── .env                           # 环境变量（API 密钥等，不提交）
 │
 ├── ── 入口脚本 ────────────────────────────────
@@ -44,15 +44,26 @@ feishu_test/
 │   ├── feishu.py                  # Step 1：飞书采集（_feishu_get 统一 GET + 分页 + 增量缓存）
 │   ├── advice.py                  # Step 2：Perplexity 投资建议（先落文件后写 record 原子性）
 │   ├── extract.py                 # Step 3：LLM 结构化提取（DashScope/Azure/Coze 回退）
-│   └── pipeline.py                # main 编排（--strict / --log-file）
+│   ├── pipeline.py                # main 编排（--strict / --log-file）
+│   └── prompts/                   # jcy 自包含的 system prompt（被 config.read_prompt 读取）
+│       ├── step2_advice_system.md # Step 2 Perplexity system prompt
+│       └── step3_extract_system.md # Step 3 结构化提取 system prompt
 │
 ├── ── 回测脚本 ─────────────────────────────────
-├── backtest/
+├── backtest/                      # 脚本模式（非包），以 python backtest/x.py 运行，同级裸导入
+│   ├── engine.py                  # 核心回测引擎：run_backtest / plot_backtest（无 CLI）
+│   ├── config.py                  # 共享配置层：BacktestConfig / load_backtest_config / OutputPaths
+│   ├── bull_report.py             # 牛市策略报告：plot_bull_backtest / export_bull_daily_status
 │   ├── jcy_macd_bull_batch.py     # Step 4: 批量 MACD 牛市策略回测（读 jcy_insights.json）
 │   ├── jcy_intraday_timing.py     # 日线信号 + 分时择时（多周期共振）
-│   ├── macd_analysis.py           # 单股 MACD 教科书策略回测 + 核心回测引擎
+│   ├── macd_analysis.py           # 薄入口：re-export engine + MACDStrategy CLI
 │   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
-│   └── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
+│   ├── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
+│   └── presets/                   # 单股回测输入预设 .ini（symbol/日期区间/止损止盈等）
+│       ├── jxty_jcy_260104.ini    # 单股 MACD 回测示例预设
+│       ├── lu_macd_config.ini     # 卢式 MACD 策略回测预设
+│       ├── lu_macd_bull_config.ini # 卢式牛市策略回测预设
+│       └── rjgd_syr_260130.ini    # 其他回测预设示例
 │
 ├── ── 策略包 ──────────────────────────────────
 ├── strategies/
@@ -66,16 +77,9 @@ feishu_test/
 ├── utils/
 │   ├── plotting.py                # 共享绘图样式（GitHub Dark 配色 + matplotlib 配置）
 │   ├── market_data.py             # 共享行情数据获取：个股 + 指数（akshare → yfinance 双源，含限流重试）
-│   ├── bull_backtest.py           # 牛市策略专用：Adapter + 绘图 + CSV 导出
+│   ├── bull_backtest.py           # 牛市策略通用适配器 BullStrategyAdapter（绘图/CSV 已移至 backtest/bull_report.py）
 │   ├── jcy_common.py              # JCY 流水线共享工具（日期解析、文件命名、候选股筛选、YAML 加载）
 │   └── pplx.py                    # Perplexity API 客户端封装
-│
-├── ── 配置文件 ─────────────────────────────────
-├── config/
-│   ├── jxty_jcy_260104.ini        # 单股 MACD 回测示例配置
-│   ├── lu_macd_config.ini         # 卢式 MACD 策略回测配置
-│   ├── lu_macd_bull_config.ini    # 卢式牛市策略回测配置
-│   └── rjgd_syr_260130.ini        # 其他回测配置示例
 │
 ├── ── 数据目录 ─────────────────────────────────
 ├── data/jcy/
@@ -87,11 +91,6 @@ feishu_test/
 │
 ├── authorize/feishu_key/
 │   └── feishu_token.txt           # 飞书 Bearer Token（手动维护）
-│
-├── ── 提示词 ──────────────────────────────────
-├── prompts/
-│   ├── step2_advice_system.md     # Step 2 Perplexity system prompt
-│   └── step3_extract_system.md    # Step 3 结构化提取 system prompt
 │
 ├── ── 运维脚本 ────────────────────────────────
 ├── scripts/
@@ -128,7 +127,7 @@ wiki_token → bitable app_token
 
 **Step 2 — AI 投资建议生成（Perplexity）：**
 - 模型：`sonar-reasoning-pro`（联网搜索 + 推理，去掉 `<think>` 标签后保留正文）
-- system prompt 外置于 `prompts/step2_advice_system.md`
+- system prompt 外置于 `jcy/prompts/step2_advice_system.md`
 - 增量机制：以 `jcy_insights.json` 为单一真值源；record 的 `advice_file` 字段存在且文件实际存在即跳过
 - 原子性：先落 advice 文件 → 再写 record 的 `advice_file` 字段
 - 输出格式：今日核心观点 / 股票行业详解 / 投资小白行动建议 / 风险提示 / 一句话总结
@@ -137,7 +136,7 @@ wiki_token → bitable app_token
 **Step 3 — 结构化信息提取（LLM，按 provider 回退）：**
 - 默认启用 **DashScope**（`S3_PROVIDERS` 中 Azure / Coze 默认注释关闭，可按需开启）
 - 原文 + 建议文档 → `response_format=json_object` → 结构化 JSON
-- system prompt 外置于 `prompts/step3_extract_system.md`
+- system prompt 外置于 `jcy/prompts/step3_extract_system.md`
 - 输出 schema：
 ```json
 {
@@ -164,16 +163,20 @@ wiki_token → bitable app_token
 
 ---
 
-### 2. MACD 策略回测引擎 (`backtest/macd_analysis.py`)
+### 2. MACD 策略回测引擎 (`backtest/engine.py`)
 
-**职责：** 核心回测引擎，被所有回测入口脚本复用
+**职责：** 核心回测引擎（纯函数，无 CLI），被所有回测入口脚本复用。`macd_analysis.py` 为薄入口，re-export `run_backtest`/`plot_backtest`/`fetch_stock_data` 以兼容历史 `from macd_analysis import ...` 导入。
 
 **关键函数：**
-- `fetch_stock_data(symbol, start, end)` — 从 `utils.market_data` 再导出（canonical 位置已移至 `utils/market_data.py`）
+- `fetch_stock_data(symbol, start, end)` — 从 `utils.market_data` 再导出（canonical 位置在 `utils/market_data.py`）
 - `run_backtest(symbol, strategy, capital, stop_loss, take_profit)` — 执行回测
   - 按信号买卖，100 股整数手，A 股印花税（单边 0.1%）+ 佣金（双边 0.03%）
   - 持仓期间按收盘价估值，生成权益曲线和回撤序列
 - `plot_backtest(result, save_path)` — 标准 4 面板图（价格+信号、指标、权益、回撤）
+
+**共享配置层（`backtest/config.py`）：** 三个单股入口共用
+- `load_backtest_config(filename, *, defaults)` → `BacktestConfig`：统一解析 `backtest/presets/*.ini` 的 `[backtest]` 段（end_date 默认今日、止损止盈空值转 None、proxy 写环境变量、缺失时按 defaults 写出）；策略专属参数经 `cfg.get_int/get_bool/get_float` 从 `.extra` 读取
+- `OutputPaths(save_dir, prefix, name, symbol, end_date)`：统一输出路径（`.chart/.csv/.status`），`OutputPaths.safe()` 清洗文件名
 
 **CLI：** `python backtest/macd_analysis.py --config jxty_jcy_260104.ini`
 
@@ -225,7 +228,7 @@ params: dict               # 参数字典（展示用）
 |------|----------|
 | `plotting.py` | `COLORS` 字典（GitHub Dark 配色）、`setup_matplotlib()`、`style_ax(ax)` |
 | `market_data.py` | `fetch_stock_data()` + `fetch_index_data()` — 个股/指数行情，akshare → yfinance 双源（含限流重试） |
-| `bull_backtest.py` | `BullStrategyAdapter`、`plot_bull_backtest()`、`export_bull_daily_status()` |
+| `bull_backtest.py` | `BullStrategyAdapter`（通用适配器；绘图/CSV 已移至 `backtest/bull_report.py`） |
 | `jcy_common.py` | `title_to_date()`、`title_to_filename()`、`load_docs()`、`load_candidates()`、`is_ashare_code()`、路径常量（`JSON_PATH`） |
 | `pplx.py` | `PerplexityAPI` 客户端（`chat()`、`sonar_deep_research()`） |
 
@@ -260,7 +263,7 @@ data/jcy/jcy_docs.yaml          （原始文档正文）
 
 ---
 
-## 配置文件格式 (`config/*.ini`)
+## 回测预设格式 (`backtest/presets/*.ini`)
 
 ```ini
 [backtest]
@@ -306,15 +309,14 @@ COZE_URL=...
 
 ---
 
-## 包安装
+## 运行方式（纯源码，无需安装本项目）
 
-项目使用 `pyproject.toml` 支持可编辑安装，消除 `sys.path.insert` hack：
+项目不打包、不依赖 `pip install -e .`。**所有命令从仓库根目录执行**：
 
-```bash
-pip install -e .
-```
+- `jcy/`、`utils/`、`strategies/` 等包直接被 Python 解析（仓库根已在 `sys.path`），如 `python prepare_jcy_data.py`、`pytest`。
+- `backtest/` 为脚本模式（无 `__init__.py`），以 `python backtest/x.py` 运行，脚本目录自动入 `sys.path[0]`；测试经 `tests/conftest.py` 把 `backtest/` 加入 path。
 
-安装后 `strategies/`、`utils/` 等包可在任意目录直接 import。
+只需安装第三方依赖（见「环境要求」），无本项目安装步骤。
 
 ---
 

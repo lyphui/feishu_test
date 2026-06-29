@@ -33,7 +33,20 @@
       "Bash(python -c \"from jcy_intraday_timing import PositionTracker, TradeRecord; print\\('Import OK'\\)\")",
       "mcp__playwright__browser_navigate",
       "Bash(claude mcp *)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'backtest'\\); import engine, config, macd_analysis; print\\('OK', macd_analysis.run_backtest, macd_analysis.fetch_stock_data, macd_analysis.plot_backtest\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python macd_analysis.py --config jxty_jcy_260104.ini)",
+      "Read(//c/Users/panhui9/PycharmProjects/**)",
+      "Bash(git mv *)",
+      "Bash(git rm *)",
+      "Bash(python -c \"import jcy.config as c; print\\('S2:', c.S2_SYSTEM_PROMPT[:30]\\); print\\('S3:', c.S3_SYSTEM_PROMPT[:30]\\); print\\('PROMPTS_DIR:', c._PROMPTS_DIR\\)\")",
+      "Bash(python -c \"import jcy.config as c; print\\('S2 ok:', bool\\(c.S2_SYSTEM_PROMPT\\)\\); print\\('S3 ok:', bool\\(c.S3_SYSTEM_PROMPT\\)\\)\")",
+      "Bash(python -c \"import jcy.config, jcy.feishu, jcy.store; from utils.jcy_common import JSON_PATH; from strategies import LuMACDBullStrategy; import os; print\\('ok', os.path.relpath\\(JSON_PATH\\)\\)\")",
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'backtest'\\); import engine, config, bull_report, macd_analysis; print\\('backtest ok'\\)\")",
+      "Bash(grep -n \"config/\\\\*\\\\.ini\\\\|config/\\\\*\\\\|配置文件格式\\\\|\\(\\\\`config/\" CLAUDE.md)",
+      "Bash(python backtest/macd_analysis.py --config jxty_jcy_260104.ini)"
     ]
   }
 }

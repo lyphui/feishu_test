@@ -37,19 +37,16 @@ JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 
 import argparse
 import os
-import re
 import sys
 from datetime import date as _date, timedelta
 
-from macd_analysis import fetch_stock_data, run_backtest
+from engine import run_backtest
+from config import OutputPaths
+from bull_report import export_bull_daily_status, plot_bull_backtest
 from strategies import LuMACDBullStrategy
 from utils.plotting import setup_matplotlib
 from utils.market_data import fetch_index_data
-from utils.bull_backtest import (
-    BullStrategyAdapter,
-    export_bull_daily_status,
-    plot_bull_backtest,
-)
+from utils.bull_backtest import BullStrategyAdapter
 from utils.jcy_common import JSON_PATH, load_candidates
 
 setup_matplotlib()
@@ -81,17 +78,15 @@ def backtest_one(candidate: dict, end_date: str, index_symbol: str,
     data_start = (trade_dt - timedelta(days=warmup_days)).strftime("%Y%m%d")
 
     # 安全化名称（用于文件/目录名）
-    safe_name = re.sub(r'[\\/:*?"<>|]', "_", name)
+    safe_name = OutputPaths.safe(name)
 
-    # 子目录：jcy_{code}_{name}_{推荐日期}
-    sub_dir   = f"jcy_{code}_{safe_name}_{trade_start_date}"
-    save_dir  = os.path.join(base_output_dir, sub_dir)
-    os.makedirs(save_dir, exist_ok=True)
-
-    file_stem  = f"lu_bull_{safe_name}_{code}_{end_date}"
-    save_chart = os.path.join(save_dir, file_stem + ".png")
-    save_csv   = os.path.join(save_dir, file_stem + ".csv")
-    status_csv = os.path.join(save_dir, file_stem + "_daily_status.csv")
+    # 子目录：jcy_{code}_{name}_{推荐日期}，文件名 stem：lu_bull_{name}_{code}_{结束日期}
+    sub_dir = f"jcy_{code}_{safe_name}_{trade_start_date}"
+    paths   = OutputPaths(os.path.join(base_output_dir, sub_dir),
+                          "lu_bull", safe_name, code, end_date)
+    save_chart = paths.chart
+    save_csv   = paths.csv
+    status_csv = paths.status
 
     print(f"\n  [{code}] {name}  |  推荐日期：{trade_start_date}  "
           f"数据起始：{data_start}  止损：{stop_loss}  止盈：{take_profit}")
