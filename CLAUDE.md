@@ -72,13 +72,24 @@ feishu_test/
 ├── data/jcy/
 │   ├── jcy_table.json             # 飞书多维表格原始记录（JSON）
 │   ├── jcy_docs.yaml              # 飞书文档内容（YAML，含正文）
-│   ├── jcy_insights.json          # GPT 结构化提取结果（含公司/评级/建议）
-│   ├── advice_cache.json          # Perplexity 分析缓存（链接 → 文件名映射）
+│   ├── jcy_insights.json          # 结构化提取结果 + 单一真值源（含 advice_file/extracted_at 状态）
 │   └── advice/                    # Perplexity 生成的投资建议 Markdown 文件
-│       └── YYYY-MM-DD.md          # 按日期命名，对应每期 JCY 文章
+│       └── YYYY-MM-DD__标题.md     # 复合命名（date + 安全化 title），对应每期 JCY 文章
 │
 ├── authorize/feishu_key/
 │   └── feishu_token.txt           # 飞书 Bearer Token（手动维护）
+│
+├── ── 提示词 ──────────────────────────────────
+├── prompts/
+│   ├── step2_advice_system.md     # Step 2 Perplexity system prompt
+│   └── step3_extract_system.md    # Step 3 结构化提取 system prompt
+│
+├── ── 运维脚本 ────────────────────────────────
+├── scripts/
+│   └── migrate_compound_key.py    # 存量数据复合键迁移（零 API 调用）
+│
+├── ── 测试 ────────────────────────────────────
+├── tests/                         # pytest（不联网、不读真实 data/）
 │
 ├── deprecated/                    # 已废弃脚本（被 prepare_jcy_data.py 整合替代）
 │   ├── get_jcy_data.py
@@ -108,12 +119,16 @@ wiki_token → bitable app_token
 
 **Step 2 — AI 投资建议生成（Perplexity）：**
 - 模型：`sonar-reasoning-pro`（联网搜索 + 推理，去掉 `<think>` 标签后保留正文）
-- 增量机制：扫描 `advice/` 目录，已存在的 `.md` 文件跳过
+- system prompt 外置于 `prompts/step2_advice_system.md`
+- 增量机制：以 `jcy_insights.json` 为单一真值源；record 的 `advice_file` 字段存在且文件实际存在即跳过
+- 原子性：先落 advice 文件 → 再写 record 的 `advice_file` 字段
 - 输出格式：今日核心观点 / 股票行业详解 / 投资小白行动建议 / 风险提示 / 一句话总结
 - 超时保护：连续超时 `MAX_CONSECUTIVE_TIMEOUTS` 次时终止，不写入无效响应
 
-**Step 3 — 结构化信息提取（Azure GPT）：**
-- 原文 + 建议文档 → Azure OpenAI `gpt-5`（`response_format=json_object`）
+**Step 3 — 结构化信息提取（LLM，按 provider 回退）：**
+- 默认启用 **DashScope**（`S3_PROVIDERS` 中 Azure / Coze 默认注释关闭，可按需开启）
+- 原文 + 建议文档 → `response_format=json_object` → 结构化 JSON
+- system prompt 外置于 `prompts/step3_extract_system.md`
 - 输出 schema：
 ```json
 {
@@ -123,19 +138,20 @@ wiki_token → bitable app_token
   "key_advice": ["建议1", "建议2", ...]
 }
 ```
-- 增量机制：按 `date` 字段去重，已提取的文章跳过
+- 增量机制：以 `(date, title)` 复合键去重；record 含 `extracted_at` 即跳过
+- 去重统一以 `jcy_insights.json` 为单一真值源；`advice_cache.json` 已废弃
 
 **环境变量：**
+- `TOKEN_FILE` — 飞书 Bearer Token 文件路径
 - `JCY_WIKI_TOKEN` — 飞书 Wiki 节点 token
 - `JCY_APP_TABLE_ID` — 多维表格 ID
 - `JCY_VIEW_ID` — 视图 ID（可选）
 - `PPLX_API_KEY` — Perplexity API 密钥
 - `PPLX_GROUP_ID` — API Group ID
-- `AZURE_OPENAI_KEY` — Azure OpenAI API 密钥
-- `AZURE_OPENAI_ENDPOINT` — Azure OpenAI 端点 URL
-- `AZURE_OPENAI_DEPLOYMENT` — Azure 部署名称（默认 `gpt-5`）
-- `AZURE_OPENAI_API_VERSION` — API 版本（默认 `2024-12-01-preview`）
-- `COZE_URL` — Coze API URL（可选）
+- `DASHSCOPE_API_KEY` — DashScope API 密钥（Step 3 默认 provider）
+- `DASHSCOPE_BASE_URL` — DashScope 端点（默认 compatible-mode/v1）
+- `DASHSCOPE_MODEL` — DashScope 模型名
+- `AZURE_OPENAI_*` / `COZE_*` — 可选 provider，默认在 `S3_PROVIDERS` 中注释关闭
 
 ---
 
@@ -259,16 +275,24 @@ shrink_exit = true         # true=红柱缩短即走，false=等死叉
 ## 环境变量 (`.env`)
 
 ```
-AZURE_OPENAI_KEY=...
-AZURE_OPENAI_ENDPOINT=...          # Azure OpenAI 端点 URL
-AZURE_OPENAI_DEPLOYMENT=gpt-5     # Azure 部署名称
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-COZE_URL=...                       # Coze API URL（可选）
+TOKEN_FILE=...                     # 飞书 Bearer Token 文件路径
 PPLX_API_KEY=pplx-...
 PPLX_GROUP_ID=...
 JCY_WIKI_TOKEN=...
 JCY_APP_TABLE_ID=...
 JCY_VIEW_ID=...
+
+# Step 3 默认 provider：DashScope
+DASHSCOPE_API_KEY=...
+DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+DASHSCOPE_MODEL=deepseek-v4-pro
+
+# 可选 provider（默认在 S3_PROVIDERS 中注释关闭）
+AZURE_OPENAI_KEY=...
+AZURE_OPENAI_ENDPOINT=...
+AZURE_OPENAI_DEPLOYMENT=gpt-5
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
+COZE_URL=...
 ```
 
 ---
