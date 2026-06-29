@@ -145,6 +145,29 @@ def _s1_hdr(token):
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
+def _feishu_get(url: str, token: str, params: dict | None = None,
+                retries: int = 2) -> dict:
+    """统一飞书 GET：查 HTTP 状态、code != 0 抛错、5xx/超时有限重试。返回 data 字段。"""
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            r = requests.get(url, headers=_s1_hdr(token), params=params, timeout=30)
+            if r.status_code >= 500:
+                last_err = RuntimeError(f"飞书 HTTP {r.status_code}")
+                time.sleep(1.0 * (attempt + 1))
+                continue
+            if r.status_code != 200:
+                raise RuntimeError(f"飞书 HTTP {r.status_code}: {r.text[:200]}")
+            data = r.json()
+            if data.get("code") != 0:
+                raise RuntimeError(f"飞书 API 错误：{data.get('msg')}（code={data.get('code')}）")
+            return data.get("data", {})
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            last_err = e
+            time.sleep(1.0 * (attempt + 1))
+    raise RuntimeError(f"飞书请求失败（已重试 {retries} 次）：{last_err}")
+
+
 def _s1_read_token():
     with open(S1_TOKEN_FILE, "r", encoding="utf-8") as f:
         return f.read().strip()
@@ -192,12 +215,12 @@ def _s1_save(records, doc_list, record_title_map):
 
 def _s1_get_app_token(wiki_token, token):
     url = f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={wiki_token}"
-    r = requests.get(url, headers=_s1_hdr(token))
-    data = r.json()
-    if data["code"] != 0:
-        print(f"❌ 获取wiki节点失败：{data['msg']}（code={data['code']}）")
+    try:
+        data = _feishu_get(url, token)
+    except RuntimeError as e:
+        print(f"❌ 获取wiki节点失败：{e}")
         return None
-    obj_token = data["data"]["node"]["obj_token"]
+    obj_token = data["node"]["obj_token"]
     print(f"✅ bitable app_token：{obj_token}")
     return obj_token
 
@@ -217,19 +240,19 @@ def _s1_get_all_records(app_token, table_id, view_id, token):
         if page_token:
             params["page_token"] = page_token
 
-        r = requests.get(url, headers=_s1_hdr(token), params=params)
-        data = r.json()
-        if data["code"] != 0:
-            print(f"❌ 读取表格失败：{data['msg']}（code={data['code']}）")
+        try:
+            data = _feishu_get(url, token, params)
+        except RuntimeError as e:
+            print(f"❌ 读取表格失败：{e}")
             break
 
-        items = data["data"].get("items", [])
+        items = data.get("items", [])
         all_records.extend(items)
         print(f"   第{page}页：{len(items)} 条")
 
-        if not data["data"].get("has_more"):
+        if not data.get("has_more"):
             break
-        page_token = data["data"].get("page_token", "")
+        page_token = data.get("page_token", "")
         page += 1
         time.sleep(0.2)
 
@@ -282,25 +305,25 @@ def _s1_get_docx_content(doc_token, token):
         params = {"page_size": 200}
         if page_token:
             params["page_token"] = page_token
-        r = requests.get(url, headers=_s1_hdr(token), params=params)
-        data = r.json()
-        if data["code"] != 0:
-            return {"error": data["msg"], "code": data["code"]}
-        all_blocks.extend(data["data"].get("items", []))
-        if not data["data"].get("has_more"):
+        try:
+            data = _feishu_get(url, token, params)
+        except RuntimeError as e:
+            return {"error": str(e)}
+        all_blocks.extend(data.get("items", []))
+        if not data.get("has_more"):
             break
-        page_token = data["data"].get("page_token", "")
+        page_token = data.get("page_token", "")
         time.sleep(0.1)
     return {"text": _s1_blocks_to_text(all_blocks)}
 
 
 def _s1_get_wiki_content(wiki_token_val, token):
     url = f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={wiki_token_val}"
-    r = requests.get(url, headers=_s1_hdr(token))
-    data = r.json()
-    if data["code"] != 0:
-        return {"error": data["msg"], "code": data["code"]}
-    node      = data["data"]["node"]
+    try:
+        data = _feishu_get(url, token)
+    except RuntimeError as e:
+        return {"error": str(e)}
+    node      = data["node"]
     obj_type  = node.get("obj_type", "")
     obj_token = node.get("obj_token", "")
     if obj_type in ("doc", "docx"):
