@@ -1,5 +1,6 @@
 import os
 
+import prepare_jcy_data as p
 from prepare_jcy_data import (
     _record_index,
     _step2_done,
@@ -22,14 +23,15 @@ def test_record_index_none_date():
     assert "NODATE__无日期" in idx
 
 
-def test_step2_done_true_when_file_exists(tmp_path):
-    f = tmp_path / "a.md"
-    f.write_text("x", encoding="utf-8")
-    assert _step2_done({"advice_file": str(f)}) is True
+def test_step2_done_true_when_file_exists(tmp_path, monkeypatch):
+    monkeypatch.setattr(p, "ADVICE_DIR", str(tmp_path))
+    (tmp_path / "a.md").write_text("x", encoding="utf-8")
+    assert _step2_done({"advice_file": "a.md"}) is True
 
 
-def test_step2_done_false_when_file_missing(tmp_path):
-    assert _step2_done({"advice_file": str(tmp_path / "missing.md")}) is False
+def test_step2_done_false_when_file_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(p, "ADVICE_DIR", str(tmp_path))
+    assert _step2_done({"advice_file": "missing.md"}) is False
 
 
 def test_step2_done_false_when_no_field():
