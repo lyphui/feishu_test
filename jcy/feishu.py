@@ -9,7 +9,7 @@ from datetime import datetime
 import requests
 import yaml
 
-from utils.jcy_text import blocks_to_text
+from jcy.lib.text import blocks_to_text
 from jcy import config
 
 log = config.log

@@ -46,7 +46,19 @@
       "Bash(python -c \"import jcy.config, jcy.feishu, jcy.store; from utils.jcy_common import JSON_PATH; from strategies import LuMACDBullStrategy; import os; print\\('ok', os.path.relpath\\(JSON_PATH\\)\\)\")",
       "Bash(python -c \"import sys; sys.path.insert\\(0,'backtest'\\); import engine, config, bull_report, macd_analysis; print\\('backtest ok'\\)\")",
       "Bash(grep -n \"config/\\\\*\\\\.ini\\\\|config/\\\\*\\\\|配置文件格式\\\\|\\(\\\\`config/\" CLAUDE.md)",
-      "Bash(python backtest/macd_analysis.py --config jxty_jcy_260104.ini)"
+      "Bash(python backtest/macd_analysis.py --config jxty_jcy_260104.ini)",
+      "Bash(xargs -n1 basename)",
+      "Bash(python -)",
+      "Bash(python -c \"import jcy.config, jcy.feishu, jcy.store, jcy.advice, jcy.extract, jcy.pipeline; from jcy.lib.common import JSON_PATH, load_candidates; from jcy.lib.text import blocks_to_text; from jcy.lib.pplx import PerplexityAPI; print\\('jcy ok |', JSON_PATH\\)\")",
+      "Bash(python -c \"import jcy.config as c; print\\('prompts ok |', bool\\(c.S2_SYSTEM_PROMPT\\), bool\\(c.S3_SYSTEM_PROMPT\\)\\)\")",
+      "Bash(python -c \"import runpy,sys; sys.argv=['x','--help']; runpy.run_path\\('backtest/jcy_macd_bull_batch.py', run_name='__main__'\\)\")",
+      "Bash(python -c \"import runpy,sys; sys.argv=['x','--help']; runpy.run_path\\('backtest/jcy_intraday_timing.py', run_name='__main__'\\)\")",
+      "Bash(python -c \"import prepare_jcy_data; print\\('prepare_jcy_data ok'\\)\")",
+      "Bash(python backtest/lu_macd_bull_analysis.py --help)",
+      "Bash(python -c \"print\\('lu_bull has no --help, skip'\\)\")",
+      "Bash(python -m pytest -q)",
+      "Bash(python -c \"import engine, bull_report, lu_macd_analysis, lu_macd_bull_analysis, macd_analysis, jcy_macd_bull_batch; print\\('all imports OK'\\)\")",
+      "Bash(python -m pytest \"c:/Users/panhui9/PycharmProjects/feishu_test/tests\" -q)"
     ]
   }
 }

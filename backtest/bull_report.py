@@ -4,7 +4,7 @@
 - export_bull_daily_status: 每日指标状态 CSV 导出（买卖判断依据）
 - plot_bull_backtest: 5 面板回测图表（价格、MACD、大盘月线、资产曲线、回撤）
 
-通用策略适配器 BullStrategyAdapter 仍在 utils.bull_backtest。
+通用策略适配器 BullStrategyAdapter 仍在 lib.bull_backtest。
 """
 
 import numpy as np
@@ -13,9 +13,10 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 
-from utils.plotting import (
+from lib.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, style_ax,
 )
+from engine import fmt_sharpe
 
 
 # ── 每日状态导出 ──────────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ def plot_bull_backtest(result: dict, save_path: "str | None" = None,
         f"卢麒元牛市动能截取策略  |  {symbol}  |  "
         f"总收益 {result['total_return']:+.2f}%  "
         f"基准 {result['benchmark_return']:+.2f}%  "
-        f"夏普 {result['sharpe_ratio']:.2f}",
+        f"夏普 {fmt_sharpe(result['sharpe_ratio'])}",
         color=C_FG, fontsize=12, pad=8,
     )
     ax1.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=9)

@@ -1,4 +1,4 @@
-from utils.jcy_common import safe_title, record_key
+from jcy.lib.common import safe_title, record_key
 
 
 def test_safe_title_replaces_illegal_chars():

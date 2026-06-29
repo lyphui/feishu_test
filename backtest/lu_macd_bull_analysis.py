@@ -17,8 +17,8 @@ from engine import run_backtest
 from config import load_backtest_config, OutputPaths
 from bull_report import export_bull_daily_status, plot_bull_backtest
 from strategies import LuMACDBullStrategy
-from utils.plotting import setup_matplotlib
-from utils.market_data import fetch_index_data
+from lib.plotting import setup_matplotlib
+from lib.market_data import fetch_index_data
 
 setup_matplotlib()
 
@@ -94,6 +94,7 @@ def main():
             initial_capital=cfg.capital,
             stop_loss=cfg.stop_loss,
             take_profit=cfg.take_profit,
+            verbose=True,
         )
 
         plot_bull_backtest(result, save_path=paths.chart)

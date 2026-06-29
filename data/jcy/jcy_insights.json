@@ -1,7 +1,165 @@
 {
-  "updated_at": "2026-06-26 16:45:23",
-  "total": 156,
+  "updated_at": "2026-06-29 16:27:27",
+  "total": 201,
   "articles": [
+    {
+      "date": "2026-06-29",
+      "title": "Vol.260629 一线涨价预期与备战中报季",
+      "link": "https://my.feishu.cn/wiki/AEahwNRxciRAAikyfp5cI9Qxnib",
+      "advice_file": "2026-06-29__Vol.260629 一线涨价预期与备战中报季.md",
+      "extracted_at": "2026-06-29 16:27:27",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "三环集团",
+          "code": "300408",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "风华高科",
+          "code": "000636",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "国瓷材料",
+          "code": "300285",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "三孚股份",
+          "code": "603938",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "聚辰股份",
+          "code": "688123",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "澜起科技",
+          "code": "688008",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "深科技",
+          "code": "000021",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "微导纳米",
+          "code": "688147",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "中科飞测",
+          "code": "688361",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "京东方",
+          "code": "000725",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "帝尔激光",
+          "code": "300776",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "中天科技",
+          "code": "600522",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "亨通光电",
+          "code": "600487",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "华润微",
+          "code": "688396",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "士兰微",
+          "code": "600460",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "扬杰科技",
+          "code": "300373",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "甬矽电子",
+          "code": "688362",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "海光信息",
+          "code": "688041",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "看涨AI算力与电子元器件涨价主线，建议分批布局海外算力ETF，注意高估值风险",
+      "key_advice": [
+        "优先配置算力、半导体设备等科技类ETF，避免重仓个股",
+        "MLCC、功率半导体等已大涨板块需等待回调再分批介入，切忌追高",
+        "警惕涨价题材利好兑现，中报季关注业绩是否证伪，不及预期及时离场",
+        "远离上游镍粉、玻璃基板等早期题材股，普通投资者不参与专业领域博弈",
+        "分批布局海外算力ETF，控制单一主题仓位，设置止盈止损规则"
+      ]
+    },
+    {
+      "date": "2026-06-27",
+      "title": "Vol.260627 易经第53渐:真爱按部就班",
+      "link": "https://my.feishu.cn/wiki/FlmxwQ627ind6vkjlDWcwJf5n3d",
+      "advice_file": "2026-06-27__Vol.260627 易经第53渐_真爱按部就班.md",
+      "extracted_at": "2026-06-29 16:00:05",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "长鑫存储",
+          "code": null,
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "渐卦暗示循序渐进，长期看好国产存储替代，宜分批布局"
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "看涨国产存储赛道，建议逢低分批吸纳，耐心等待长鑫上市及苹果合作催化",
+      "key_advice": [
+        "关注长鑫存储IPO进度及苹果内存测试，勿因传闻冲动追高",
+        "存储板块分批建仓，优先通过ETF分散个股风险，保留后手资金",
+        "行业周期波动大，宜在回调时介入，避免景气高点重仓",
+        "警惕国际政策与制裁风险，控制单一赛道仓位"
+      ]
+    },
     {
       "date": "2026-06-26",
       "title": "Vol.260626 时代主题",
@@ -57,6 +215,33 @@
         "持有拉普拉斯等走弱个股，明确买入理由，按计划分批处理仓位",
         "新能源中报行情节奏快，小白宜定投龙头，不追周期价差",
         "职业上可向AI基建相关岗位靠拢，降低频繁跳槽风险"
+      ]
+    },
+    {
+      "date": "2026-06-26",
+      "title": "Vol.260626 下周重建；产业调研和预期差系列（7）",
+      "link": "https://my.feishu.cn/wiki/I4AEw5T6ii5BfIkfqEPcbZuEnNb",
+      "advice_file": "2026-06-26__Vol.260626 下周重建；产业调研和预期差系列（7）.md",
+      "extracted_at": "2026-06-29 16:00:34",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "康宁",
+          "code": "GLW",
+          "exchange": "纽交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "看涨AI硬件，趁回调低吸半导体设备、光纤、电子布等，长线持有产业趋势品种",
+      "key_advice": [
+        "利用暴烈洗盘去弱留强、调仓换股，聚焦AI硬件主线",
+        "不要恐慌，下周市场将逐步修复，可关注资金抄底迹象",
+        "避免杂毛品种，集中持有产业趋势确定的半导体设备、光纤、电子布等",
+        "以产业投资人视角长线持有，不因短期涨跌而动摇"
       ]
     },
     {
@@ -153,6 +338,47 @@
       ]
     },
     {
+      "date": "2026-06-25",
+      "title": "Vol.260625 两极分化，如期新高",
+      "link": "https://my.feishu.cn/wiki/NsNiwfKjvixkF4knUUFcntj6nze",
+      "advice_file": "2026-06-25__Vol.260625 两极分化，如期新高.md",
+      "extracted_at": "2026-06-29 16:01:30",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "寒武纪",
+          "code": "688256",
+          "exchange": "上交所",
+          "rating": "买入",
+          "rating_reason": "国产AI芯片龙头，屡创新高，看好国产替代趋势"
+        },
+        {
+          "name": "中芯国际",
+          "code": "688981",
+          "exchange": "上交所",
+          "rating": "买入",
+          "rating_reason": "晶圆代工龙头，受益国产替代，股价新高"
+        },
+        {
+          "name": "芯原股份",
+          "code": "688521",
+          "exchange": "上交所",
+          "rating": "买入",
+          "rating_reason": "芯片定制IP龙头，获阿里字节支持，看新高"
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "坚定看涨国产半导体、存储、液冷等科技主线，强调国产替代长期逻辑",
+      "key_advice": [
+        "集中持仓国产半导体芯片核心龙头，如寒武纪、中芯国际，避免分散",
+        "长期看好存储芯片，短期波动不改国产替代趋势，可逢低布局",
+        "积极参与液冷服务器等新兴方向，但需注意短期涨幅过大的波动风险",
+        "电子元器件和设备国产化机会，关注康宁玻璃桥等新技术带来的设备需求"
+      ]
+    },
+    {
       "date": "2026-06-24",
       "title": "Vol.260624 复杂局面",
       "link": "https://my.feishu.cn/wiki/E1JXwGvjCiw6g6ku2QrcN2R6nsd",
@@ -169,6 +395,116 @@
         "关注光模块MPO连接器等二线品种的弹性机会，但警惕短期过热和剧烈波动",
         "留意国产半导体设备与IGBT等功率半导体的轮动反弹，产业趋势未变但需耐心分批布局",
         "市场轮动快，控制仓位，用闲钱参与，避免单票重仓"
+      ]
+    },
+    {
+      "date": "2026-06-24",
+      "title": "Vol.260624 依旧男女主",
+      "link": "https://my.feishu.cn/wiki/BYPpwbDhXip403kwXaEcWFYZnKk",
+      "advice_file": "2026-06-24__Vol.260624 依旧男女主.md",
+      "extracted_at": "2026-06-29 16:02:19",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "新易盛",
+          "code": "300502",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "中际旭创",
+          "code": "300308",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "天孚通信",
+          "code": "300394",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "汇绿生态",
+          "code": "001267",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "永鼎股份",
+          "code": "600105",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "仕佳光子",
+          "code": "688313",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "快克股份",
+          "code": "603203",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "通鼎互联",
+          "code": "002491",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "法拉电子",
+          "code": "600563",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "三环集团",
+          "code": "300408",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "创世纪",
+          "code": "300083",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "科威尔",
+          "code": "688551",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "协创数据",
+          "code": "300857",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "博众精工",
+          "code": "688097",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "潍柴动力",
+          "code": "000338",
+          "exchange": "深交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看多科技主线（海外算力链与国产半导体设备），但强调通过ETF参与，避免追高个股",
+      "key_advice": [
+        "优先用通信/算力ETF与半导体设备ETF参与科技主线，而非盲目追个股",
+        "不要在板块暴涨时追高，耐心等待回调再分批买入",
+        "科技相关仓位控制在总资产20%-30%，搭配其他稳健资产分散风险",
+        "理解产业逻辑，接受中途可能大幅回撤，用终局思维长期持有"
       ]
     },
     {
@@ -305,6 +641,295 @@
       ]
     },
     {
+      "date": "2026-06-22",
+      "title": "Vol.260622 向上的两个路径",
+      "link": "https://my.feishu.cn/wiki/YRXqwZJB0iMpHektDT2cb4eXnBh",
+      "advice_file": "2026-06-22__Vol.260622 向上的两个路径.md",
+      "extracted_at": "2026-06-29 16:03:44",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "寒王",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "芯原股份",
+          "code": "688521",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "若AI芯片强势有望突破新高"
+        },
+        {
+          "name": "华勤技术",
+          "code": "603296",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "AIPC赛道，需去弱留强"
+        },
+        {
+          "name": "春秋电子",
+          "code": "603890",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "AIPC赛道，需去弱留强"
+        },
+        {
+          "name": "思瑞浦",
+          "code": "688536",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "功率半导体，持续看好"
+        },
+        {
+          "name": "扬杰科技",
+          "code": "300373",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "功率半导体，持续看好"
+        },
+        {
+          "name": "京东方",
+          "code": "000725",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "玻璃基板中军，板块稳定器"
+        },
+        {
+          "name": "帝尔激光",
+          "code": "300776",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "打孔玻璃基板布局，弹性标的"
+        },
+        {
+          "name": "JPT",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "具备布局价值，易出破旗形态"
+        },
+        {
+          "name": "云南锗业",
+          "code": "002428",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "磷化铟代表，产业前景待兑现"
+        },
+        {
+          "name": "博杰股份",
+          "code": "002975",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "磷化铟后排标的"
+        },
+        {
+          "name": "长光华芯",
+          "code": "688048",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "覆盖三类第三代半导体材料"
+        },
+        {
+          "name": "沃尔德",
+          "code": "688028",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "金刚石散热概念，产业兑现早，小仓位"
+        },
+        {
+          "name": "澜起科技",
+          "code": "688008",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "太辰光",
+          "code": "300570",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "MPO光模块龙头，调整后可低吸"
+        },
+        {
+          "name": "博创科技",
+          "code": "300548",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "MPO光模块龙头，调整后可低吸"
+        },
+        {
+          "name": "致尚科技",
+          "code": "301486",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "MPO光模块轮动标的"
+        },
+        {
+          "name": "仕佳光子",
+          "code": "688313",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "MPO光模块轮动标的"
+        },
+        {
+          "name": "奕东电子",
+          "code": "301123",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "MPO光模块轮动标的"
+        },
+        {
+          "name": "孚能科技",
+          "code": "688567",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "MPO柜内外互联，持续看好"
+        },
+        {
+          "name": "华星科技",
+          "code": null,
+          "exchange": null,
+          "rating": "增持",
+          "rating_reason": "转型成效显著，富创优越即将过会"
+        },
+        {
+          "name": "藤仓",
+          "code": null,
+          "exchange": "其他",
+          "rating": "持有",
+          "rating_reason": "海外光纤龙头，涨价印证景气度"
+        },
+        {
+          "name": "中钨高新",
+          "code": "000657",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "工业刀具耗材，半年报业绩亮眼"
+        },
+        {
+          "name": "新锐股份",
+          "code": "301257",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "工业刀具耗材，半年报业绩亮眼"
+        },
+        {
+          "name": "亿纬锂能",
+          "code": "300014",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "锂电龙头，业绩超预期但资金关注低"
+        },
+        {
+          "name": "昊华科技",
+          "code": "600378",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "锂电材料，需等待AI主线走弱后的资金回流"
+        },
+        {
+          "name": "德方纳米",
+          "code": "300769",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "锂电材料，需等待AI主线走弱后的资金回流"
+        },
+        {
+          "name": "天华新能",
+          "code": "300390",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "锂电材料，需等待AI主线走弱后的资金回流"
+        },
+        {
+          "name": "中际旭创",
+          "code": "300308",
+          "exchange": "深交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看涨AI算力与光通信，短期谨慎乐观，中线偏多",
+      "key_advice": [
+        "收缩持仓范围，聚焦机构核心赛道如通信ETF、科创芯片ETF等",
+        "以5日/8日均线作为入场止盈标准，观察基金重仓指数在4131/4150压力区与4080/4060支撑区的表现",
+        "AI主线若走弱则关注锂电板块反弹机会；回避性价比偏低的氧化MLCC等过热题材",
+        "中长期持续看好AI基建赛道，但短期需防范放量滞涨、冲高回落及海外市场拖累风险"
+      ]
+    },
+    {
+      "date": "2026-06-22",
+      "title": "Vol.260622 互道（）",
+      "link": "https://my.feishu.cn/wiki/SSnAwQdXYiI59akuoRvcjxqonQe",
+      "advice_file": "2026-06-22__Vol.260622 互道（）.md",
+      "extracted_at": "2026-06-29 16:04:27",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "长飞光纤",
+          "code": "601869",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "亨通光电",
+          "code": "600487",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "通鼎互联",
+          "code": "002491",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "寒武纪",
+          "code": "688256",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "中际旭创",
+          "code": "300308",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "协创数据",
+          "code": "300857",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "宁德时代",
+          "code": "300750",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "博众精工",
+          "code": "688097",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "中报季资金转向业绩确定性强的科技龙头，短线分歧加大但长线看多，关注光纤、算力、锂电、券商等业绩方向",
+      "key_advice": [
+        "明确自身交易风格：短线严控风险，跌破关键支撑即离场；长线忽略波动，坚定持有业绩龙头。",
+        "聚焦业绩确定性强的方向，如光纤（长飞、亨通）、算力（寒武纪、中际旭创、协创数据）、锂电（宁德时代）、券商。",
+        "控制仓位，短线可降至5成，利用ETF或大市值业绩股进行高抛低吸。",
+        "回调是长线布局良机，科技板块长期空间仍大，分批低吸。",
+        "回避业绩未兑现的高波动题材股，避免追涨杀跌。"
+      ]
+    },
+    {
       "date": "2026-06-21",
       "title": "Vol.260621 易经第52艮：止于至善",
       "link": "https://my.feishu.cn/wiki/SbKpwIQTpiQPEHknzRfcU9KMnKV",
@@ -420,6 +1045,86 @@
       ]
     },
     {
+      "date": "2026-06-18",
+      "title": "Vol.260618 产业预期差系列7-华为哈勃严选；这就被它们发现了",
+      "link": "https://my.feishu.cn/wiki/OaZAwNH14ini5pk18cbcedyvnTg",
+      "advice_file": "2026-06-18__Vol.260618 产业预期差系列7-华为哈勃严选；这就被它们发现了.md",
+      "extracted_at": "2026-06-29 16:04:54",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "裕太微",
+          "code": "688515",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "天岳先进",
+          "code": "688234",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "强一股份",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "杰华特",
+          "code": "688141",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "云南锗业",
+          "code": "002428",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "灿勤科技",
+          "code": "688182",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "思瑞浦",
+          "code": "688536",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "东芯股份",
+          "code": "688110",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "中天精装",
+          "code": "002989",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "寒武纪",
+          "code": "688256",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "关注华为产业链与卡脖子技术国产替代，但强调波动大、需注重业绩兑现，不宜盲目追高。",
+      "key_advice": [
+        "不要将哈勃持股当作免死金牌，部分公司仍亏损且估值高，需结合基本面甄别。",
+        "科技股波动剧烈，普通投资者应控制仓位，避免追高，更适合大跌后分批小量试错。",
+        "重点跟踪营收增长、亏损收窄、产能落地等业绩兑现信号，而非单纯迷信故事。",
+        "将文章作为赛道导览图，牢记长期方向，但看不懂的公司不勉强参与。"
+      ]
+    },
+    {
       "date": "2026-06-17",
       "title": "Vol.260617 大聪明",
       "link": "https://my.feishu.cn/wiki/EbpgwMpagiSb8TksIJ8cJpx5nce",
@@ -521,6 +1226,91 @@
         "避免在板块情绪高潮时追高，等待回调或业绩确认后入场",
         "采用定投+小仓位方式，控制单一高波动行业仓位在总资产的小部分",
         "警惕“国产替代”“AI算力”等故事落空风险，注意宏观周期和订单波动"
+      ]
+    },
+    {
+      "date": "2026-06-17",
+      "title": "Vol.260617 男女主交替着来",
+      "link": "https://my.feishu.cn/wiki/TFhEwpkbgitaVVkXcJTcIh0Cn7u",
+      "advice_file": "2026-06-17__Vol.260617 男女主交替着来.md",
+      "extracted_at": "2026-06-29 16:05:30",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "拓荆科技",
+          "code": "688072",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "长川科技",
+          "code": "300604",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "华勤技术",
+          "code": "603296",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "快克智能",
+          "code": "603203",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "敏芯股份",
+          "code": "688286",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "科威尔",
+          "code": "688551",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "裕太微",
+          "code": "688515",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "瑞可达",
+          "code": "688800",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "致尚科技",
+          "code": "301486",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "永贵电器",
+          "code": "300351",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "燕麦科技",
+          "code": "688312",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看涨半导体设备与低位传统科技，关注海外算力轮动，建议用ETF参与",
+      "key_advice": [
+        "认识两条主线：半导体设备与低位传统科技（男主）、海外算力产业链（女主），根据轮动切换。",
+        "优先使用ETF（如588710）参与，降低个股选择风险。",
+        "控制仓位，避免追高，以学习认知为主，轻仓试水。"
       ]
     },
     {
@@ -774,6 +1564,62 @@
       ]
     },
     {
+      "date": "2026-06-16",
+      "title": "Vol.260616 产业预期差系列（6）再论玻璃基板",
+      "link": "https://my.feishu.cn/wiki/VCjJwWCOIiKVQdkVRZScUK2Wnzd",
+      "advice_file": "2026-06-16__Vol.260616 产业预期差系列（6）再论玻璃基板.md",
+      "extracted_at": "2026-06-29 16:06:06",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "炬光科技",
+          "code": "688167",
+          "exchange": "上交所",
+          "rating": "回避",
+          "rating_reason": "公司无TGV玻璃基板打孔技术，概念炒作风险大"
+        },
+        {
+          "name": "杰普特",
+          "code": "688025",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "有玻璃钻孔工艺但业绩占比有限，短期锦上添花"
+        },
+        {
+          "name": "帝尔激光",
+          "code": "300776",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "TGV设备已交付，站在核心工艺，具备中长期价值"
+        },
+        {
+          "name": "苏纳光电",
+          "code": null,
+          "exchange": null,
+          "rating": "持有",
+          "rating_reason": "硅透镜龙头，长期逻辑清晰但估值已反映预期"
+        },
+        {
+          "name": "宇瞳光学",
+          "code": "300790",
+          "exchange": "深交所",
+          "rating": "回避",
+          "rating_reason": "硅透镜仍处送样阶段，无成熟量产，题材风险高"
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "长期看好玻璃基板与光通信，但短期谨慎，建议等待回调布局",
+      "key_advice": [
+        "把玻璃基板+激光打孔+光通信作为长期学习方向，不要急于追高",
+        "重点跟踪帝尔激光等有真实TGV设备交付的公司，等待估值回调后分批布局",
+        "对仍处概念阶段的宇瞳光学等保持观察，待量产和订单确认后再考虑",
+        "对苏纳光电等硅透镜龙头，待行业景气回调、估值合理时再慢慢买入",
+        "避免单点重仓高阶CCL等已大涨板块，可用指数或基金间接参与"
+      ]
+    },
+    {
       "date": "2026-06-15",
       "title": "Vol.260615 在两种可能性中震荡筑底",
       "link": "https://my.feishu.cn/wiki/TG9mw789Si4ndPkypLicZD0jnoJ",
@@ -851,6 +1697,90 @@
       ]
     },
     {
+      "date": "2026-06-15",
+      "title": "Vol.260615 通假字；以无事取天下",
+      "link": "https://my.feishu.cn/wiki/SYnAw4nDSixV61k69P5cY99rn2c",
+      "advice_file": "2026-06-15__Vol.260615 通假字；以无事取天下.md",
+      "extracted_at": "2026-06-29 16:06:54",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "博创科技",
+          "code": "300548",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "铜连接团宠，吸筹拉升，行情未完"
+        },
+        {
+          "name": "太辰光",
+          "code": "300570",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "光铜双重受益，高开强势"
+        },
+        {
+          "name": "鼎通科技",
+          "code": "688668",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "-8%抄底机会，高速连接器供应商"
+        },
+        {
+          "name": "瑞可达",
+          "code": "688800",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "连接器多领域龙头，铜连接概念"
+        },
+        {
+          "name": "奕东电子",
+          "code": "301123",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "液冷+连接器PCB，万金油标的"
+        },
+        {
+          "name": "申菱环境",
+          "code": "301018",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "液冷弹性最好，数据中心液冷龙头"
+        },
+        {
+          "name": "寒武纪",
+          "code": "688256",
+          "exchange": "上交所",
+          "rating": null,
+          "rating_reason": "仅提及与液冷关联，未明确买卖建议"
+        },
+        {
+          "name": "光库科技",
+          "code": "300620",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "并购进入创业板指，光通信设备"
+        },
+        {
+          "name": "杰普特",
+          "code": "688025",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "小型平台趋势漂亮，换仓机会"
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看涨AI算力基础设施，看好铜连接、光通信、液冷、AI芯片及上游设备，建议长期持有并辅以短线博弈",
+      "key_advice": [
+        "对铜连接、光通信、液冷等AI基础设施方向保持长期持有，避免频繁高抛低吸",
+        "短线能力强者可关注铜连接、光通信板块高开急跌的换仓和抄底机会",
+        "关注朱格拉周期下的上游设备公司，如科创机械ETF成分股，分散布局",
+        "液冷方向弹性大，可关注申菱环境等龙头，但需注意项目落地节奏",
+        "普通投资者优先学习行业逻辑，用小仓位分批介入，勿模仿短线追涨杀跌"
+      ]
+    },
+    {
       "date": "2026-06-14",
       "title": "Vol.260614 现实调研科技企业的资讯与观感（4）",
       "link": "https://my.feishu.cn/wiki/P9l5wX5i6iYTSJkGncNc0QtSn1d",
@@ -917,6 +1847,25 @@
       ]
     },
     {
+      "date": "2026-06-12",
+      "title": "Vol.260612 今日更新",
+      "link": "https://my.feishu.cn/wiki/XJS8w2Wd2iYd1skoxUncMIC2nUf",
+      "advice_file": "2026-06-12__Vol.260612 今日更新.md",
+      "extracted_at": "2026-06-29 16:07:09",
+      "llm_provider": "DashScope",
+      "companies": [],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "谨慎观望，防范冲高回落，关注基金重仓指数动向",
+      "key_advice": [
+        "接近4010压力位时警惕放量滞涨和冲高回落",
+        "以基金重仓指数为风向标，涨则参与，回落则做T",
+        "避免盲目追高，优先考虑宽基指数基金分散风险",
+        "短线做T风险高，投资小白不宜频繁操作"
+      ]
+    },
+    {
       "date": "2026-06-11",
       "title": "Vol.260611 继续的剧本与再谈普通人的建议",
       "link": "https://my.feishu.cn/wiki/IfiawRsVLigqwmkDUWFcHrK0nrb",
@@ -933,6 +1882,70 @@
         "普通投资者避免追涨个股，定投或等回调至关键均线区间布局相关ETF更为稳妥。",
         "严格遵守交易纪律，观察上升轨道与支撑位，跌破上升轨道或5日线平台应离场。",
         "长期看好AI行情，重点关注基金重仓的国产半导体、通信、算力方向。"
+      ]
+    },
+    {
+      "date": "2026-06-11",
+      "title": "Vol.260611 洗秃噜皮",
+      "link": "https://my.feishu.cn/wiki/MIgtwC160ifIJ4kCYH0cLu0BnX6",
+      "advice_file": "2026-06-11__Vol.260611 洗秃噜皮.md",
+      "extracted_at": "2026-06-29 16:07:51",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "科创板半导体材料与设备ETF",
+          "code": "588710",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "010相关半导体ETF",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "通信ETF",
+          "code": "515880",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "博众精工",
+          "code": "688097",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "天孚通信",
+          "code": "300394",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "云褚",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "校花",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "极端缩圈风格持续，看好半导体设备材料、通信与算力主线，但市场整体调整未结束，建议观望或小仓位参与",
+      "key_advice": [
+        "以半导体设备材料ETF（如588710）和通信ETF为观察主线，先学习再小仓位参与",
+        "避免追高，等待关键主线ETF调整放量企稳后再考虑加仓",
+        "大部分品种仍有调整空间，不急于抄底",
+        "海外算力方向可适度分散配置，但需控制汇率和政策风险",
+        "接受调整的正常性，保持耐心，不要频繁高抛低吸"
       ]
     },
     {
@@ -983,6 +1996,82 @@
         "密切关注英伟达CPO、HVDC等信息对光模块和服务器电源板块的冲击，规避短期利空方向",
         "重点观察光模块（尤其是6.4T路线）能否企稳回升，以及“能铜则铜”相关的连接器标的",
         "短线操作紧盯4032、4053压力位，若无法站稳则指数将反复寻底"
+      ]
+    },
+    {
+      "date": "2026-06-10",
+      "title": "Vol.260610 谈谈玻璃基板",
+      "link": "https://my.feishu.cn/wiki/AxpKw6KeXiIhsKkl0m2ceYQFnbf",
+      "advice_file": "2026-06-10__Vol.260610 谈谈玻璃基板.md",
+      "extracted_at": "2026-06-29 16:08:26",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "京东方A",
+          "code": "000725",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "帝尔激光",
+          "code": "300776",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "沃格光电",
+          "code": "603773",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "美迪凯",
+          "code": "688079",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "远东股份",
+          "code": "600869",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "康宁",
+          "code": "GLW",
+          "exchange": "纽交所",
+          "rating": null
+        },
+        {
+          "name": "肖特",
+          "code": null,
+          "exchange": "其他",
+          "rating": null
+        },
+        {
+          "name": "英特尔",
+          "code": "INTC",
+          "exchange": "纳斯达克",
+          "rating": null
+        },
+        {
+          "name": "台积电",
+          "code": "TSM",
+          "exchange": "纽交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "长期看好玻璃基板产业链，但短期警惕概念炒作，建议关注有业绩支撑的稳健龙头",
+      "key_advice": [
+        "将玻璃基板作为长期趋势学习，避免短期追高炒作",
+        "关注概念股实际订单和营收占比，不宜重仓押注",
+        "组合中配置远东股份等业绩稳健的基础设施龙头",
+        "新概念采用小仓位分批买入，等待量产信号明确后加仓",
+        "警惕市场情绪波动，避免在媒体集中报道时冲动入场"
       ]
     },
     {
@@ -1043,6 +2132,132 @@
       ]
     },
     {
+      "date": "2026-06-09",
+      "title": "Vol.260609 它们来时的路",
+      "link": "https://my.feishu.cn/wiki/PgGQwnaJKikFaNkwG7GcaGGRnMf",
+      "advice_file": "2026-06-09__Vol.260609 它们来时的路.md",
+      "extracted_at": "2026-06-29 16:09:25",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "远东股份",
+          "code": "600869",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "光纤修复，光板块前锋"
+        },
+        {
+          "name": "博创科技",
+          "code": "300548",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "铜缆需求，轮动到创业板"
+        },
+        {
+          "name": "鼎通科技",
+          "code": "688668",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "铜缆逻辑，前期已表现"
+        },
+        {
+          "name": "瑞可达",
+          "code": "688800",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "铜缆地板上起涨，短线机会"
+        },
+        {
+          "name": "科威尔",
+          "code": "688551",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "稀缺测试设备，缺货期长"
+        },
+        {
+          "name": "派瑞股份",
+          "code": "300831",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "国网5年规划，长期看好"
+        },
+        {
+          "name": "铂科新材",
+          "code": "300811",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "芯片电感，电力电子材料"
+        },
+        {
+          "name": "中恒电气",
+          "code": "002364",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "电力设备，与科威尔等联动"
+        },
+        {
+          "name": "中国西电",
+          "code": "601179",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "高毛利电力龙头，技术壁垒强"
+        },
+        {
+          "name": "创世纪",
+          "code": "300083",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "工业母机趋势，订单验证新周期"
+        },
+        {
+          "name": "新锐股份",
+          "code": "688257",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "机床刀具，验证朱格拉周期"
+        },
+        {
+          "name": "法拉电子",
+          "code": "600563",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "薄膜电容涨价预期"
+        },
+        {
+          "name": "三环集团",
+          "code": "300408",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "MLCC龙头，大厂唯一认可"
+        },
+        {
+          "name": "亨通光电",
+          "code": "600487",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "光纤光缆龙头，集采受益"
+        },
+        {
+          "name": "孚能科技",
+          "code": "688567",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "21日线企稳信号，看好修复"
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看涨基础硬件和工业升级，布局稀缺材料、国产半导体设备、电力设备及工业母机的新朱格拉周期",
+      "key_advice": [
+        "关注光纤、铜缆、MLCC等涨价品种的修复机会，短线轮动可参与",
+        "电力设备股（科威尔、派瑞、中国西电等）受益国网长期规划，宜忽略短期波动长期持有",
+        "工业母机与自动化设备是新周期起点，回调时关注创世纪、新锐等龙头",
+        "国产半导体设备景气上行，但板块波动大，可借ETF配置而非单押个股",
+        "对涨价预期和产业趋势要多维验证，避免情绪化追高，设冷静期再决策"
+      ]
+    },
+    {
       "date": "2026-06-08",
       "title": "Vol.260608 六月兵棋推演与行情展望",
       "link": "https://my.feishu.cn/wiki/NKABwiyxPiTtoFkwVAQcLyRonSf",
@@ -1059,6 +2274,68 @@
         "关注机器人、电网设备、AI应用等中位板块的博弈方向，警惕追高风险。",
         "高位止盈后可观望，不急于切换至消费等低位板块。",
         "新题材（6G、玻璃基板、商航）仅限小仓位分批试探，不追高。"
+      ]
+    },
+    {
+      "date": "2026-06-08",
+      "title": "Vol.260608 朱格拉周期（2）",
+      "link": "https://my.feishu.cn/wiki/BAQ1wAtWNiwWogkoygHc6JdEnJh",
+      "advice_file": "2026-06-08__Vol.260608 朱格拉周期（2）.md",
+      "extracted_at": "2026-06-29 16:09:49",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "绿的谐波",
+          "code": "688017",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "昊志机电",
+          "code": "300503",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "中控技术",
+          "code": "688777",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "亨通光电",
+          "code": "600487",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "鼎通科技",
+          "code": "688668",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "科威尔",
+          "code": "688551",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "快克智能",
+          "code": "603203",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看多新一轮朱格拉周期，聚焦机器人与光纤板块，短期震荡但长线看好",
+      "key_advice": [
+        "短线忌恐慌割肉与追高，大盘拉升多为机构出货，耐心等待二次探底企稳",
+        "重点关注机器人/自动化（物理AI）和光纤产业链，以ETF（如588850）分散布局",
+        "产业逻辑未变时，长线坚定持有，不被短期波动洗出，如快克逆市反弹案例",
+        "高位科技股若尚未离场，利用反抽机会减仓，勿在破位后死扛"
       ]
     },
     {
@@ -1079,6 +2356,78 @@
         "降低热门科技股（AI、半导体）仓位，切勿追高，留足现金防止被套",
         "普通投资者优先用宽基或行业ETF（如588710、515880）定投，分散个股风险",
         "回避ST股及看不懂的小盘题材股，优先处理基本面有问题的持仓"
+      ]
+    },
+    {
+      "date": "2026-06-07",
+      "title": "Vol.260607 中美股市跌什么（兼谈没走被套咋办）",
+      "link": "https://my.feishu.cn/wiki/AVEywLsExilPh6kgmyMc8Avvnkj",
+      "advice_file": "2026-06-07__Vol.260607 中美股市跌什么（兼谈没走被套咋办）.md",
+      "extracted_at": "2026-06-29 16:10:14",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "英伟达",
+          "code": "NVDA",
+          "exchange": "纳斯达克",
+          "rating": null,
+          "rating_reason": null
+        },
+        {
+          "name": "谷歌",
+          "code": "GOOGL",
+          "exchange": "纳斯达克",
+          "rating": null,
+          "rating_reason": null
+        },
+        {
+          "name": "Meta",
+          "code": "META",
+          "exchange": "纳斯达克",
+          "rating": null,
+          "rating_reason": null
+        },
+        {
+          "name": "微软",
+          "code": "MSFT",
+          "exchange": "纳斯达克",
+          "rating": null,
+          "rating_reason": null
+        },
+        {
+          "name": "宁德时代",
+          "code": "300750",
+          "exchange": "深交所",
+          "rating": null,
+          "rating_reason": null
+        },
+        {
+          "name": "寒武纪",
+          "code": "688256",
+          "exchange": "上交所",
+          "rating": null,
+          "rating_reason": null
+        },
+        {
+          "name": "派瑞股份",
+          "code": "300831",
+          "exchange": "深交所",
+          "rating": "回避",
+          "rating_reason": "因财务问题被ST，治理风险高，不建议普通投资者参与"
+        }
+      ],
+      "markets": [
+        "A股",
+        "港股",
+        "美股"
+      ],
+      "tendency": "长期看涨AI与国产半导体，但短期拥挤需调整，建议用ETF低位定投，严守纪律",
+      "key_advice": [
+        "认清自己是短线还是长线，长线关注产业逻辑，短线严守MA5、MA21等纪律",
+        "当前科技拥挤，不宜追高，待大跌缩量企稳后再分批布局，优选ETF分散风险",
+        "被套不急于割肉，等反弹减仓至舒适仓位，跌破支撑且放量下跌则先离场",
+        "关注基金重仓指数BK0536的买卖方向，跟随机构调仓，大盘＞板块＞个股",
+        "对ST股和有重大负面个股，原则上不参与，已持仓应控制仓位逐步退出"
       ]
     },
     {
@@ -1252,6 +2601,67 @@
       ]
     },
     {
+      "date": "2026-06-03",
+      "title": "Vol.260603 顺天应人；有福之人",
+      "link": "https://my.feishu.cn/wiki/UyT9w7FBEi16I4kxo0xc4NdInvb",
+      "advice_file": "2026-06-03__Vol.260603 顺天应人；有福之人.md",
+      "extracted_at": "2026-06-29 16:10:52",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "罗博特科",
+          "code": "300757",
+          "exchange": "深交所",
+          "rating": "持有",
+          "rating_reason": "光设备核心，但板块有派发迹象，不宜追高"
+        },
+        {
+          "name": "博众精工",
+          "code": "688097",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "东山精密",
+          "code": "002384",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "200G光模块领先，有Meta订单，业绩预期好"
+        },
+        {
+          "name": "长光华芯",
+          "code": "688048",
+          "exchange": "上交所",
+          "rating": "持有",
+          "rating_reason": "光芯片送样验证，国产替代核心，但板块高位"
+        },
+        {
+          "name": "华天科技",
+          "code": "002185",
+          "exchange": "深交所",
+          "rating": "减持",
+          "rating_reason": "半导体设备板块主力派发，反抽是减仓机会"
+        },
+        {
+          "name": "寒武纪",
+          "code": "688256",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看好AI硬件中长期趋势，但短期高位谨慎，持有光模块大票，规避半导体设备，关注AIPC、AEC、CPU等相对低位机会",
+      "key_advice": [
+        "光模块等科技大票只持有不追高，高位震荡期注意板块派发迹象",
+        "半导体设备反抽宜减仓，主力已派发，不宜恋战",
+        "对科技大票保持忠诚，对非科技小票保持灵活",
+        "遵循量价口诀：缩量上涨可持，放量大涨警惕，放量滞涨减仓",
+        "关注AIPC、AEC连接器、CPU等相对低位方向，等待回调后布局"
+      ]
+    },
+    {
       "date": "2026-06-02",
       "title": "Vol.260602 两个方向",
       "link": "https://my.feishu.cn/wiki/XQLbwvox2iOtjEkqMARcFW1bnzf",
@@ -1280,6 +2690,76 @@
         "硬科技股逢反弹去弱留强、降低仓位",
         "软科技（AI应用/AIPC）只关注龙头，耐心等待低吸机会",
         "关注AI应用软件如IGV突破趋势，在A股寻找对标标的"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "title": "Vol.260602 产业预期差（4）光模块扩产设备",
+      "link": "https://my.feishu.cn/wiki/O3fOwKQWsiyl0ZkgQPBcISncnZb",
+      "advice_file": "2026-06-02__Vol.260602 产业预期差（4）光模块扩产设备.md",
+      "extracted_at": "2026-06-29 16:11:18",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "凯格精机",
+          "code": "301338",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "罗博特科",
+          "code": "300757",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "科瑞技术",
+          "code": "002957",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "智立方",
+          "code": "301312",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "博众精工",
+          "code": "688097",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "快克智能",
+          "code": "603203",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "科威尔",
+          "code": "688551",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "Applied Optoelectronics",
+          "code": "AAOI",
+          "exchange": "纳斯达克",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "长期看好光模块扩产设备方向，视为“幕后赢家”，但短期估值偏高且波动剧烈，需谨慎对待",
+      "key_advice": [
+        "将光模块及扩产设备列为长期观察方向，先搞清产品与设备商的区别，勿急于买入",
+        "避免在消息刚出、股价已大涨后追高，等待业绩和订单验证",
+        "优先选择业务多元、已有稳定业绩的公司，回避仅靠单一传闻支撑的标的",
+        "关注龙头季度财报中的800G/1.6T出货量，以及设备商在手订单和交付进度",
+        "若出现行业产能利用率或设备开工率持续走弱，应及时降低预期和仓位"
       ]
     },
     {
@@ -1511,6 +2991,66 @@
       ]
     },
     {
+      "date": "2026-05-27",
+      "title": "Vol.260527 剧烈震荡与切换先声",
+      "link": "https://my.feishu.cn/wiki/MpyVwXp5GipjOukUDrtcwT8lnTe",
+      "advice_file": "2026-05-27__Vol.260527 剧烈震荡与切换先声.md",
+      "extracted_at": "2026-06-29 16:11:46",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "派瑞股份",
+          "code": "300831",
+          "exchange": "深交所",
+          "rating": "增持",
+          "rating_reason": "电网4万亿投资受益者，IGBT方向看好"
+        },
+        {
+          "name": "鹏鼎控股",
+          "code": "002938",
+          "exchange": "深交所",
+          "rating": "减持",
+          "rating_reason": "大股东减持公告，短期风险较大"
+        },
+        {
+          "name": "快克智能",
+          "code": "603203",
+          "exchange": "上交所",
+          "rating": "增持",
+          "rating_reason": "股价位置相对较好，半导体封装设备方向"
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "谨慎高位科技，关注风格切换，逐步布局低位消费或电网等新主线",
+      "key_advice": [
+        "趁冲高控制仓位，破位个股严格执行技术止损",
+        "不要追高半导体设备等已完成派发的高位板块",
+        "用指数基金或行业基金分散参与，避免重仓单一股票",
+        "关注电网、IGBT等有政策支撑的中长期方向，分批布局",
+        "面对股东减持等利空，优先控制风险，不盲目死扛"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "title": "Vol.260527 决胜的是产业逻辑",
+      "link": "https://my.feishu.cn/wiki/EnJewHt8yieqlhkHu2QcH4ZQnKd",
+      "advice_file": "2026-05-27__Vol.260527 决胜的是产业逻辑.md",
+      "extracted_at": "2026-06-29 16:12:03",
+      "llm_provider": "DashScope",
+      "companies": [],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看好战略性新兴产业长期逻辑，但需警惕短期波动和内卷风险",
+      "key_advice": [
+        "关注产业趋势和基本面，而非短期股价波动",
+        "用行业基金或ETF分散布局芯片、电动车等长期方向",
+        "避免盲目追高，观察公司连续季度业绩增长再逐步买入"
+      ]
+    },
+    {
       "date": "2026-05-26",
       "title": "Vol.260526 韬定律的三大核心利好及扩散",
       "link": "https://my.feishu.cn/wiki/E53BwWUOCiF1OJkQVIgctnv9nvT",
@@ -1672,6 +3212,87 @@
       ]
     },
     {
+      "date": "2026-05-26",
+      "title": "Vol.260526 宽幅震荡",
+      "link": "https://my.feishu.cn/wiki/Lr4mw71AHiIWsHkXdyQcFti5nCe",
+      "advice_file": "2026-05-26__Vol.260526 宽幅震荡.md",
+      "extracted_at": "2026-06-29 16:12:52",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "拓荆科技",
+          "code": "688072",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "华天科技",
+          "code": "002185",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "福晶科技",
+          "code": "002222",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "生益科技",
+          "code": "600183",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "生益电子",
+          "code": "688183",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "云南锗业",
+          "code": "002428",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "兴森科技",
+          "code": "002436",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "绿的谐波",
+          "code": "688017",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "昊志机电",
+          "code": "300503",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "科威尔",
+          "code": "688551",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看好科技成长主线（半导体设备、AI算力、机器人），但需警惕高估值，震荡中低吸高抛",
+      "key_advice": [
+        "在指数震荡区间，冰点大胆低吸，高潮果断高抛，严守技术纪律",
+        "关注基金重仓指数分时图，红绿柱强弱判断大资金动向，不逆势抄底",
+        "半导体设备、算力等主线方向，等待回调或反包信号再介入，避免追高",
+        "高波动科技股只适合小仓位滚动操作，优先用ETF分散风险",
+        "持有上升通道完好的个股，若放量破位或跌破关键支撑则及时离场"
+      ]
+    },
+    {
       "date": "2026-05-25",
       "title": "Vol.260525 立体滚筒式前进",
       "link": "https://my.feishu.cn/wiki/Xo9pwUgmPibLwYks5MUcfBJjnye",
@@ -1763,6 +3384,12 @@
       ]
     },
     {
+      "date": "2026-05-25",
+      "title": "Vol.260525 今日更新",
+      "link": "https://my.feishu.cn/wiki/SjDBwVS1xiDQdPkxjkJcliibnik",
+      "advice_file": "2026-05-25__Vol.260525 今日更新.md"
+    },
+    {
       "date": "2026-05-24",
       "title": "Vol.260524 今日更新",
       "link": "https://my.feishu.cn/wiki/Bof2wsAlqiL9weknMfJc60fJnPe",
@@ -1843,6 +3470,12 @@
         "轻仓关注光芯片、稀缺物料、核心元器件、CPU等硬科技主线，但避免重仓追高",
         "不必急于跟风游资短线题材，等主流主线确立、机构大规模入场后再加重仓位"
       ]
+    },
+    {
+      "date": "2026-05-22",
+      "title": "Vol.260522 震荡区域形成",
+      "link": "https://my.feishu.cn/wiki/Fn1swgxGXioHEOkLdLWcb8bnnGb",
+      "advice_file": "2026-05-22__Vol.260522 震荡区域形成.md"
     },
     {
       "date": "2026-05-21",
@@ -1970,6 +3603,18 @@
       ]
     },
     {
+      "date": "2026-05-20",
+      "title": "Vol.260520 这几天看反抽",
+      "link": "https://my.feishu.cn/wiki/O3OdwFHR2i1O2bkoOVicE7lXnuN",
+      "advice_file": "2026-05-20__Vol.260520 这几天看反抽.md"
+    },
+    {
+      "date": "2026-05-20",
+      "title": "Vol.260520 电风扇行情的序幕",
+      "link": "https://my.feishu.cn/wiki/AsjJwl1LRix4oUkC3Wacgi2Zn3e",
+      "advice_file": "2026-05-20__Vol.260520 电风扇行情的序幕.md"
+    },
+    {
       "date": "2026-05-19",
       "title": "Vol.260519 犹在眼前",
       "link": "https://my.feishu.cn/wiki/Ht4GwexYcimkvlkl0wHcI8IenHg",
@@ -2068,6 +3713,12 @@
         "若大盘低开至4080点附近，可关注反抽机会，但反弹主要用于逢高卖出。",
         "谨慎者继续观望，等待更明确的信号，避免在下跌中过早抄底。"
       ]
+    },
+    {
+      "date": "2026-05-19",
+      "title": "Vol.260519 作战地图，搞清位置节奏",
+      "link": "https://my.feishu.cn/wiki/JWvowBHq4iGirtkajGBcfWdwnoc",
+      "advice_file": "2026-05-19__Vol.260519 作战地图，搞清位置节奏.md"
     },
     {
       "date": "2026-05-18",
@@ -2193,6 +3844,12 @@
       ]
     },
     {
+      "date": "2026-05-18",
+      "title": "Vol.260518 夺嫡前传(1)市场切往哪里",
+      "link": "https://my.feishu.cn/wiki/VVRuwb4xhic00Qk2jvIcd01mnbe",
+      "advice_file": "2026-05-18__Vol.260518 夺嫡前传(1)市场切往哪里.md"
+    },
+    {
       "date": "2026-05-16",
       "title": "Vol.260516 易经第47困卦：困在高位待破局",
       "link": "https://my.feishu.cn/wiki/IPc6wtgsEiAHBbkxTxTcIT8ZnUg",
@@ -2229,6 +3886,12 @@
         "对新手而言，更适合通过半导体、机器人、数据中心等主题ETF分批配置，避免押注单只高位股",
         "警惕高位板块的派发风险，不轻易接盘破位下行的热门科技股"
       ]
+    },
+    {
+      "date": "2026-05-15",
+      "title": "Vol.260515 派发与发酵；观察4120这个位置",
+      "link": "https://my.feishu.cn/wiki/AjqZwjXRgi60fykri8Lcjnshn3d",
+      "advice_file": "2026-05-15__Vol.260515 派发与发酵；观察4120这个位置.md"
     },
     {
       "date": "2026-05-14",
@@ -2271,6 +3934,12 @@
         "持仓以5日线和21日线为风控，有效跌破果断离场，警惕放量滞涨",
         "当前行情不宜追高算力等老热点，适合小仓位试探布局新方向"
       ]
+    },
+    {
+      "date": "2026-05-14",
+      "title": "Vol.260514 一哆嗦",
+      "link": "https://my.feishu.cn/wiki/NbR1wQejAiHiLPkjYlwcNZMpn0g",
+      "advice_file": "2026-05-14__Vol.260514 一哆嗦.md"
     },
     {
       "date": "2026-05-13",
@@ -2322,6 +3991,24 @@
         "对未经验验证的'圈内消息'保持谨慎，待公司公告或业绩兑现再重仓",
         "若纠结是否卖出，应反思是否已不再看好该笔投资"
       ]
+    },
+    {
+      "date": "2026-05-13",
+      "title": "Vol.260513 看好量能",
+      "link": "https://my.feishu.cn/wiki/WKrgwxmiMibKOYksIWLck7Q3nDe",
+      "advice_file": "2026-05-13__Vol.260513 看好量能.md"
+    },
+    {
+      "date": "2026-05-13",
+      "title": "Vol.260513 残暴的欢愉(2)；加速的美好时光",
+      "link": "https://my.feishu.cn/wiki/UtHfwjzs1ipwk2khNuecfudjnNe",
+      "advice_file": "2026-05-13__Vol.260513 残暴的欢愉(2)；加速的美好时光.md"
+    },
+    {
+      "date": "2026-05-13",
+      "title": "Vol.260513 又一个兑现的产业信息",
+      "link": "https://my.feishu.cn/wiki/Vi6Kw7ZXji73BYkusWUcQCf7nse",
+      "advice_file": "2026-05-13__Vol.260513 又一个兑现的产业信息.md"
     },
     {
       "date": "2026-05-12",
@@ -2420,6 +4107,12 @@
         "警惕高位震荡，密切观察量能、补涨蔓延及龙头股表现等见顶信号",
         "将光板块作为少量卫星仓位参与，避免重仓追高"
       ]
+    },
+    {
+      "date": "2026-05-12",
+      "title": "Vol.260512 还有一哆嗦",
+      "link": "https://my.feishu.cn/wiki/GJV7wCbChizL2ZkYNWVcpMXVneg",
+      "advice_file": "2026-05-12__Vol.260512 还有一哆嗦.md"
     },
     {
       "date": "2026-05-11",
@@ -2610,6 +4303,12 @@
         "留意资金向X方向（商业航天、工业母机、机器人）切换的趋势，可在相对低位逢低布局",
         "采取严格风控措施，注意市场量能放大的见顶信号（如成交额接近3.8-4万亿）"
       ]
+    },
+    {
+      "date": "2026-05-11",
+      "title": "Vol.260511 加速赶顶中；今天追进来的是谁",
+      "link": "https://my.feishu.cn/wiki/QXLcwc09Uipk38kxMmdcLEyPnqg",
+      "advice_file": "2026-05-11__Vol.260511 加速赶顶中；今天追进来的是谁.md"
     },
     {
       "date": "2026-05-10",
@@ -2821,6 +4520,12 @@
         "个股选择困难时，优先考虑行业ETF。",
         "若对当前行情无把握，保持观望是上策。"
       ]
+    },
+    {
+      "date": "2026-05-07",
+      "title": "Vol.260507 光的第N波；拳打脚踢并未放量,继续拿着",
+      "link": "https://my.feishu.cn/wiki/RtvvwzrMXiPjYgkPvSVcQ1JknJb",
+      "advice_file": "2026-05-07__Vol.260507 光的第N波；拳打脚踢并未放量,继续拿着.md"
     },
     {
       "date": "2026-05-06",
@@ -3110,6 +4815,12 @@
       ]
     },
     {
+      "date": "2026-05-06",
+      "title": "Vol.260506 升；谈几个产业内部信息",
+      "link": "https://my.feishu.cn/wiki/SX9awPtN7i7ytjkhoYTc5RDCnkf",
+      "advice_file": "2026-05-06__Vol.260506 升；谈几个产业内部信息.md"
+    },
+    {
       "date": "2026-05-05",
       "title": "Vol.260505 大湾区算力集群",
       "link": "https://my.feishu.cn/wiki/M1CNwxWxki9UKFkRq92cLYBKnIh",
@@ -3155,6 +4866,12 @@
         "东阳光等大盘股需把握技术图形节奏，注意止盈和回踩买点",
         "港股润泽科技可等粤港澳效率，避免盲目跟风炒作"
       ]
+    },
+    {
+      "date": "2026-05-05",
+      "title": "Vol.260505 来鹅城就干三件事",
+      "link": "https://my.feishu.cn/wiki/FUrJwjSVhivm6ekBzpTcLI1xnhg",
+      "advice_file": "2026-05-05__Vol.260505 来鹅城就干三件事.md"
     },
     {
       "date": "2026-05-04",
@@ -3315,6 +5032,12 @@
       ]
     },
     {
+      "date": "2026-04-30",
+      "title": "Vol.260430 大王与你读兵法7：不要添油战术频繁补仓",
+      "link": "https://my.feishu.cn/wiki/GRwOwZHPTiBFg8kwVukc0V1lnSf",
+      "advice_file": "2026-04-30__Vol.260430 大王与你读兵法7：不要添油战术频繁补仓.md"
+    },
+    {
       "date": "2026-04-29",
       "title": "Vol.260429 独走的一日",
       "link": "https://my.feishu.cn/wiki/Dm7Kw91cZioQ4mkoHuBcq08gnnh",
@@ -3434,6 +5157,12 @@
       ]
     },
     {
+      "date": "2026-04-29",
+      "title": "Vol.260429 短线的调整基本结束了亲们",
+      "link": "https://my.feishu.cn/wiki/RcvswPAZjiDzTikaDigc4atqnXf",
+      "advice_file": "2026-04-29__Vol.260429 短线的调整基本结束了亲们.md"
+    },
+    {
       "date": "2026-04-28",
       "title": "Vol.260428 今日海外算力及市场观点",
       "link": "https://my.feishu.cn/wiki/IETSweIpkiHTybkBhvfcDvbcnen",
@@ -3495,6 +5224,12 @@
         "国产算力核心标的如华丰科技，以低吸策略参与",
         "恒润股份若低开绿盘，可小仓位博弈季报行情"
       ]
+    },
+    {
+      "date": "2026-04-28",
+      "title": "Vol.260428 震荡下更好",
+      "link": "https://my.feishu.cn/wiki/DuWOwFoL4iPke1krlP9c9JDln1g",
+      "advice_file": "2026-04-28__Vol.260428 震荡下更好.md"
     },
     {
       "date": "2026-04-27",
@@ -3629,6 +5364,12 @@
       ]
     },
     {
+      "date": "2026-04-27",
+      "title": "Vol.260427 拉锯式调整",
+      "link": "https://my.feishu.cn/wiki/BoipwBOVXiusqpk45o5cNLqkn5g",
+      "advice_file": "2026-04-27__Vol.260427 拉锯式调整.md"
+    },
+    {
       "date": "2026-04-26",
       "title": "Vol.260426 国产芯片",
       "link": "https://my.feishu.cn/wiki/RRC0w1S0Uid7vgkJ8Xsc6jbFnDh",
@@ -3727,6 +5468,12 @@
         "优先通过科技主题基金间接参与，避免直接投资不透明的小公司",
         "警惕文章中的黑话和煽动性表述，坚持基本面研究"
       ]
+    },
+    {
+      "date": "2026-04-24",
+      "title": "Vol.260424 文峰救主",
+      "link": "https://my.feishu.cn/wiki/YiPqwRIhuilQaUkqM82cFZ39nMJ",
+      "advice_file": "2026-04-24__Vol.260424 文峰救主.md"
     },
     {
       "date": "2026-04-23",
@@ -4545,6 +6292,12 @@
         "操作采用分批买入方式，设置15%止损线，切勿追涨停及全仓押注",
         "重点跟踪宁德时代走势，若缩量上涨可关注相关板块接力机会"
       ]
+    },
+    {
+      "date": "2026-04-16",
+      "title": "Vol.260416 大王与你读兵法4：推演与概率的艺术",
+      "link": "https://my.feishu.cn/wiki/UMKOwCHgqiyurZkfsoDcbHFRnNh",
+      "advice_file": "2026-04-16__Vol.260416 大王与你读兵法4：推演与概率的艺术.md"
     },
     {
       "date": "2026-04-15",
@@ -5941,6 +7694,12 @@
         "关注3852、3731支撑位，跌至支撑位可低吸，大涨可减仓锁定利润",
         "避开技术面破位标的，如跌破60日线的个股，等企稳后再考虑介入"
       ]
+    },
+    {
+      "date": "2026-03-30",
+      "title": "Vol.260330 大王与你读兵法3：打仗不是用阴谋诡计",
+      "link": "https://my.feishu.cn/wiki/Jb7hw6xI2ivjmKk4xVbcG3wynxA",
+      "advice_file": "2026-03-30__Vol.260330 大王与你读兵法3：打仗不是用阴谋诡计.md"
     },
     {
       "date": "2026-03-28",

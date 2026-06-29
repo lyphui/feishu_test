@@ -16,11 +16,11 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 
-from utils.plotting import (
+from lib.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS,
     setup_matplotlib, style_ax,
 )
-from utils.market_data import fetch_stock_data   # noqa: F401 — re-export for backward compat
+from lib.market_data import fetch_stock_data   # noqa: F401 — re-export for backward compat
 
 warnings.filterwarnings("ignore")
 setup_matplotlib()
@@ -41,29 +41,40 @@ def run_backtest(
     position_size: float = 1.0,         # 每次建仓比例（1.0 = 全仓）
     stop_loss: float = None,            # 止损比例，如 0.08 = 8%，None = 不止损
     take_profit: float = None,          # 止盈比例，如 0.20 = 20%，None = 不止盈
+    verbose: bool = False,              # True 时打印表头/数据量/结果汇总（库默认静默）
 ) -> dict:
     """
-    核心回测函数，返回回测统计结果 dict
+    核心回测函数，返回回测统计结果 dict。
+
+    verbose=False（默认）时引擎不打印任何内容，由调用方决定如何展示结果，
+    避免批量回测刷屏；需要完整汇总表时传 verbose=True 或自行调用 print_summary。
     """
 
     from strategies import MACDStrategy
     if strategy is None:
         strategy = MACDStrategy()
 
-    print(f"\n{'='*55}")
-    print(f"  A股策略回测  [{strategy.name}]")
-    print(f"  股票代码：{symbol}  周期：{start_date} → {end_date}")
-    print(f"{'='*55}")
+    if verbose:
+        print(f"\n{'='*55}")
+        print(f"  A股策略回测  [{strategy.name}]")
+        print(f"  股票代码：{symbol}  周期：{start_date} → {end_date}")
+        print(f"{'='*55}")
 
     # ── 获取数据 ──
     df = fetch_stock_data(symbol, start_date, end_date)
     if df.empty or len(df) < 50:
         raise ValueError("数据不足，请检查股票代码或延长时间范围")
 
-    print(f"  获取到 {len(df)} 个交易日数据")
+    if verbose:
+        print(f"  获取到 {len(df)} 个交易日数据")
 
     # ── 计算指标 + 生成信号（委托给策略） ──
     df = strategy.prepare(df)
+
+    # ── 执行信号：T 日产生的信号在 T+1 日开盘成交，消除前视偏差 ──
+    # signal 用 T 日收盘价算出，不可能在 T 日收盘价成交；shift(1) 后
+    # 第 T 日看到的 signal_exec 实为 T-1 日信号，配合 T 日 open 成交。
+    df["signal_exec"] = df["signal"].shift(1).fillna(0)
 
     # ── 模拟交易 ──
     cash     = initial_capital
@@ -75,65 +86,68 @@ def run_backtest(
     equity    = []      # 每日资产
 
     for date, row in df.iterrows():
-        price = row["close"]
+        price = row["close"]          # 估值用收盘价
+        open_ = row["open"]           # 成交用开盘价（T+1 开盘）
+        low   = row["low"]
+        high  = row["high"]
 
-        # 止损 / 止盈检查（持仓中）
+        # 止损 / 止盈检查（持仓中）——盘中触及即成交，更贴近实盘
         if position == 1 and shares > 0:
-            pnl_pct = (price - cost_price) / cost_price
-            if stop_loss is not None and pnl_pct <= -stop_loss:
-                # 触发止损，强制卖出
-                proceeds = shares * price
+            stop_price = cost_price * (1 - stop_loss)   if stop_loss   is not None else None
+            tp_price   = cost_price * (1 + take_profit) if take_profit is not None else None
+            exit_price = None
+            exit_action = None
+            # 同一根 K 线内若同时触及，保守起见优先止损
+            if stop_price is not None and low <= stop_price:
+                exit_price  = min(open_, stop_price)    # 跳空低开则按开盘价
+                exit_action = "止损卖出"
+            elif tp_price is not None and high >= tp_price:
+                exit_price  = max(open_, tp_price)      # 跳空高开则按开盘价
+                exit_action = "止盈卖出"
+
+            if exit_price is not None:
+                proceeds = shares * exit_price
                 fee = proceeds * (commission_rate + stamp_duty)
                 cash += proceeds - fee
+                pnl_pct = (exit_price - cost_price) / cost_price
                 trades.append({
-                    "date": date, "action": "止损卖出", "price": price,
-                    "shares": shares, "cash": cash,
-                    "return_pct": pnl_pct * 100
-                })
-                shares = 0; position = 0; cost_price = 0.0
-            elif take_profit is not None and pnl_pct >= take_profit:
-                # 触发止盈，强制卖出
-                proceeds = shares * price
-                fee = proceeds * (commission_rate + stamp_duty)
-                cash += proceeds - fee
-                trades.append({
-                    "date": date, "action": "止盈卖出", "price": price,
+                    "date": date, "action": exit_action, "price": exit_price,
                     "shares": shares, "cash": cash,
                     "return_pct": pnl_pct * 100
                 })
                 shares = 0; position = 0; cost_price = 0.0
 
-        # MACD 信号交易
-        if row["signal"] == 1 and position == 0:
+        # 策略信号交易（按 T+1 开盘价成交）
+        if row["signal_exec"] == 1 and position == 0:
             # 买入
             invest = cash * position_size
-            raw_shares = int(invest / price / 100) * 100  # A股最小单位100股
+            raw_shares = int(invest / open_ / 100) * 100  # A股最小单位100股
             if raw_shares >= 100:
-                cost = raw_shares * price
+                cost = raw_shares * open_
                 fee  = cost * commission_rate
                 cash -= (cost + fee)
                 shares = raw_shares
                 position = 1
-                cost_price = price
+                cost_price = open_
                 trades.append({
-                    "date": date, "action": "买入", "price": price,
+                    "date": date, "action": "买入", "price": open_,
                     "shares": shares, "cash": cash, "return_pct": None
                 })
 
-        elif row["signal"] == -1 and position == 1 and shares > 0:
+        elif row["signal_exec"] == -1 and position == 1 and shares > 0:
             # 卖出
-            proceeds = shares * price
+            proceeds = shares * open_
             fee = proceeds * (commission_rate + stamp_duty)
             cash += proceeds - fee
-            pnl_pct = (price - cost_price) / cost_price * 100
+            pnl_pct = (open_ - cost_price) / cost_price * 100
             trades.append({
-                "date": date, "action": "卖出", "price": price,
+                "date": date, "action": "卖出", "price": open_,
                 "shares": shares, "cash": cash,
                 "return_pct": pnl_pct
             })
             shares = 0; position = 0; cost_price = 0.0
 
-        # 记录当日资产
+        # 记录当日资产（按收盘价估值）
         total = cash + shares * price
         equity.append({"date": date, "equity": total, "close": price})
 
@@ -159,7 +173,12 @@ def run_backtest(
     total_return    = (eq_df["equity"].iloc[-1] / initial_capital - 1) * 100
     annual_trading_days = 252
     n_days          = len(eq_df)
-    annual_return   = ((1 + total_return / 100) ** (annual_trading_days / n_days) - 1) * 100
+    # 年化收益：样本不足一年时按日历外推会几何放大（如 10 天 +8% → 年化 ~600%），
+    # 失去统计意义，因此样本 < 一年时返回 None，由展示层标注 N/A。
+    if n_days >= annual_trading_days:
+        annual_return = ((1 + total_return / 100) ** (annual_trading_days / n_days) - 1) * 100
+    else:
+        annual_return = None
     max_drawdown    = eq_df["drawdown"].min() * 100
     sharpe          = _calc_sharpe(eq_df["returns"], annual_trading_days)
     win_rate, avg_win, avg_loss, profit_factor = _calc_trade_stats(trades)
@@ -187,16 +206,27 @@ def run_backtest(
         "strategy": strategy,
     }
 
-    _print_summary(result)
+    if verbose:
+        _print_summary(result)
     return result
 
 
-def _calc_sharpe(returns: pd.Series, annual_days: int = 252, rf: float = 0.02) -> float:
+def _calc_sharpe(returns: pd.Series, annual_days: int = 252, rf: float = 0.02,
+                 min_obs: int = 20):
+    """
+    年化夏普比率。样本过少时不可靠，返回 None（展示层标注 N/A）。
+
+    min_obs : 有效日收益的最小样本数；少于此值时 std 极不稳定，
+              可能算出 18 这种无意义高值或 NaN，故直接弃算。
+    """
     daily_rf = rf / annual_days
-    excess   = returns - daily_rf
-    if excess.std() == 0:
-        return 0.0
-    return float(excess.mean() / excess.std() * np.sqrt(annual_days))
+    excess   = (returns - daily_rf).dropna()      # 去掉 pct_change 首行 NaN
+    if len(excess) < min_obs:
+        return None
+    std = excess.std()
+    if not np.isfinite(std) or std == 0:
+        return None
+    return float(excess.mean() / std * np.sqrt(annual_days))
 
 
 def _calc_trade_stats(trades: list):
@@ -214,16 +244,28 @@ def _calc_trade_stats(trades: list):
     return win_rate, avg_win, avg_loss, profit_factor
 
 
+def fmt_sharpe(v) -> str:
+    """夏普比率展示格式：None（样本不足）显示 N/A，否则两位小数。"""
+    return "N/A" if v is None else f"{v:.2f}"
+
+
+def print_summary(r: dict):
+    """打印回测结果汇总表（公开接口，供单股入口脚本在静默引擎后手动调用）。"""
+    _print_summary(r)
+
+
 def _print_summary(r: dict):
     print(f"\n  ── 回测结果 ──────────────────────────────")
     print(f"  初始资金      : ¥{r['initial_capital']:>12,.2f}")
     print(f"  期末资产      : ¥{r['final_equity']:>12,.2f}")
     print(f"  策略总收益    : {r['total_return']:>+8.2f}%")
-    print(f"  策略年化收益  : {r['annual_return']:>+8.2f}%")
+    ann = r['annual_return']
+    print(f"  策略年化收益  : {'  N/A(样本<1年)' if ann is None else f'{ann:>+8.2f}%'}")
     print(f"  基准收益(持有): {r['benchmark_return']:>+8.2f}%")
     print(f"  超额收益      : {r['total_return'] - r['benchmark_return']:>+8.2f}%")
     print(f"  最大回撤      : {r['max_drawdown']:>8.2f}%")
-    print(f"  夏普比率      : {r['sharpe_ratio']:>8.2f}")
+    shp = r['sharpe_ratio']
+    print(f"  夏普比率      : {'  N/A(样本不足)' if shp is None else f'{shp:>8.2f}'}")
     print(f"  交易次数      : {r['total_trades']:>8}  次")
     print(f"  胜率          : {r['win_rate']:>8.1f}%")
     print(f"  平均盈利      : {r['avg_win']:>+8.2f}%")
@@ -265,7 +307,7 @@ def plot_backtest(result: dict, save_path: str = None):
     ax1.set_title(f"A股策略回测 [{strategy.name}]  |  {symbol}  |  "
                   f"总收益 {result['total_return']:+.2f}%  "
                   f"基准 {result['benchmark_return']:+.2f}%  "
-                  f"夏普 {result['sharpe_ratio']:.2f}",
+                  f"夏普 {fmt_sharpe(result['sharpe_ratio'])}",
                   color=C_FG, fontsize=12, pad=10)
     ax1.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=9)
     style_ax(ax1)

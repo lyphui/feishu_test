@@ -1,5 +1,5 @@
 import os
-from scripts.migrate_compound_key import plan_migration, apply_migration
+from jcy.migrate_compound_key import plan_migration, apply_migration
 
 
 def test_plan_maps_old_to_new_name(tmp_path):

@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime
 
-from utils.jcy_common import record_key, title_to_date
+from jcy.lib.common import record_key, title_to_date
 from jcy import config
 
 

@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.jcy_common import title_to_date, title_to_filename, record_key
+from jcy.lib.common import title_to_date, title_to_filename, record_key
 
 _BASE   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA   = os.path.join(_BASE, "data", "jcy")

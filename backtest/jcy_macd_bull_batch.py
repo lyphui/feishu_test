@@ -40,14 +40,14 @@ import os
 import sys
 from datetime import date as _date, timedelta
 
-from engine import run_backtest
+from engine import run_backtest, fmt_sharpe
 from config import OutputPaths
 from bull_report import export_bull_daily_status, plot_bull_backtest
 from strategies import LuMACDBullStrategy
-from utils.plotting import setup_matplotlib
-from utils.market_data import fetch_index_data
-from utils.bull_backtest import BullStrategyAdapter
-from utils.jcy_common import JSON_PATH, load_candidates
+from lib.plotting import setup_matplotlib
+from lib.market_data import fetch_index_data
+from lib.bull_backtest import BullStrategyAdapter
+from jcy.lib.common import JSON_PATH, load_candidates
 
 setup_matplotlib()
 
@@ -114,7 +114,7 @@ def backtest_one(candidate: dict, end_date: str, index_symbol: str,
 
         print(f"    总收益：{result['total_return']:+.2f}%  "
               f"基准：{result['benchmark_return']:+.2f}%  "
-              f"夏普：{result['sharpe_ratio']:.2f}  "
+              f"夏普：{fmt_sharpe(result['sharpe_ratio'])}  "
               f"最大回撤：{result['max_drawdown']:.2f}%")
 
         plot_bull_backtest(result, save_path=save_chart,

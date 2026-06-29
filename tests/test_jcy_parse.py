@@ -1,4 +1,4 @@
-from utils.jcy_common import title_to_date, title_to_filename
+from jcy.lib.common import title_to_date, title_to_filename
 
 
 def test_title_to_date_success():

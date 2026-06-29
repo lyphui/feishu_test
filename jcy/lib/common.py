@@ -5,8 +5,8 @@ import os
 import re
 import yaml
 
-# 数据路径（相对于项目根目录）
-_BASE_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 数据路径（相对于项目根目录）。本文件在 jcy/lib/ 下，故向上 3 层到仓库根。
+_BASE_DIR  = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DOCS_FILE  = os.path.join(_BASE_DIR, "data", "jcy", "jcy_docs.yaml")
 ADVICE_DIR = os.path.join(_BASE_DIR, "data", "jcy", "advice")
 JSON_PATH  = os.path.join(_BASE_DIR, "data", "jcy", "jcy_insights.json")

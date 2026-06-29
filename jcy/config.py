@@ -1,6 +1,6 @@
 """JCY 流水线配置：常量、环境变量、system prompt、logging 初始化。
 
-注意：`ADVICE_DIR` 从 utils.jcy_common 复用（与候选股筛选共用同一路径常量）。
+注意：`ADVICE_DIR` 从 jcy.lib.common 复用（与候选股筛选共用同一路径常量）。
 """
 
 import logging
@@ -8,7 +8,7 @@ import os
 
 from dotenv import load_dotenv, find_dotenv
 
-from utils.jcy_common import ADVICE_DIR  # noqa: F401  (re-export for pipeline modules)
+from jcy.lib.common import ADVICE_DIR  # noqa: F401  (re-export for pipeline modules)
 
 load_dotenv(find_dotenv())
 

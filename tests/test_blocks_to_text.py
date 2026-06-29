@@ -1,4 +1,4 @@
-from utils.jcy_text import blocks_to_text, parse_json_loose
+from jcy.lib.text import blocks_to_text, parse_json_loose
 
 
 def _text_block(content):

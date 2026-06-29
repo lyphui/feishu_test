@@ -8,8 +8,8 @@ from datetime import datetime
 import requests
 from openai import AzureOpenAI, OpenAI
 
-from utils.jcy_text import parse_json_loose
-from utils.jcy_common import title_to_date, title_to_filename, record_key
+from jcy.lib.text import parse_json_loose
+from jcy.lib.common import title_to_date, title_to_filename, record_key
 from jcy import config, store
 
 log = config.log

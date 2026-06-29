@@ -6,8 +6,8 @@ from datetime import datetime
 
 import requests
 
-from utils.pplx import PerplexityAPI
-from utils.jcy_common import title_to_date, title_to_filename, record_key
+from jcy.lib.pplx import PerplexityAPI
+from jcy.lib.common import title_to_date, title_to_filename, record_key
 from jcy import config, store
 
 log = config.log

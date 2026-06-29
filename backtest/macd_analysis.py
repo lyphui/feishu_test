@@ -79,6 +79,7 @@ def main():
             initial_capital=cfg.capital,
             stop_loss=cfg.stop_loss,
             take_profit=cfg.take_profit,
+            verbose=True,
         )
 
         plot_backtest(result, save_path=paths.chart)

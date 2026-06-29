@@ -18,10 +18,10 @@ import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 
 # 复用回测引擎与共享配置层
-from engine import run_backtest
+from engine import run_backtest, fmt_sharpe
 from config import load_backtest_config, OutputPaths
 from strategies import LuMACDStrategy
-from utils.plotting import (
+from lib.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS,
     setup_matplotlib, style_ax,
 )
@@ -166,7 +166,7 @@ def plot_lu_backtest(result: dict, save_path: "str | None" = None):
         f"卢麒元三级 MACD  |  {symbol}  |  "
         f"总收益 {result['total_return']:+.2f}%  "
         f"基准 {result['benchmark_return']:+.2f}%  "
-        f"夏普 {result['sharpe_ratio']:.2f}",
+        f"夏普 {fmt_sharpe(result['sharpe_ratio'])}",
         color=C_FG, fontsize=12, pad=8,
     )
     ax1.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=9)
@@ -420,6 +420,7 @@ def main():
             initial_capital=cfg.capital,
             stop_loss=cfg.stop_loss,
             take_profit=cfg.take_profit,
+            verbose=True,
         )
 
         plot_lu_backtest(result, save_path=paths.chart)

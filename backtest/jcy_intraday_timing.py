@@ -52,13 +52,13 @@ from matplotlib.gridspec import GridSpec
 warnings.filterwarnings("ignore")
 
 from strategies import LuMACDBullStrategy
-from utils.plotting import (
+from lib.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED,
     setup_matplotlib, style_ax,
 )
-from utils.market_data import fetch_stock_data, fetch_index_data
-from utils.bull_backtest import BullStrategyAdapter
-from utils.jcy_common import JSON_PATH, load_candidates
+from lib.market_data import fetch_stock_data, fetch_index_data
+from lib.bull_backtest import BullStrategyAdapter
+from jcy.lib.common import JSON_PATH, load_candidates
 
 setup_matplotlib()
 

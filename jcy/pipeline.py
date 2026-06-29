@@ -2,7 +2,7 @@
 
 import argparse
 
-from utils.jcy_common import load_docs
+from jcy.lib.common import load_docs
 from jcy import config, store
 from jcy.feishu import run_step1
 from jcy.advice import run_step2
