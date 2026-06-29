@@ -12,8 +12,26 @@ ADVICE_DIR = os.path.join(_BASE_DIR, "data", "jcy", "advice")
 JSON_PATH  = os.path.join(_BASE_DIR, "data", "jcy", "jcy_insights.json")
 
 
+def safe_title(title: str, maxlen: int = 80) -> str:
+    """标题安全化：替换文件名非法字符、去首尾空白、截断到 maxlen。"""
+    cleaned = re.sub(r'[\\/:*?"<>|]', "_", title).strip()
+    return cleaned[:maxlen]
+
+
+def record_key(date: str | None, title: str) -> str:
+    """复合去重键：date + 安全化 title。date 缺失时用 NODATE 占位。
+
+    一天可能有多条数据，故不能用单 date 做键。
+    """
+    return f"{date or 'NODATE'}__{safe_title(title)}"
+
+
 def title_to_date(title: str) -> str | None:
-    """从标题提取日期：'Vol.260226 今日更新' → '2026-02-26'"""
+    """从标题提取日期：'Vol.260626 今日更新' → '2026-06-26'。
+
+    假设：6 位数字为 YYMMDD，世纪前缀固定 '20'（2000-2099）。
+    匹配标题中第一个 6 位连续数字；无匹配返回 None（不再 fallback 成标题）。
+    """
     m = re.search(r'(\d{6})', title)
     if m:
         ymd = m.group(1)
@@ -22,12 +40,12 @@ def title_to_date(title: str) -> str | None:
 
 
 def title_to_filename(title: str) -> str:
-    """从标题生成文件名：'Vol.260226 今日更新' → '2026-02-26.md'"""
+    """生成 advice 文件名：复合命名 '{date or NODATE}__{safe_title}.md'。
+
+    与 record_key 一致，避免一天多条互相覆盖文件。
+    """
     date = title_to_date(title)
-    if date:
-        return f"{date}.md"
-    safe = re.sub(r'[\\/:*?"<>|]', '_', title).strip()
-    return f"{safe}.md"
+    return f"{date or 'NODATE'}__{safe_title(title)}.md"
 
 
 def load_docs(docs_file: str = DOCS_FILE) -> list[dict]:
