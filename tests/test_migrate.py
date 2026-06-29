@@ -24,6 +24,20 @@ def test_plan_reports_missing_when_no_old_file(tmp_path):
     assert "2026-06-26__Vol.260626 时代主题" in plan["missing"]
 
 
+def test_plan_same_date_two_docs_only_one_claims_old_file(tmp_path):
+    # 旧命名一天只有一份文件；两篇同日文档只有一篇能认领，另一篇报 missing
+    advice = tmp_path / "advice"
+    advice.mkdir()
+    (advice / "2026-06-25.md").write_text("x", encoding="utf-8")
+    docs = [
+        {"文档标题": "Vol.260625 上午", "文档链接": "L1"},
+        {"文档标题": "Vol.260625 下午", "文档链接": "L2"},
+    ]
+    plan = plan_migration(docs, str(advice), articles=[])
+    assert len(plan["renames"]) == 1
+    assert len(plan["missing"]) == 1
+
+
 def test_apply_renames_and_rewrites_json(tmp_path):
     advice = tmp_path / "advice"
     advice.mkdir()

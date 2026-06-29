@@ -32,6 +32,7 @@ def plan_migration(docs: list, advice_dir: str, articles: list) -> dict:
     Returns {"renames": [(old_path, new_path)], "missing": [key], "json_rewrites": int}
     """
     renames, missing = [], []
+    claimed = set()  # 已被认领的旧文件（一天多条时旧命名只有一份，先到先得）
     for d in docs:
         title = d.get("文档标题", "")
         date  = title_to_date(title)
@@ -40,12 +41,15 @@ def plan_migration(docs: list, advice_dir: str, articles: list) -> dict:
         new_path = os.path.join(advice_dir, new_name)
         old_name = _old_filename(date)
         old_path = os.path.join(advice_dir, old_name) if old_name else None
-        if old_path and os.path.exists(old_path):
-            if os.path.abspath(old_path) != os.path.abspath(new_path):
+        old_abs  = os.path.abspath(old_path) if old_path else None
+        if os.path.exists(new_path):
+            continue  # 已是新命名，无需动作
+        if old_abs and old_abs not in claimed and os.path.exists(old_path):
+            if old_abs != os.path.abspath(new_path):
                 renames.append((old_path, new_path))
-        elif os.path.exists(new_path):
-            pass  # 已是新命名，无需动作
+                claimed.add(old_abs)
         else:
+            # 旧文件不存在，或同日旧文件已被另一篇认领 → 缺产物
             missing.append(key)
     return {"renames": renames, "missing": missing, "json_rewrites": len(articles)}
 
