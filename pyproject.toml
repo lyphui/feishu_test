@@ -12,4 +12,4 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["strategies*", "utils*", "config*"]
+include = ["strategies*", "utils*", "config*", "jcy*", "scripts*"]

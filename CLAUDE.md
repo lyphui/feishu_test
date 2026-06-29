@@ -35,7 +35,16 @@ feishu_test/
 ├── .env                           # 环境变量（API 密钥等，不提交）
 │
 ├── ── 入口脚本 ────────────────────────────────
-├── prepare_jcy_data.py            # Step 1-3 一体化流水线（数据采集→AI建议→结构化提取）
+├── prepare_jcy_data.py            # 薄入口：re-export jcy 包并提供 main（python prepare_jcy_data.py）
+│
+├── ── JCY 流水线包 ────────────────────────────
+├── jcy/
+│   ├── config.py                  # 常量 / 环境变量 / system prompt / logging
+│   ├── store.py                   # 单一真值源读写、复合键索引、Step 跳过判断、advice 路径解析
+│   ├── feishu.py                  # Step 1：飞书采集（_feishu_get 统一 GET + 分页 + 增量缓存）
+│   ├── advice.py                  # Step 2：Perplexity 投资建议（先落文件后写 record 原子性）
+│   ├── extract.py                 # Step 3：LLM 结构化提取（DashScope/Azure/Coze 回退）
+│   └── pipeline.py                # main 编排（--strict / --log-file）
 │
 ├── ── 回测脚本 ─────────────────────────────────
 ├── backtest/
@@ -104,9 +113,9 @@ feishu_test/
 
 ## 核心功能模块
 
-### 1. 数据准备一体化流水线 (`prepare_jcy_data.py`)
+### 1. 数据准备一体化流水线 (`jcy/` 包，入口 `prepare_jcy_data.py`)
 
-**职责：** 整合 Step 1-3，单脚本完成飞书数据采集 → AI 投资建议 → 结构化提取
+**职责：** 整合 Step 1-3，完成飞书数据采集 → AI 投资建议 → 结构化提取。实现拆分在 `jcy/`（config/store/feishu/advice/extract/pipeline），`prepare_jcy_data.py` 为薄入口。
 
 **Step 1 — 飞书数据采集：**
 ```

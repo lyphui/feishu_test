@@ -6,3 +6,4 @@
 authorize/feishu_key/*.txt
 .venv/
 output/
+feishu_test.egg-info

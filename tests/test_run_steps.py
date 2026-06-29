@@ -1,43 +1,45 @@
-"""run_step2 / run_step3 循环逻辑 + 路径解析 + 原子写 的离线测试（不联网）。"""
+"""run_step2 循环逻辑 + 路径解析 + 原子写 的离线测试（不联网）。"""
 
 import json
 import os
 
-import prepare_jcy_data as p
+import jcy.config as config
+import jcy.store as store
+import jcy.advice as advice
 
 
-# ── _advice_path 解析 ────────────────────────────────────────────
+# ── advice_path 解析 ─────────────────────────────────────────────
 
 def test_advice_path_resolves_bare_filename(monkeypatch, tmp_path):
-    monkeypatch.setattr(p, "ADVICE_DIR", str(tmp_path))
-    assert p._advice_path("a.md") == os.path.join(str(tmp_path), "a.md")
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
+    assert store.advice_path("a.md") == os.path.join(str(tmp_path), "a.md")
 
 
 def test_advice_path_reduces_legacy_absolute_path(monkeypatch, tmp_path):
     # 历史存量的绝对路径（甚至是另一台机器的 Windows 路径）应被还原到当前 ADVICE_DIR
-    monkeypatch.setattr(p, "ADVICE_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
     legacy = r"C:\old\machine\data\jcy\advice\2026-06-26__x.md"
-    assert p._advice_path(legacy) == os.path.join(str(tmp_path), "2026-06-26__x.md")
+    assert store.advice_path(legacy) == os.path.join(str(tmp_path), "2026-06-26__x.md")
 
 
 def test_advice_path_none():
-    assert p._advice_path(None) is None
-    assert p._advice_path("") is None
+    assert store.advice_path(None) is None
+    assert store.advice_path("") is None
 
 
 def test_step2_done_uses_current_advice_dir(monkeypatch, tmp_path):
-    monkeypatch.setattr(p, "ADVICE_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
     (tmp_path / "a.md").write_text("x", encoding="utf-8")
-    assert p._step2_done({"advice_file": "a.md"}) is True
-    assert p._step2_done({"advice_file": "missing.md"}) is False
+    assert store.step2_done({"advice_file": "a.md"}) is True
+    assert store.step2_done({"advice_file": "missing.md"}) is False
 
 
-# ── _save_articles 原子写 ────────────────────────────────────────
+# ── save_articles 原子写 ─────────────────────────────────────────
 
 def test_save_articles_atomic_no_tmp_left(monkeypatch, tmp_path):
     out = tmp_path / "jcy_insights.json"
-    monkeypatch.setattr(p, "S3_OUTPUT_FILE", str(out))
-    p._save_articles([{"date": "2026-06-26", "title": "t"}])
+    monkeypatch.setattr(config, "S3_OUTPUT_FILE", str(out))
+    store.save_articles([{"date": "2026-06-26", "title": "t"}])
     assert out.exists()
     assert not (tmp_path / "jcy_insights.json.tmp").exists()
     data = json.loads(out.read_text(encoding="utf-8"))
@@ -53,20 +55,20 @@ class _FakePplx:
 
 def _setup_step2(monkeypatch, tmp_path, analyze_result):
     """把 ADVICE_DIR / S3_OUTPUT_FILE 指向 tmp，桩掉网络。"""
-    monkeypatch.setattr(p, "ADVICE_DIR", str(tmp_path / "advice"))
-    monkeypatch.setattr(p, "S3_OUTPUT_FILE", str(tmp_path / "insights.json"))
-    monkeypatch.setattr(p, "PerplexityAPI", _FakePplx)
-    monkeypatch.setattr(p, "_s2_analyze_doc", lambda pplx, doc: analyze_result)
-    monkeypatch.setattr(p.time, "sleep", lambda *a: None)
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path / "advice"))
+    monkeypatch.setattr(config, "S3_OUTPUT_FILE", str(tmp_path / "insights.json"))
+    monkeypatch.setattr(advice, "PerplexityAPI", _FakePplx)
+    monkeypatch.setattr(advice, "_analyze_doc", lambda pplx, doc: analyze_result)
+    monkeypatch.setattr(advice.time, "sleep", lambda *a: None)
 
 
 def test_step2_skips_empty_content(monkeypatch, tmp_path):
     calls = []
     _setup_step2(monkeypatch, tmp_path, ("建议正文", []))
-    monkeypatch.setattr(p, "_s2_analyze_doc",
+    monkeypatch.setattr(advice, "_analyze_doc",
                         lambda pplx, doc: calls.append(doc) or ("建议正文", []))
     docs = [{"文档标题": "Vol.260626 空", "文档链接": "L", "文档内容正文": "   "}]
-    p.run_step2(docs)
+    advice.run_step2(docs)
     assert calls == []  # 空正文不应触发分析
     assert not os.path.exists(str(tmp_path / "insights.json"))
 
@@ -74,7 +76,7 @@ def test_step2_skips_empty_content(monkeypatch, tmp_path):
 def test_step2_success_writes_file_then_record(monkeypatch, tmp_path):
     _setup_step2(monkeypatch, tmp_path, ("建议正文", ["http://cite"]))
     docs = [{"文档标题": "Vol.260626 时代主题", "文档链接": "L", "文档内容正文": "有正文"}]
-    p.run_step2(docs)
+    advice.run_step2(docs)
 
     advice_file = tmp_path / "advice" / "2026-06-26__Vol.260626 时代主题.md"
     assert advice_file.exists()
@@ -96,9 +98,9 @@ def test_step2_skips_already_done(monkeypatch, tmp_path):
     ]}, ensure_ascii=False), encoding="utf-8")
 
     called = []
-    monkeypatch.setattr(p, "_s2_analyze_doc", lambda pplx, doc: called.append(1) or ("x", []))
+    monkeypatch.setattr(advice, "_analyze_doc", lambda pplx, doc: called.append(1) or ("x", []))
     docs = [{"文档标题": "Vol.260626 时代主题", "文档链接": "L", "文档内容正文": "有正文"}]
-    p.run_step2(docs)
+    advice.run_step2(docs)
     assert called == []  # 已完成应跳过，不再调用
 
 
@@ -109,9 +111,9 @@ def test_step2_consecutive_timeout_aborts(monkeypatch, tmp_path):
     def _always_timeout(pplx, doc):
         raise requests.exceptions.Timeout()
 
-    monkeypatch.setattr(p, "_s2_analyze_doc", _always_timeout)
+    monkeypatch.setattr(advice, "_analyze_doc", _always_timeout)
     docs = [{"文档标题": f"Vol.26062{i} 标题{i}", "文档链接": f"L{i}",
              "文档内容正文": "正文"} for i in range(5)]
-    p.run_step2(docs)  # 不应抛异常；连续超时达上限即 break
+    advice.run_step2(docs)  # 不应抛异常；连续超时达上限即 break
     # 没有任何成功写入
     assert not os.path.exists(str(tmp_path / "insights.json"))
