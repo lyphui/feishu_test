@@ -20,7 +20,8 @@ from dotenv import load_dotenv, find_dotenv
 from openai import AzureOpenAI, OpenAI
 
 from utils.pplx import PerplexityAPI
-from utils.jcy_common import title_to_date, title_to_filename, load_docs, ADVICE_DIR
+from utils.jcy_common import title_to_date, title_to_filename, load_docs, record_key, ADVICE_DIR
+from utils.jcy_text import blocks_to_text as _s1_blocks_to_text, parse_json_loose as _s3_parse_json
 
 load_dotenv(find_dotenv())
 
@@ -44,9 +45,7 @@ S1_VIEW_ID      = os.getenv("JCY_VIEW_ID")
 # ─── Step 2 ──────────────────────────────────────────────────────────────────
 S2_API_KEY    = os.getenv("PPLX_API_KEY")
 S2_GROUP_ID   = os.getenv("PPLX_GROUP_ID")
-S2_CACHE_FILE = os.path.join(_DATA_DIR, "advice_cache.json")
 S2_SLEEP      = 2
-S2_SKIP_MODE  = "files"   # "files": 扫描 advice/ 目录；"cache": 按 JSON 缓存跳过
 
 S2_SYSTEM_PROMPT = """你是一位善于用简单语言解释投资的顾问，同时会结合最新的互联网资讯进行验证和补充。
 你的读者是完全不了解股票和金融的普通人，请用通俗易懂的语言，避免专业术语，必要时用括号解释。
@@ -275,31 +274,6 @@ def _s1_parse_doc_type(url):
     return 'unknown', None
 
 
-def _s1_blocks_to_text(blocks):
-    lines = []
-    heading_keys = ("heading1", "heading2", "heading3", "heading4", "heading5", "heading6")
-    for block in blocks:
-        matched = False
-        for key in heading_keys:
-            if key in block:
-                text = "".join(
-                    e.get("text_run", {}).get("content", "")
-                    for e in block[key].get("elements", [])
-                )
-                if text.strip():
-                    lines.append(text.strip())
-                matched = True
-                break
-        if not matched and "text" in block:
-            text = "".join(
-                e.get("text_run", {}).get("content", "")
-                for e in block["text"].get("elements", [])
-            )
-            if text.strip():
-                lines.append(text.strip())
-    return "\n".join(lines)
-
-
 def _s1_get_docx_content(doc_token, token):
     all_blocks = []
     page_token = ""
@@ -419,28 +393,6 @@ def run_step1():
 #  Step 2 — Perplexity 投资建议生成
 # ════════════════════════════════════════════════════════════════
 
-def _s2_load_cache():
-    if not os.path.exists(S2_CACHE_FILE):
-        return {}
-    with open(S2_CACHE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _s2_save_cache(cache):
-    os.makedirs(os.path.dirname(S2_CACHE_FILE), exist_ok=True)
-    with open(S2_CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(cache, f, ensure_ascii=False, indent=2)
-
-
-def _s2_get_skip_set():
-    if S2_SKIP_MODE == "files":
-        if not os.path.isdir(ADVICE_DIR):
-            return set()
-        return {f for f in os.listdir(ADVICE_DIR) if f.endswith(".md")}
-    else:
-        return set(_s2_load_cache().keys())
-
-
 def _s2_build_md(title, link, analyzed_at, advice, citations):
     lines = [
         f"# {title}", "",
@@ -500,31 +452,34 @@ def _s2_analyze_doc(pplx, doc):
 
 
 def run_step2(docs):
-    """Perplexity 投资建议生成。连续超时 MAX_CONSECUTIVE_TIMEOUTS 次时终止。"""
+    """Perplexity 投资建议生成。单一真值源：以 jcy_insights.json 为权威清单。
+    原子性：先落 advice 文件，再写 record 的 advice_file 字段。
+    连续超时 MAX_CONSECUTIVE_TIMEOUTS 次时终止。"""
     pplx     = PerplexityAPI(S2_API_KEY, S2_GROUP_ID)
-    cache    = _s2_load_cache()
-    skip_set = _s2_get_skip_set()
+    articles = _load_articles()
+    index    = _record_index(articles)
 
-    mode_label = "目录文件扫描" if S2_SKIP_MODE == "files" else "JSON缓存"
-    print(f"📂 跳过模式：{mode_label}，已处理：{len(skip_set)} 个")
+    # 跳过：该文档对应 record 已有 advice 文件
+    pending = []
+    for d in docs:
+        title = d.get("文档标题", "")
+        key   = record_key(title_to_date(title), title)
+        rec   = articles[index[key]] if key in index else {}
+        if not _step2_done(rec):
+            pending.append(d)
+    print(f"📋 Step 2 本次需分析：{len(pending)} 篇（已跳过 {len(docs) - len(pending)} 篇）\n")
 
-    if S2_SKIP_MODE == "files":
-        new_docs = [d for d in docs if title_to_filename(d.get("文档标题", "")) not in skip_set]
-    else:
-        new_docs = [d for d in docs if d.get("文档链接") not in skip_set]
-    print(f"📋 本次需分析：{len(new_docs)} 篇\n")
-
-    if not new_docs:
-        print("✅ 所有文档均已分析，无需重新处理")
+    if not pending:
+        print("✅ 所有文档均已生成建议，无需重新处理")
         return
 
     consecutive_timeouts = 0
     new_count = 0
-
-    for i, doc in enumerate(new_docs, 1):
+    for i, doc in enumerate(pending, 1):
         title = doc.get("文档标题", "（无标题）")
         link  = doc.get("文档链接", "")
-        print(f"[{i}/{len(new_docs)}] 分析：{title}")
+        date  = title_to_date(title)
+        print(f"[{i}/{len(pending)}] 分析：{title}")
 
         try:
             advice, citations = _s2_analyze_doc(pplx, doc)
@@ -538,20 +493,27 @@ def run_step2(docs):
             continue
 
         if advice is None:
-            print(f"   ❌ API 响应无效，跳过本篇\n")
+            print("   ❌ API 响应无效，跳过本篇\n")
             consecutive_timeouts = 0
             continue
 
         consecutive_timeouts = 0
         analyzed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         filename    = title_to_filename(title)
-        path        = _s2_save_md(filename, _s2_build_md(title, link, analyzed_at, advice, citations))
-        cache[link] = filename
-        _s2_save_cache(cache)
+        # ── 原子性：先落文件 ──
+        path = _s2_save_md(filename, _s2_build_md(title, link, analyzed_at, advice, citations))
+        # ── 再更新权威清单 ──
+        _upsert_record(articles, {
+            "date":        date,
+            "title":       title,
+            "link":        link,
+            "advice_file": os.path.abspath(path),
+        })
+        _save_articles(articles)
+        index = _record_index(articles)
         new_count += 1
         print(f"   ✅ 已保存 → {path}\n")
-
-        if i < len(new_docs):
+        if i < len(pending):
             time.sleep(S2_SLEEP)
 
     print(f"\nStep 2 完成：本次新增 {new_count} 篇，文件目录：{ADVICE_DIR}")
@@ -569,19 +531,37 @@ def _s3_load_advice(filename):
         return f.read()
 
 
-def _s3_load_output():
+def _record_index(articles: list) -> dict:
+    """以复合键 record_key(date, title) 建索引 {key: list_index}。"""
+    return {
+        record_key(a.get("date"), a.get("title", "")): i
+        for i, a in enumerate(articles)
+    }
+
+
+def _step2_done(record: dict) -> bool:
+    """Step 2 是否已完成：record 有 advice_file 且文件实际存在。"""
+    path = record.get("advice_file")
+    return bool(path) and os.path.exists(path)
+
+
+def _step3_done(record: dict) -> bool:
+    """Step 3 是否已完成：record 含 extracted_at（提取完成标记）。"""
+    return bool(record.get("extracted_at"))
+
+
+def _load_articles() -> list:
+    """读取权威清单 articles（jcy_insights.json）。文件不存在返回空列表。"""
     if not os.path.exists(S3_OUTPUT_FILE):
-        return [], {}
+        return []
     with open(S3_OUTPUT_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    articles = data.get("articles", [])
-    index    = {a["date"]: i for i, a in enumerate(articles) if "date" in a}
-    return articles, index
+        return json.load(f).get("articles", [])
 
 
-def _s3_save_output(articles):
+def _save_articles(articles: list) -> None:
+    """按 date 倒序写回权威清单。"""
     os.makedirs(os.path.dirname(S3_OUTPUT_FILE), exist_ok=True)
-    sorted_articles = sorted(articles, key=lambda a: a.get("date", ""), reverse=True)
+    sorted_articles = sorted(articles, key=lambda a: a.get("date") or "", reverse=True)
     with open(S3_OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump({
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -590,14 +570,15 @@ def _s3_save_output(articles):
         }, f, ensure_ascii=False, indent=2)
 
 
-def _s3_parse_json(raw):
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        m = re.search(r'\{[\s\S]*\}', raw)
-        if m:
-            return json.loads(m.group())
-        raise ValueError(f"无法解析 JSON 响应: {raw[:200]}")
+def _upsert_record(articles: list, record: dict) -> list:
+    """按复合键 upsert：存在则 merge 更新，否则 append。"""
+    key = record_key(record.get("date"), record.get("title", ""))
+    index = _record_index(articles)
+    if key in index:
+        articles[index[key]].update(record)
+    else:
+        articles.append(record)
+    return articles
 
 
 def _s3_coze_extract_content(data):
@@ -707,9 +688,7 @@ def run_step3(docs):
     active_names = [p["name"] for p in S3_PROVIDERS if p["enabled"]]
     print(f"🤖 LLM 顺序：{' → '.join(active_names) or '无（请配置 API Key）'}\n")
 
-    articles, date_index = _s3_load_output()
-    print(f"已提取：{len(articles)} 篇，本次跳过已有记录\n")
-
+    articles = _load_articles()
     new_count       = 0
     consec_failures = 0
 
@@ -718,8 +697,11 @@ def run_step3(docs):
         link     = doc.get("文档链接", "")
         date_str = title_to_date(title)
         filename = title_to_filename(title)
+        key      = record_key(date_str, title)
 
-        if date_str and date_str in date_index:
+        index = _record_index(articles)
+        rec   = articles[index[key]] if key in index else {}
+        if _step3_done(rec):
             print(f"[跳过] {title}")
             continue
 
@@ -728,7 +710,6 @@ def run_step3(docs):
             print(f"[警告] 建议文件不存在：{filename}，仅用原文分析")
 
         print(f"[{new_count + 1}] 提取：{title} ...")
-
         try:
             insights, used = _s3_extract_insights(doc, advice_text)
         except (OSError, RuntimeError, ValueError, TimeoutError) as e:
@@ -741,26 +722,22 @@ def run_step3(docs):
             continue
 
         consec_failures = 0
-        record = {
-            "date":         date_str or title,
+        _upsert_record(articles, {
+            "date":         date_str,
             "title":        title,
             "link":         link,
             "advice_file":  os.path.abspath(os.path.join(ADVICE_DIR, filename)),
             "extracted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "llm_provider": used,
             **insights,
-        }
-        articles.append(record)
-        if date_str:
-            date_index[date_str] = len(articles) - 1
-        _s3_save_output(articles)
+        })
+        _save_articles(articles)
         new_count += 1
         companies = insights.get("companies", [])
         rated     = [c for c in companies if c.get("rating")]
         print(f"   ✅ 已保存（公司:{len(companies)}个，有评级:{len(rated)}个，"
               f"市场:{insights.get('markets', [])}，"
               f"建议:{len(insights.get('key_advice', []))}条）[{used}]")
-
         time.sleep(S3_SLEEP)
 
     print(f"\nStep 3 完成：本次新增 {new_count} 篇，输出：{S3_OUTPUT_FILE}")
