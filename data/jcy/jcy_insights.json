@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-27 16:54:06",
+  "updated_at": "2026-07-27 16:55:05",
   "total": 244,
   "articles": [
     {
@@ -234,13 +234,83 @@
       "date": "2026-07-18",
       "title": "Vol.260718 她一定很爱你",
       "link": "https://my.feishu.cn/wiki/LwFSwPzRSixbVUk4w20ccfyWnVg",
-      "advice_file": "2026-07-18__Vol.260718 她一定很爱你.md"
+      "advice_file": "2026-07-18__Vol.260718 她一定很爱你.md",
+      "extracted_at": "2026-07-27 16:54:36",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "中际旭创",
+          "code": "300308",
+          "exchange": "深交所",
+          "rating": "买入",
+          "rating_reason": "高盛看好AI光模块增长，目标价2581元"
+        },
+        {
+          "name": "华为",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "比亚迪",
+          "code": "002594",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "立讯精密",
+          "code": "002475",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "海信",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "领益制造",
+          "code": "002600",
+          "exchange": "深交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看好AI光模块龙头，认为市场正切换至AI产业，短期按箱体操作",
+      "key_advice": [
+        "不要轻信小作文，华为、比亚迪生产光模块等传言不实",
+        "当前市场处于箱体震荡，按箱体操作，箱在人在，箱破人走",
+        "关注AI光模块龙头（如中际旭创），但需注意技术迭代快"
+      ]
     },
     {
       "date": "2026-07-17",
       "title": "Vol.260717 三倍做多",
       "link": "https://my.feishu.cn/wiki/URlUwHYiwiLcwVk8366cQWmhnlb",
-      "advice_file": "2026-07-17__Vol.260717 三倍做多.md"
+      "advice_file": "2026-07-17__Vol.260717 三倍做多.md",
+      "extracted_at": "2026-07-27 16:55:05",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "比亚迪",
+          "code": "002594",
+          "exchange": "深交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "短期谨慎防御，中长期看好通信、半导体等科技主线，等待调整后企稳信号",
+      "key_advice": [
+        "聚焦通信ETF、科创芯片/半导体设备ETF等机构主线，以5日线/8日线交叉作为进出信号",
+        "破位个股或ETF先离场，严格执行止损，不扛单",
+        "急杀放量后若出现长下影线，可能是见底信号，可伺机而动",
+        "控制仓位至睡得着的水平，避免情绪化追涨杀跌"
+      ]
     },
     {
       "date": "2026-07-16",
