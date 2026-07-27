@@ -1,12 +1,246 @@
 {
-  "updated_at": "2026-07-27 16:42:24",
-  "total": 237,
+  "updated_at": "2026-07-27 16:54:06",
+  "total": 244,
   "articles": [
     {
       "date": "2026-07-27",
       "title": "Vol.260727 见证历史的一周",
       "link": "https://my.feishu.cn/wiki/O9muwUWR5inVdXkciAccgYpQnCd",
-      "advice_file": "2026-07-27__Vol.260727 见证历史的一周.md"
+      "advice_file": "2026-07-27__Vol.260727 见证历史的一周.md",
+      "extracted_at": "2026-07-27 16:51:45",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "宁德时代",
+          "code": "300750",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "长鑫科技",
+          "code": null,
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "瑞芯微",
+          "code": "603893",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "炬芯科技",
+          "code": "688049",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "乐鑫科技",
+          "code": "688018",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "拓荆科技",
+          "code": "688072",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "华海清科",
+          "code": "688120",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "飞测科技",
+          "code": null,
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "德明利",
+          "code": "001309",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "深科技",
+          "code": "000021",
+          "exchange": "深交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "谨慎观望，关注国产半导体设备和存储，建议定投宽基ETF",
+      "key_advice": [
+        "不要在情绪亢奋时追涨宁德时代、长鑫科技等热门股",
+        "从每月定投宽基ETF开始，分散风险，适应市场波动",
+        "控制仓位，设定8%止损线，亏损后及时认错",
+        "先理解产业链，通过行业ETF参与，避免单独炒个股"
+      ]
+    },
+    {
+      "date": "2026-07-24",
+      "title": "Vol.260724 震荡时期的量能研究",
+      "link": "https://my.feishu.cn/wiki/J1zkw2rGjifuQ9kTUNTcW9pHnHh",
+      "advice_file": "2026-07-24__Vol.260724 震荡时期的量能研究.md",
+      "extracted_at": "2026-07-27 16:52:22",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "德明利",
+          "code": "001309",
+          "exchange": "深交所",
+          "rating": "回避",
+          "rating_reason": "股东爆仓，股价巨震，暂不宜参与短线博弈"
+        },
+        {
+          "name": "Intel",
+          "code": "INTC",
+          "exchange": "纳斯达克",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "短线谨慎关注量能，长期看好AI产业，聚焦有业绩支撑的科技龙头",
+      "key_advice": [
+        "上涨时务必观察成交量，放量突破关键压力位才可看多，否则警惕假突破",
+        "优先选择有真实业绩和订单的科技龙头，远离纯涨价概念股",
+        "德明利等短线爆仓股波动剧烈，普通投资者应回避，不参与短线博弈",
+        "通过科创50ETF或AI主题基金分散参与AI产业，避免单押个股",
+        "坚持闲钱投资，严禁加杠杆，控制风险"
+      ]
+    },
+    {
+      "date": "2026-07-21",
+      "title": "Vol.260721 看风向看发力方向；大哥发力和后市研究",
+      "link": "https://my.feishu.cn/wiki/CDBhwqLoYi2r8ikf7rycieBenId",
+      "advice_file": "2026-07-21__Vol.260721 看风向看发力方向；大哥发力和后市研究.md",
+      "extracted_at": "2026-07-27 16:52:54",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "东山精密",
+          "code": "002384",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "德明利",
+          "code": "001309",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "寒武纪",
+          "code": "688256",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "谨慎观望科技股，等待中证1000ETF放量信号确认底部，去弱留强",
+      "key_advice": [
+        "明天上午不要追高，冲高后大概率有人高抛",
+        "重点观察中证1000ETF是否明显放量，这是市场企稳的关键信号",
+        "持仓品种上涨需有量、下跌需缩量，破位5日平台则果断去弱留强",
+        "普通投资者优先用沪深300、科创50等宽基ETF分批布局，避免重仓单一科技股",
+        "保留现金仓位，拉锯期可能持续两周，不要一次性赌底部"
+      ]
+    },
+    {
+      "date": "2026-07-20",
+      "title": "Vol.260720 看能不能发出",
+      "link": "https://my.feishu.cn/wiki/KeINwz0xzi5maqkTL8Ncinhvn4g",
+      "advice_file": "2026-07-20__Vol.260720 看能不能发出.md",
+      "extracted_at": "2026-07-27 16:53:34",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "长鑫科技",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "观望，等待右侧止跌信号，严控风险，暂时回避所有板块",
+      "key_advice": [
+        "箱在人在，箱破人走，跌破支撑位果断离场",
+        "大阴线不抄底，等3天不创新低且缩量再考虑",
+        "沉没成本不参与决策，过去盈亏与当下纪律无关",
+        "当前不适宜参与任何板块，等市场企稳再看",
+        "长鑫缴款结束后若仍弱势，则视为流动性危机，仅做右侧交易"
+      ]
+    },
+    {
+      "date": "2026-07-19",
+      "title": "Vol.260719 问答",
+      "link": "https://my.feishu.cn/wiki/LaPuwWCnyiCc7fkwGpqcFRqan8f",
+      "advice_file": "2026-07-19__Vol.260719 问答.md",
+      "extracted_at": "2026-07-27 16:54:06",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "月之暗面",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "深度求索",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "英伟达",
+          "code": "NVDA",
+          "exchange": "纳斯达克",
+          "rating": null
+        },
+        {
+          "name": "长鑫存储",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "AI算力长期需求看好，低成本大模型推动普及，但短期情绪波动大，需理性看待中美竞争",
+      "key_advice": [
+        "避免因短期事件情绪化交易，不追高杀跌",
+        "通过宽基指数或科技基金间接参与算力龙头",
+        "关注AI应用落地，选盈利改善的上市公司",
+        "新股中签宜分批止盈，不固守单一目标",
+        "学习投资基础知识，减少情绪驱动决策"
+      ]
+    },
+    {
+      "date": "2026-07-18",
+      "title": "Vol.260718 她一定很爱你",
+      "link": "https://my.feishu.cn/wiki/LwFSwPzRSixbVUk4w20ccfyWnVg",
+      "advice_file": "2026-07-18__Vol.260718 她一定很爱你.md"
+    },
+    {
+      "date": "2026-07-17",
+      "title": "Vol.260717 三倍做多",
+      "link": "https://my.feishu.cn/wiki/URlUwHYiwiLcwVk8366cQWmhnlb",
+      "advice_file": "2026-07-17__Vol.260717 三倍做多.md"
     },
     {
       "date": "2026-07-16",
@@ -18132,6 +18366,26 @@
         "关注成熟制程代工与功率芯片涨价主线",
         "新手勿重仓液冷与商业航天，少量跟踪",
         "港股与A股节奏不同，独立判断择时"
+      ]
+    },
+    {
+      "date": null,
+      "title": "大王与你读兵法9：别光画饼，拿出机制和奖励",
+      "link": "https://my.feishu.cn/wiki/K7kjw2ft7ixq4lkdYFVcGshXnLg",
+      "advice_file": "NODATE__大王与你读兵法9：别光画饼，拿出机制和奖励.md",
+      "extracted_at": "2026-07-27 16:53:11",
+      "llm_provider": "DashScope",
+      "companies": [],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "总体偏谨慎观望，强调少而精出手，等待有胜算时机，避免频繁交易",
+      "key_advice": [
+        "把“等”当成第一技能，多看少动，宁愿空仓也不轻易交易",
+        "用“战役”思维做投资计划，一年只允许几次核心操作，每次要有清晰理由和退出计划",
+        "区分“故事”和现实，普通人更适合慢投资，不必追求速胜",
+        "选择真正有长期价值的公司，把投资打成持久战，避免被短期波动左右"
       ]
     }
   ]
