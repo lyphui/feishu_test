@@ -1,7 +1,49 @@
 {
-  "updated_at": "2026-07-27 16:55:05",
-  "total": 244,
+  "updated_at": "2026-08-07 16:16:48",
+  "total": 246,
   "articles": [
+    {
+      "date": "2026-08-06",
+      "title": "Vol.260806 美股达子大涨",
+      "link": "https://feishu.cn/wiki/Q5KZwxQzzi02pZk2oIFcsjDLnmc",
+      "advice_file": "2026-08-06__Vol.260806 美股达子大涨.md"
+    },
+    {
+      "date": "2026-07-31",
+      "title": "Vol.260731 典型案例分析展望；见仁见智",
+      "link": "https://my.feishu.cn/wiki/P9KiwFTFqiHMi5kjnvXcYHX0nTo",
+      "advice_file": "2026-07-31__Vol.260731 典型案例分析展望；见仁见智.md",
+      "extracted_at": "2026-08-07 15:55:26",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "SK海力士",
+          "code": null,
+          "exchange": "其他",
+          "rating": "持有",
+          "rating_reason": "好公司但情绪阶段，收复5日线可观望，抛压仍重"
+        },
+        {
+          "name": "AEIS",
+          "code": "AEIS",
+          "exchange": "纳斯达克",
+          "rating": "回避",
+          "rating_reason": "刚碰5日线即回落，缺口未补，走势弱"
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "全球科技股分化，A股高开不追，等待底部信号，谨慎观望",
+      "key_advice": [
+        "不要因一根阳线改变三观，警惕抛压盘和多杀多踩踏",
+        "当强不强则为弱，上涨需力度、持续和量能配合",
+        "底部形态是一串小阴小阳十字星，等待均线粘合再介入",
+        "高开不追，防范量化砸盘和冲高回落，突破3845且不回落再看反抽",
+        "宁可空仓也别去老题材，等右侧信号"
+      ]
+    },
     {
       "date": "2026-07-27",
       "title": "Vol.260727 见证历史的一周",

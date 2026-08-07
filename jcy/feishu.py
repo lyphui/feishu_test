@@ -135,8 +135,9 @@ def _get_all_records(app_token, table_id, view_id, token):
 
 
 def _extract_links(records):
+    # 子域名可选：飞书链接既有 xxx.feishu.cn/... 也有裸域名 feishu.cn/... 两种形式
     pattern = re.compile(
-        r'https://[a-zA-Z0-9\-]+\.feishu\.cn/'
+        r'https://(?:[a-zA-Z0-9\-]+\.)?feishu\.cn/'
         r'(?:docx|wiki|base|sheets|drive/file|mindnotes|minutes|board)'
         r'/[^\s\"\'\]\[<>]+'
     )
