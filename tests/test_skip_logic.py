@@ -40,9 +40,19 @@ def test_record_index_none_date():
     assert "NODATE__无日期" in idx
 
 
-def test_step2_done_true_when_file_exists(tmp_path, monkeypatch):
+def _complete_md(title="标题"):
+    """构造一份结构完整的 advice 文件内容（同 advice._build_md 的结构）。"""
+    return (
+        f"# {title}\n\n"
+        "> **原文链接：** [L](L)  \n"
+        "> **分析时间：** 2026-08-07 10:00:00\n\n"
+        "---\n\n" + "正文内容。" * 60 + "\n"
+    )
+
+
+def test_step2_done_true_when_file_complete(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
-    (tmp_path / "a.md").write_text("x", encoding="utf-8")
+    (tmp_path / "a.md").write_text(_complete_md(), encoding="utf-8")
     assert step2_done({"advice_file": "a.md"}) is True
 
 
@@ -53,6 +63,35 @@ def test_step2_done_false_when_file_missing(tmp_path, monkeypatch):
 
 def test_step2_done_false_when_no_field():
     assert step2_done({}) is False
+
+
+def test_step2_done_false_when_file_truncated(tmp_path, monkeypatch):
+    """半写/截断的残留文件不算完成，应重跑。"""
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
+    (tmp_path / "a.md").write_text("# 标题\n\n> **分析时间：** t\n\n---\n\n太短", encoding="utf-8")
+    assert step2_done({"advice_file": "a.md"}) is False
+
+
+def test_step2_done_true_from_title_when_record_missing(tmp_path, monkeypatch):
+    """核心回归：insights.json 里没有该 record，但分析文档已完整存在 → 跳过。"""
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
+    title = "Vol.260806 好在没放量"
+    (tmp_path / "2026-08-06__Vol.260806 好在没放量.md").write_text(
+        _complete_md(title), encoding="utf-8")
+    assert step2_done({}, title) is True
+
+
+def test_step2_done_title_fallback_handles_trailing_space(tmp_path, monkeypatch):
+    """标题带尾随空格时，文件名经 safe_title 去空格，仍应命中。"""
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
+    (tmp_path / "2026-08-04__Vol.260804 美股又站出来.md").write_text(
+        _complete_md(), encoding="utf-8")
+    assert step2_done({}, "Vol.260804 美股又站出来 ") is True
+
+
+def test_step2_done_false_when_title_has_no_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
+    assert step2_done({}, "Vol.260807 尚未分析") is False
 
 
 def test_step3_done_true_when_extracted_at_present():

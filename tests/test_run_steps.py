@@ -27,9 +27,18 @@ def test_advice_path_none():
     assert store.advice_path("") is None
 
 
+def _complete_md(title="标题"):
+    return (
+        f"# {title}\n\n"
+        "> **原文链接：** [L](L)  \n"
+        "> **分析时间：** 2026-08-07 10:00:00\n\n"
+        "---\n\n" + "正文内容。" * 60 + "\n"
+    )
+
+
 def test_step2_done_uses_current_advice_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path))
-    (tmp_path / "a.md").write_text("x", encoding="utf-8")
+    (tmp_path / "a.md").write_text(_complete_md(), encoding="utf-8")
     assert store.step2_done({"advice_file": "a.md"}) is True
     assert store.step2_done({"advice_file": "missing.md"}) is False
 
@@ -91,7 +100,8 @@ def test_step2_skips_already_done(monkeypatch, tmp_path):
     # 预置已完成 record + 真实 advice 文件
     advice_dir = tmp_path / "advice"
     advice_dir.mkdir()
-    (advice_dir / "2026-06-26__Vol.260626 时代主题.md").write_text("x", encoding="utf-8")
+    (advice_dir / "2026-06-26__Vol.260626 时代主题.md").write_text(
+        _complete_md("Vol.260626 时代主题"), encoding="utf-8")
     (tmp_path / "insights.json").write_text(json.dumps({"articles": [
         {"date": "2026-06-26", "title": "Vol.260626 时代主题",
          "advice_file": "2026-06-26__Vol.260626 时代主题.md"}
@@ -117,3 +127,66 @@ def test_step2_consecutive_timeout_aborts(monkeypatch, tmp_path):
     advice.run_step2(docs)  # 不应抛异常；连续超时达上限即 break
     # 没有任何成功写入
     assert not os.path.exists(str(tmp_path / "insights.json"))
+    # 失败时不得留下任何 md 文件（否则下次会被误判成已完成而永久跳过）
+    advice_dir = tmp_path / "advice"
+    assert not advice_dir.exists() or list(advice_dir.glob("*.md")) == []
+
+
+def test_step2_api_failure_writes_no_md(monkeypatch, tmp_path):
+    """pplx 返回无效（None）时不落 md，下次仍会重跑。"""
+    _setup_step2(monkeypatch, tmp_path, (None, []))
+    docs = [{"文档标题": "Vol.260626 时代主题", "文档链接": "L", "文档内容正文": "有正文"}]
+    advice.run_step2(docs)
+    advice_dir = tmp_path / "advice"
+    assert not advice_dir.exists() or list(advice_dir.glob("*.md")) == []
+    assert not os.path.exists(str(tmp_path / "insights.json"))
+
+
+def test_step2_rejects_too_short_response(monkeypatch, tmp_path):
+    """API 成功返回但内容过短（截断）→ 视为无效，不落 md。"""
+
+    class _Pplx:
+        def chat(self, **k):
+            return {"choices": [{"message": {"content": "太短了"}}]}
+
+    doc = {"文档标题": "Vol.260626 时代主题", "文档链接": "L", "文档内容正文": "有正文"}
+    assert advice._analyze_doc(_Pplx(), doc) == (None, [])
+
+
+def test_step2_reruns_truncated_md(monkeypatch, tmp_path):
+    """磁盘上是半写/截断的 md → 不算完成，应重新调用 API。"""
+    _setup_step2(monkeypatch, tmp_path, ("建议正文" * 100, []))
+    advice_dir = tmp_path / "advice"
+    advice_dir.mkdir()
+    (advice_dir / "2026-06-26__Vol.260626 时代主题.md").write_text(
+        "# 半个文件", encoding="utf-8")
+
+    called = []
+    monkeypatch.setattr(advice, "_analyze_doc",
+                        lambda pplx, doc: called.append(1) or ("建议正文" * 100, []))
+    docs = [{"文档标题": "Vol.260626 时代主题", "文档链接": "L", "文档内容正文": "有正文"}]
+    advice.run_step2(docs)
+    assert len(called) == 1  # 截断文件应触发重跑
+
+
+def test_step2_skips_when_md_exists_but_record_missing(monkeypatch, tmp_path):
+    """核心回归：insights.json 无该 record，但完整 md 已存在 → 不再调用 API。"""
+    _setup_step2(monkeypatch, tmp_path, ("建议正文", []))
+    advice_dir = tmp_path / "advice"
+    advice_dir.mkdir()
+    (advice_dir / "2026-06-26__Vol.260626 时代主题.md").write_text(
+        _complete_md("Vol.260626 时代主题"), encoding="utf-8")
+    # 注意：不写 insights.json，模拟 record 缺失
+
+    called = []
+    monkeypatch.setattr(advice, "_analyze_doc", lambda pplx, doc: called.append(1) or ("x", []))
+    docs = [{"文档标题": "Vol.260626 时代主题", "文档链接": "L", "文档内容正文": "有正文"}]
+    advice.run_step2(docs)
+    assert called == []
+
+
+def test_save_md_atomic_no_tmp_left(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "ADVICE_DIR", str(tmp_path / "advice"))
+    path = advice._save_md("a.md", _complete_md())
+    assert os.path.exists(path)
+    assert list((tmp_path / "advice").glob("*.tmp")) == []

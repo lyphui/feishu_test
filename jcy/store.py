@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime
 
-from jcy.lib.common import record_key, title_to_date
+from jcy.lib.common import record_key, title_to_date, title_to_filename
 from jcy import config
 
 
@@ -43,10 +43,44 @@ def record_index(articles: list) -> dict:
     }
 
 
-def step2_done(record: dict) -> bool:
-    """Step 2 是否已完成：record 有 advice_file 且文件实际存在。"""
+#: advice 正文（去掉 front-matter 后）的最小长度；低于此视为截断/失败的残留文件
+ADVICE_MIN_BODY_CHARS = 200
+
+
+def advice_complete(path: str | None) -> bool:
+    """advice 文件是否存在且内容完整。
+
+    完整 = 具备 _build_md 写出的结构（H1 标题 + 分析时间元信息 + 分隔线），
+    且分隔线之后的正文足够长。用于识别 API 中断/写了一半的残留文件，
+    这类文件应当重跑而不是被当成已完成。
+    """
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return False
+    if not text.lstrip().startswith("# ") or "**分析时间：**" not in text:
+        return False
+    head, sep, body = text.partition("\n---\n")
+    return bool(sep) and len(body.strip()) >= ADVICE_MIN_BODY_CHARS
+
+
+def step2_done(record: dict, title: str = "") -> bool:
+    """Step 2 是否已完成：advice 文件存在且完整即算完成。
+
+    以磁盘上的文件为准，不依赖 jcy_insights.json 中是否有对应 record——
+    record 可能因写入中断/键漂移而缺失，但只要分析文档已完整生成，
+    就不该再消耗一次 Perplexity 调用重跑。
+    """
     path = advice_path(record.get("advice_file"))
-    return bool(path) and os.path.exists(path)
+    if advice_complete(path):
+        return True
+    # record 缺失或没有 advice_file 时，按标题推导出的规范文件名再查一次磁盘
+    if title:
+        return advice_complete(advice_path(title_to_filename(title)))
+    return False
 
 
 def step3_done(record: dict) -> bool:

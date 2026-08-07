@@ -28,10 +28,17 @@ def _build_md(title, link, analyzed_at, advice, citations):
 
 
 def _save_md(filename, content):
+    """原子写：先写临时文件再 os.replace。
+
+    advice 文件是 Step 2 的跳过依据，半写文件会被误判成"已完成"，
+    故不允许出现中间态——要么完整存在，要么不存在。
+    """
     os.makedirs(config.ADVICE_DIR, exist_ok=True)
     path = os.path.join(config.ADVICE_DIR, filename)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp  = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
+    os.replace(tmp, path)
     return path
 
 
@@ -68,6 +75,9 @@ def _analyze_doc(pplx, doc):
     raw = choices[0]["message"]["content"]
     if "</think>" in raw:
         raw = raw.split("</think>", 1)[-1].strip()
+    # 内容过短视为无效响应（如只剩 think 标签、被截断），不落文件，留待下次重跑
+    if len(raw.strip()) < store.ADVICE_MIN_BODY_CHARS:
+        return None, []
     return raw, result.get("citations", [])
 
 
@@ -89,7 +99,9 @@ def run_step2(docs):
             continue
         key   = record_key(title_to_date(title), title)
         rec   = articles[index[key]] if key in index else {}
-        if not store.step2_done(rec):
+        # 传 title：record 缺失时回退到按标题推导的文件名查盘，
+        # 只要分析文档已完整生成就跳过，不再浪费一次 Perplexity 调用
+        if not store.step2_done(rec, title):
             pending.append(d)
     done_count = len(docs) - len(pending) - empty_count
     log.info(f"📋 Step 2 本次需分析：{len(pending)} 篇"
