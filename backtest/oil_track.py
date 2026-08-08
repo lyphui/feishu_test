@@ -1,10 +1,11 @@
 """
 油气双雄（中国石油 601857 / 中国海油 600938）长期跟踪脚本。
 
-做三件事：
+做四件事：
   1. 增量更新本地行情仓库（首次全量，之后只补新交易日）
   2. 判定每只票**当前**处在什么市场状态，给出该状态对应的打法和具体触发价
   3. （可选）跑跨周期策略回测，检查这套打法在历史上站不站得住
+  4. 拉 Brent/WTI/SC 原油价格，算油价对股价的传导相关性（纯描述性统计）
 
 用法
 ----
@@ -21,6 +22,14 @@
 而报告里给你看的触发价一律换算成**不复权**的盘面实际价，因为那才是
 你在交易软件里挂单要输入的数字。两者用最近一日的比值换算——每次除息后
 比值会变，所以除息日之后请重新跑一次本脚本再挂单。
+
+油价数据源
+----------
+个股/指数走 `lib.market_data`（akshare→baostock→yfinance）；油价单独走
+`lib.oil_price`（新浪财经），因为 akshare 里油价相关接口大多打 eastmoney
+域名，本机 eastmoney 被墙、yfinance 商品期货限流，只有新浪这条线通。
+详见该模块 docstring。新浪这条线如果哪天也不通，抓取失败会打印告警并跳过
+传导分析，不影响其余报告内容。
 """
 
 import argparse
@@ -34,6 +43,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.ladder import (PLAYBOOK, simulate_adaptive, simulate_buy_hold,
                         simulate_dca, simulate_grid, simulate_ladder)
+from lib.oil_price import OIL_SYMBOLS, load_oil, transmission_table, update_oil
+from lib.oil_price import read_meta as read_oil_meta
 from lib.price_store import (load_daily, load_dividends, read_meta,
                              update_daily, update_dividends)
 from lib.regime import BEAR, CHOP, TREND_UP, classify, regime_episodes, regime_stats
@@ -67,6 +78,11 @@ def refresh(symbols, offline: bool) -> None:
             if m:
                 print(f"  {name_of(s):<8} {m.get('data_start')}~{m.get('data_end')} "
                       f"{m.get('rows')} 行，最后更新 {m.get('updated_at')}")
+        for o in OIL_SYMBOLS:
+            m = read_oil_meta(o)
+            if m:
+                print(f"  {o:<8} {m.get('data_start')}~{m.get('data_end')} "
+                      f"{m.get('rows')} 行，最后更新 {m.get('updated_at')}")
         return
 
     print("── 增量更新本地行情仓库 ──")
@@ -75,6 +91,13 @@ def refresh(symbols, offline: bool) -> None:
             update_daily(s, HISTORY_START, adjust=adj)
         update_dividends(s)
     update_daily(INDEX_SYMBOL, HISTORY_START, kind="index", adjust="none")
+
+    print("── 更新原油价格（新浪源，油价→股价传导分析用）──")
+    for o in OIL_SYMBOLS:
+        try:
+            update_oil(o)
+        except Exception as e:                      # noqa: BLE001 — 数据源异常五花八门
+            print(f"  ⚠ {o} 更新失败（{e}），传导分析会跳过该品种")
 
 
 def load_all(symbols, offline: bool) -> dict:
@@ -87,6 +110,17 @@ def load_all(symbols, offline: bool) -> dict:
                               auto_update=False, verbose=False),
             "div": load_dividends(s, auto_update=False),
         }
+    return out
+
+
+def load_all_oil() -> dict:
+    """读本地原油缓存（refresh() 已经拉过一遍，这里只读，缺文件的品种跳过）。"""
+    out = {}
+    for o in OIL_SYMBOLS:
+        try:
+            out[o] = load_oil(o, auto_update=False, verbose=False)
+        except FileNotFoundError:
+            pass
     return out
 
 
@@ -201,6 +235,46 @@ def report_structure(symbol: str, hfq: pd.DataFrame) -> None:
         f"跌≥{r.threshold:.0%} {r.episodes} 次"
         + (f"，中位 {r.median_recover_days:.0f} 天修复" if r.recovered else "，未修复")
         for r in prof.itertuples()))
+
+
+# ── 油价 → 股价传导性 ─────────────────────────────────────────────────────────
+
+def report_oil_transmission(symbols, data, oil_data: dict) -> None:
+    """打印油价 vs 各票的领先滞后相关系数表。纯描述性统计，不是回测。"""
+    if not oil_data:
+        print("\n（原油价格全部品种抓取失败，跳过油价→股价传导分析）")
+        return
+
+    print(f"\n{'='*88}")
+    print("油价 → 股价传导性（描述性相关系数，不是回测信号）")
+    print(f"{'='*88}")
+    print("  lag_days = 油价收益率领先股价收益率的（股票）交易日数，corr 为皮尔逊相关系数；")
+    print("  ci95 = r=0 假设下的噪声阈 ±1.96/√n，signif=False 的行按「与 0 无异」读；")
+    print("  口径与两市场日历对齐方式见 lib.oil_price.transmission_table 的 docstring")
+
+    # 缓存过期会让对齐后的样本被静默剔除，先把新鲜度亮出来
+    for o, oil in oil_data.items():
+        lag_days = (pd.Timestamp.today().normalize() - oil.index[-1]).days
+        if lag_days > 7:
+            print(f"  ⚠ {o} 本地缓存最后一根 K 线是 {oil.index[-1].date()}"
+                  f"（已过去 {lag_days} 天），超出对齐容差的交易日会被剔除，n 会偏小")
+
+    for s in symbols:
+        stock = data[s]["hfq"]
+        for o, oil in oil_data.items():
+            t = transmission_table(oil, stock)
+            if t.empty:
+                continue
+            t = t.assign(corr=t["corr"].round(3), ci95=t["ci95"].round(3))
+            print(f"\n  {name_of(s)}({s}) vs {o}：")
+            print("    " + t.to_string(index=False).replace("\n", "\n    "))
+            hits = t[t["signif"]]
+            if hits.empty:
+                print("    → 无一 lag 超过噪声阈，该品种对这只票没有可辨识的传导")
+            else:
+                best = hits.loc[hits["corr"].abs().idxmax()]
+                print(f"    → 最强传导在 lag={int(best['lag_days'])} 天"
+                      f"（corr {best['corr']:+.3f}，阈值 ±{best['ci95']:.3f}）")
 
 
 # ── 回测 ──────────────────────────────────────────────────────────────────────
@@ -333,6 +407,7 @@ def main():
 
     refresh(args.symbols, args.offline)
     data = load_all(args.symbols, args.offline)
+    oil_data = load_all_oil()
 
     infos = {}
     for s in args.symbols:
@@ -355,6 +430,8 @@ def main():
             print(f"  等权组合年化波动 {eq.std()*np.sqrt(252):.1%}　"
                   f"单票平均年化波动 {single:.1%}　"
                   f"分散化效果 {eq.std()*np.sqrt(252)/single-1:+.1%}")
+
+    report_oil_transmission(args.symbols, data, oil_data)
 
     results = run_backtests(args.symbols, data, args.capital) if args.backtest else {}
 
