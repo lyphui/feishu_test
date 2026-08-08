@@ -13,7 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 仅需安装第三方依赖：
   ```bash
   pip install pandas numpy matplotlib requests openai python-dotenv pyyaml akshare yfinance pytest
-  # 可选但推荐：行情第二数据源（akshare 失败时自动回退，且能给出正确的 hfq 后复权口径）
+  # 强烈建议装上：行情第二数据源（akshare 失败时自动回退，且能给出正确的 hfq 后复权口径）
+  # 也是**派息数据的唯一来源**（`lib/price_store.update_dividends`），缺了它算不出股息率
   pip install baostock
   ```
 - `authorize/` 下的一次性授权脚本另需 `flask flask-sslify pyOpenSSL`（不在主流水线依赖内，仅手动获取/刷新飞书 token 时用到）。
@@ -66,6 +67,7 @@ feishu_test/
 │   ├── param_sweep.py             # 参数敏感性网格扫描（判断是否过拟合）
 │   ├── jcy_macd_bull_batch.py     # Step 4: 批量 MACD 牛市策略回测（读 jcy_insights.json）
 │   ├── jcy_intraday_timing.py     # 日线信号 + 分时择时（多周期共振）
+│   ├── oil_track.py               # 油气双雄长期跟踪：增量更新 + 当前状态与打法 + 连续全样本回测
 │   ├── macd_analysis.py           # 薄入口：re-export engine + MACDStrategy CLI
 │   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
 │   ├── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
@@ -76,6 +78,10 @@ feishu_test/
 │   │   └── rjgd_syr_260130.ini    # 其他回测预设示例
 │   └── lib/                       # backtest 内部工具（被引擎/入口复用，from lib.x import）
 │       ├── market_data.py         # 行情数据获取：个股 + 指数（akshare → baostock → yfinance 三源，统一后复权 hfq）
+│       ├── price_store.py         # 本地行情仓库：增量更新 + 重叠对账 + 分红记录（data/market/）
+│       ├── swings.py              # ZigZag 波段分解、独立回撤事件与修复耗时剖面
+│       ├── regime.py              # 市场状态分类（趋势上行/宽幅震荡/趋势下行，严格只用历史数据）
+│       ├── ladder.py              # 分批建仓模拟器：梯度加仓/定投/网格/按状态自适应切换
 │       ├── plotting.py            # 绘图样式（GitHub Dark 配色 + matplotlib 配置）
 │       └── bull_backtest.py       # 牛市策略通用适配器 BullStrategyAdapter
 │
@@ -88,6 +94,10 @@ feishu_test/
 │   └── lu_macd_bull.py            # LuMACDBullStrategy（牛市截陡坡，高频战术）
 │
 ├── ── 数据目录 ─────────────────────────────────
+├── data/market/                   # 本地行情仓库（price_store.py 维护，增量追加）
+│   ├── daily/{symbol}_{adjust}.csv       # 日线 OHLCV，hfq=回测口径 / none=盘面实际价
+│   ├── daily/{symbol}_{adjust}.meta.json # 已覆盖的**请求区间** + 最后更新时间
+│   └── dividend/{symbol}.csv             # 派息记录（baostock），算股息率用
 ├── data/jcy/
 │   ├── jcy_table.json             # 飞书多维表格原始记录（JSON）
 │   ├── jcy_docs.yaml              # 飞书文档内容（YAML，含正文）
@@ -308,6 +318,26 @@ IS 最优在 OOS 转负 = 选中的是噪声；默认格在 OOS 反而更好 = �
 
 ---
 
+### 4c. 长期跟踪与分批建仓 (`backtest/oil_track.py` + `lib/price_store|swings|regime|ladder`)
+
+**职责：** 对固定的几只票做长期迭代跟踪：本地存行情、判定当前市场状态、给出该状态对应的打法与具体挂单价。
+
+- **`lib/price_store.py`** — 本地行情仓库。首次全量、之后只补增量；因为存的是 **hfq（基准为上市价，历史不改写）**才可以安全追加，`adjust="qfq"` 一律强制整表重建。
+  每次增量都多抓 `OVERLAP_DAYS` 天与本地**对账收盘价**，不一致就整表重建（数据源改口径/修历史数据时不会把两段缝起来）。
+  `*.meta.json` 记的是**请求过的区间**而非数据首尾日 —— 否则请求起点落在节假日时，每次都会去补一个永远为空的头段。
+- **`lib/swings.py`** — ZigZag 波段分解 + 独立回撤事件。回撤按"创新高→再创新高"切分，**不要**用"低于前高 X%"逐日计数（价格在阈值附近抖动时同一轮回调会被记成几十次）。
+- **`lib/regime.py`** — 市场状态分类（趋势上行 / 宽幅震荡 / 趋势下行）。全部 rolling/expanding，**只用当日及以前的数据**；带 `confirm_days` 滞回防止状态天天翻。
+  `regime_stats()` 用未来收益检验标签有没有信息量 —— 三档收益没差别就说明分类器是噪声。
+- **`lib/ladder.py`** — 分批建仓模拟器。引擎 `run_backtest` 是二元仓位（全仓/空仓），承载不了"三成仓/满仓/闲置现金"这些中间状态，故另起一套；成本与 T+1 口径与 `engine.py` 对齐，闲置现金按 `cash_rate` 计息。
+  止损型离场后**锁住再入场**直到趋势转好，否则下跌途中会刷出成百上千笔来回交易。
+  `PLAYBOOK` 定义每个状态的打法，`simulate_adaptive()` 按状态切换。
+
+**关键回测教训：** 分段回测（每段重置资金重铺梯子）会**系统性美化**固定阶梯策略 —— 601857 连续跑 8.5 年，"固定梯度+半止盈+MA250"平均仓位只有 15%，长期空仓。判断长期打法要看**连续全样本**，不要看分段汇总。
+
+**CLI：** `python backtest/oil_track.py [--offline] [--backtest] [--chart] [--symbols ...] [--capital N]`
+
+---
+
 ### 5. 包内工具层（`jcy/lib/` 与 `backtest/lib/`）
 
 工具按归属沉入各自包的 `lib/` 子目录，不再有根级 `utils/` 伪共享包。每个模块只有单一归属者，import 语义清晰。
@@ -325,6 +355,10 @@ IS 最优在 OOS 转负 = 选中的是噪声；默认格在 OOS 反而更好 = �
 | 模块 | 核心内容 |
 |------|----------|
 | `market_data.py` | `fetch_stock_data()` + `fetch_index_data()` — 个股/指数行情，akshare → baostock → yfinance 三源（含限流重试）；`ADJUST` 统一三源复权口径，回测默认 **hfq 后复权**（qfq 会随分红回溯改写历史价，结果不可复现） |
+| `price_store.py` | `load_daily()` / `update_daily()` / `load_dividends()` — 本地行情仓库（`data/market/`）。首次全量、之后只补增量；只有 hfq 能安全追加（qfq 强制整表重建），每次增量重叠 `OVERLAP_DAYS` 天对账收盘价，不一致即重建；`*.meta.json` 记**请求过的区间**而非数据首尾日 |
+| `swings.py` | `zigzag()` / `swing_table()` / `drawdown_episodes()` / `drawdown_profile()` — 波段分解与独立回撤事件（按"创新高→再创新高"切分，不逐日比对阈值） |
+| `regime.py` | `classify()` / `regime_stats()` / `regime_episodes()` — 市场状态分类（趋势上行/宽幅震荡/趋势下行），严格只用当日及以前数据，带 `confirm_days` 滞回 |
+| `ladder.py` | `simulate_buy_hold/dca/ladder/grid/adaptive()` + `PLAYBOOK` — 分批建仓模拟器，成本与 T+1 口径对齐 `engine.py`，闲置现金计息，额外报 `avg_exposure` / `deployed_return` |
 | `plotting.py` | `COLORS` 字典（GitHub Dark 配色）、`setup_matplotlib()`、`style_ax(ax)` |
 | `bull_backtest.py` | `BullStrategyAdapter`（牛市策略通用适配器；绘图/CSV 在 `backtest/bull_report.py`） |
 
@@ -439,6 +473,11 @@ python backtest/jcy_intraday_timing.py --period 60      # 60min K 线
 python backtest/macd_analysis.py --config jxty_jcy_260104.ini
 python backtest/lu_macd_analysis.py
 python backtest/lu_macd_bull_analysis.py
+
+# 油气双雄长期跟踪（增量更新本地行情 → 当前状态与挂单价）
+python backtest/oil_track.py                      # 增量更新 + 跟踪报告
+python backtest/oil_track.py --offline            # 不联网，只读本地缓存
+python backtest/oil_track.py --backtest --chart   # 连续全样本回测 + 出图
 
 # 参数敏感性（判断是否过拟合，建议先 --limit 试跑）
 python backtest/param_sweep.py --limit 20
