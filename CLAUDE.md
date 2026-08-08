@@ -113,6 +113,11 @@ feishu_test/
 │       ├── feishu_token_refresh.txt # refresh_token（get_usr_key.py 静默刷新用，不提交）
 │       └── localhost.crt / .key   # feishu_callback.py 自动生成的自签名证书（不提交）
 │
+├── ── 更新日志 ──────────────────────────────────
+├── changelog/                     # **一条改动一个文件**，不要写进同一个 CHANGELOG.md
+│   ├── CHANGELOG.md               # 只做索引：日期 / 链接 / 主题 / 是否含行为变更
+│   └── YYYY-MM-DD-<英文短横线标题>.md  # 条目正文（同一天多条用不同标题后缀区分）
+│
 ├── ── 测试 ────────────────────────────────────
 ├── tests/                         # pytest（不联网、不读真实 data/）
 │
@@ -443,6 +448,17 @@ AZURE_OPENAI_DEPLOYMENT=gpt-5
 AZURE_OPENAI_API_VERSION=2024-12-01-preview
 COZE_URL=...
 ```
+
+---
+
+## 更新日志约定
+
+改动记录放在 `changelog/`，**一条改动一个文件**，命名 `YYYY-MM-DD-<英文短横线标题>.md`。
+不要把多条改动追加进同一个 `CHANGELOG.md` —— 那个文件只作索引表，正文一律写进条目文件。
+
+新增一条时：建条目文件（正文用 `#` 一级标题），并在 `changelog/CHANGELOG.md`
+索引表**最上方**加一行，标明是否「含行为变更」。会改变已有回测输出数值的改动
+必须标为「是」，并在条目里单列「行为变更」一节。
 
 ---
 
