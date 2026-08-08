@@ -143,6 +143,42 @@ def test_pending_order_expires_after_max_pending_days():
     assert len(r["blocked_trades"]) <= 4
 
 
+def test_repeated_signal_does_not_extend_pending_order():
+    """
+    动能策略在连板期间会连日发出同向买入信号。挂单年龄不能被每天重置，
+    作废后也不能立刻用同一段信号重新挂单，否则 max_pending_days 失效。
+    """
+    df = _flat_df()
+    for i in range(11, 40):                             # 连续一字涨停
+        for col in ("open", "high", "low", "close"):
+            df.iloc[i, df.columns.get_loc(col)] = df.iloc[i - 1]["close"] * 1.1
+
+    signals = {i: 1 for i in range(10, 39)}             # 每天都喊买
+    r = _run(df, signals, slippage=0.0, max_pending_days=3)
+
+    assert r["trades"].empty, "连板期间不应追进去"
+    assert len(r["blocked_trades"]) <= 4, (
+        f"挂单应在 {3} 天后作废且不再续期，实际受阻 {len(r['blocked_trades'])} 次"
+    )
+
+
+def test_abandoned_order_rearms_after_signal_clears():
+    """信号真正消失过一次之后，新出现的同向信号是一张全新挂单。"""
+    df = _flat_df()
+    for i in range(11, 16):                             # 前 5 天一字涨停
+        for col in ("open", "high", "low", "close"):
+            df.iloc[i, df.columns.get_loc(col)] = df.iloc[i - 1]["close"] * 1.1
+
+    # 10-14 连续喊买（会超时作废）→ 中断 → 30 重新喊买，此时已可成交
+    signals = {i: 1 for i in range(10, 15)}
+    signals[30] = 1
+    r = _run(df, signals, slippage=0.0, max_pending_days=3)
+
+    buys = r["trades"][r["trades"]["action"] == "买入"]
+    assert len(buys) == 1
+    assert buys.iloc[0]["date"] == df.index[31]
+
+
 def test_suspended_day_is_untradable():
     df = _flat_df()
     df.iloc[11, df.columns.get_loc("volume")] = 0       # 停牌
@@ -213,6 +249,77 @@ def test_slippage_is_adverse_on_both_sides():
     assert t[t["action"] == "卖出"].iloc[0]["price"] == pytest.approx(9.9)
 
 
+def test_return_pct_is_net_of_fees():
+    """
+    价格恒定时一买一卖：毛收益恰好等于双边滑点，净收益还要再扣佣金与印花税。
+    用毛收益算胜率会把这类实际亏损的交易记成盈利。
+    """
+    df = _flat_df(price=10.0)
+    r = _run(df, {10: 1, 30: -1}, slippage=0.001, limit_move_check=False)
+
+    sell = r["trades"][r["trades"]["action"] == "卖出"].iloc[0]
+    # 买 10.01 卖 9.99 → (9.99-10.01)/10.01
+    assert sell["gross_return_pct"] == pytest.approx(-0.1998, abs=1e-4)
+    assert sell["return_pct"] < sell["gross_return_pct"], "净收益必须低于毛收益"
+    assert r["win_rate"] == 0.0, "唯一一笔交易是亏损，胜率应为 0"
+
+
+def test_win_rate_counts_a_fee_only_loss_as_a_loss():
+    """毛收益微正、净收益为负的交易，必须算作亏损。"""
+    df = _flat_df(price=10.0)
+    df.iloc[30, df.columns.get_loc("open")] = 10.005    # +0.05%，不够付手续费
+    r = _run(df, {10: 1, 29: -1}, slippage=0.0, limit_move_check=False)
+
+    sell = r["trades"][r["trades"]["action"] == "卖出"].iloc[0]
+    assert sell["gross_return_pct"] > 0
+    assert sell["return_pct"] < 0
+    assert r["win_rate"] == 0.0
+
+
+def test_win_rate_denominator_excludes_open_positions():
+    """
+    建仓记录的 return_pct 是 None，经 DataFrame 后变成 NaN。它绝不能进入胜率
+    分母——否则一笔全胜的回测会被报成 50%（分子 1，分母含那条建仓行共 2）。
+    """
+    n = 120
+    idx = pd.bdate_range("2024-01-01", periods=n)
+    px = pd.Series(np.linspace(10.0, 20.0, n), index=idx)   # 单边上涨，必盈利
+    df = pd.DataFrame({"open": px, "high": px * 1.01, "low": px * 0.99,
+                       "close": px, "volume": 1e6}, index=idx)
+
+    r = _run(df, {10: 1, 60: -1}, slippage=0.0, limit_move_check=False)
+
+    sells = r["trades"][r["trades"]["action"] == "卖出"]
+    assert len(sells) == 1 and sells.iloc[0]["return_pct"] > 0
+    assert r["win_rate"] == 100.0
+
+
+def test_cost_book_matches_hand_calculation():
+    """成本明细必须与手算一致，且 total_cost = 佣金 + 印花税 + 滑点。"""
+    df = _flat_df(price=10.0)
+    cap = 100_000.0
+    slip, rate, duty, minc = 0.001, 0.0003, 0.001, 5.0
+
+    r = _run(df, {10: 1, 30: -1}, initial_capital=cap, slippage=slip,
+             commission_rate=rate, stamp_duty=duty, min_commission=minc,
+             limit_move_check=False)
+
+    buy_px = 10.0 * (1 + slip)
+    shares = int(cap / buy_px / 100) * 100
+    sell_px = 10.0 * (1 - slip)
+    exp_comm = (max(shares * buy_px * rate, minc)
+                + max(shares * sell_px * rate, minc))
+    exp_duty = shares * sell_px * duty
+    exp_slip = shares * 10.0 * slip * 2            # 双边各千一
+
+    c = r["costs"]
+    assert c["total_commission"] == pytest.approx(exp_comm)
+    assert c["total_stamp_duty"] == pytest.approx(exp_duty)
+    assert c["total_slippage"] == pytest.approx(exp_slip)
+    assert c["total_cost"] == pytest.approx(exp_comm + exp_duty + exp_slip)
+    assert c["cost_drag_pct"] == pytest.approx(c["total_cost"] / cap * 100)
+
+
 def test_never_spends_more_cash_than_available():
     df = _flat_df(price=10.0)
     r = _run(df, {10: 1}, initial_capital=1_050.0, slippage=0.001,
@@ -260,6 +367,25 @@ def test_benchmark_uses_open_of_first_bar():
 
     assert r["benchmark_base"] == pytest.approx(10.0)
     assert r["benchmark_return"] == pytest.approx(10.0)   # 10 开盘 → 11 收盘
+
+
+def test_trade_stats_and_costs_respect_eval_start():
+    """预热期若有成交，它的次数、胜率与成本都不该混进统计窗口。"""
+    df = _flat_df(n=200, price=10.0)
+    warm_trades = {10: 1, 30: -1}                  # 预热期一个完整往返
+    win_trades = {150: 1, 170: -1}                 # 窗口内一个完整往返
+    eval_date = df.index[100].strftime("%Y%m%d")
+
+    r = _run(df, {**warm_trades, **win_trades}, slippage=0.001,
+             limit_move_check=False, eval_start=eval_date)
+
+    assert r["total_trades"] == 1, "只应统计窗口内的建仓次数"
+    assert len(r["trades"]) == 4, "trades 仍保留完整记录供绘图"
+    # 窗口内只有一个往返，成本应约等于全区间的一半
+    full = _run(df, {**warm_trades, **win_trades}, slippage=0.001,
+                limit_move_check=False)
+    assert r["costs"]["total_cost"] == pytest.approx(
+        full["costs"]["total_cost"] / 2, rel=1e-6)
 
 
 def test_eval_start_beyond_data_raises():

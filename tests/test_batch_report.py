@@ -19,6 +19,7 @@ def _fake_result(total, bench, *, n=100, capital=100_000.0, start="2024-01-01"):
                        index=idx)
     return {
         "initial_capital": capital,
+        "equity_base": capital,
         "equity_curve": pd.DataFrame({"equity": equity}, index=idx),
         "total_return": total,
         "benchmark_return": bench,
@@ -28,6 +29,7 @@ def _fake_result(total, bench, *, n=100, capital=100_000.0, start="2024-01-01"):
         "win_rate": 66.7,
         "profit_factor": 1.8,
         "blocked_trades": pd.DataFrame(),
+        "costs": {"cost_drag_pct": 0.42},
     }
 
 
@@ -36,19 +38,36 @@ def _cand(code, name, date="20240102"):
 
 
 def test_result_to_row_has_all_columns_and_excess():
-    row = result_to_row(_cand("600000", "浦发"), _fake_result(20.0, 8.0))
+    row = result_to_row(_cand("600000", "浦发"), _fake_result(20.0, 8.0, n=100))
     assert set(row) == set(SUMMARY_COLUMNS)
     assert row["超额收益%"] == pytest.approx(12.0)
+    assert row["日均超额bp"] == pytest.approx(12.0 * 100 / 100)
+    assert row["成本占比%"] == pytest.approx(0.42)
 
 
-def test_build_summary_sorted_by_excess_desc():
+def test_daily_excess_normalizes_window_length():
+    """同样 +12% 超额，持有两年的日均超额必须远低于持有两个月的。"""
+    short = result_to_row(_cand("600000", "短"), _fake_result(20.0, 8.0, n=40))
+    long_ = result_to_row(_cand("600001", "长"), _fake_result(20.0, 8.0, n=480))
+
+    assert short["超额收益%"] == long_["超额收益%"]
+    assert short["日均超额bp"] > long_["日均超额bp"] * 10
+
+
+def test_build_summary_sorted_by_daily_excess_desc():
+    """
+    排序键是日均超额而非总超额：窗口长的标的不该仅因为跑得久就排前面。
+    B 总超额最高（+20%，400 日 → 5bp/日），C 总超额只有 +2% 但窗口只有
+    20 日（→ 10bp/日），按日均排 C 必须在 B 前面。
+    """
     rows = [
-        result_to_row(_cand("600000", "A"), _fake_result(5.0, 10.0)),   # -5
-        result_to_row(_cand("600001", "B"), _fake_result(30.0, 10.0)),  # +20
-        result_to_row(_cand("600002", "C"), _fake_result(12.0, 10.0)),  # +2
+        result_to_row(_cand("600000", "A"), _fake_result(5.0, 10.0, n=100)),
+        result_to_row(_cand("600001", "B"), _fake_result(30.0, 10.0, n=400)),
+        result_to_row(_cand("600002", "C"), _fake_result(12.0, 10.0, n=20)),
     ]
     df = build_summary(rows)
-    assert list(df["超额收益%"]) == [20.0, 2.0, -5.0]
+    assert list(df["代码"]) == ["600002", "600001", "600000"]
+    assert df["日均超额bp"].is_monotonic_decreasing
 
 
 def test_normalized_equity_starts_at_one():
@@ -56,6 +75,16 @@ def test_normalized_equity_starts_at_one():
     norm = normalized_equity(r)
     assert norm.iloc[0] == pytest.approx(1.0)
     assert norm.iloc[-1] == pytest.approx(1.25)
+
+
+def test_normalized_equity_uses_equity_base_not_initial_capital():
+    """窗口起点权益 != 初始资金时（预热期有成交），曲线仍须从 1.0 起步。"""
+    r = _fake_result(25.0, 5.0)
+    r["equity_base"] = r["initial_capital"] * 1.5     # 预热期已赚了 50%
+    r["equity_curve"]["equity"] *= 1.5
+
+    norm = normalized_equity(r)
+    assert norm.iloc[0] == pytest.approx(1.0)
 
 
 def test_portfolio_curve_averages_only_active_names():
@@ -111,3 +140,52 @@ def test_write_batch_report_handles_no_results(tmp_path):
     summary = write_batch_report([], {}, str(tmp_path))
     assert summary.empty
     assert not (tmp_path / "summary.csv").exists()
+
+
+# ── 引擎 → 汇总层的契约 ───────────────────────────────────────────────────────
+
+def test_real_engine_result_feeds_the_report_layer(tmp_path):
+    """
+    用真实 run_backtest 的输出跑一遍汇总，守住两层之间的字段契约：
+    汇总层读的 equity_base / costs.cost_drag_pct 等键必须真的由引擎产出。
+    _fake_result 是手写的，改了引擎它不会报错——这个测试才会。
+    """
+    from engine import run_backtest
+    from strategies.base import BaseStrategy
+
+    class _Scripted(BaseStrategy):
+        name = "scripted"
+        params: dict = {}
+
+        def prepare(self, df):
+            df = df.copy()
+            df["signal"] = 0
+            df.iloc[10, df.columns.get_loc("signal")] = 1
+            df.iloc[60, df.columns.get_loc("signal")] = -1
+            return df
+
+        def plot_indicators(self, ax, df, colors):
+            pass
+
+    n = 120
+    idx = pd.bdate_range("2024-01-01", periods=n)
+    px = pd.Series(np.linspace(10.0, 13.0, n), index=idx)
+    df = pd.DataFrame({"open": px, "high": px * 1.01, "low": px * 0.99,
+                       "close": px, "volume": 1e6}, index=idx)
+
+    result = run_backtest("600000", "20240101", "20241231",
+                          strategy=_Scripted(), df=df, limit_move_check=False)
+
+    row = result_to_row(_cand("600000", "测试"), result)
+    assert set(row) == set(SUMMARY_COLUMNS)
+    assert row["成本占比%"] > 0, "真实回测必然产生交易成本"
+    # 两列各自四舍五入到 2 位，只能在舍入误差内相等
+    assert row["日均超额bp"] == pytest.approx(
+        row["超额收益%"] * 100 / row["统计交易日数"], abs=0.01)
+
+    curves = {"600000 测试": normalized_equity(result)}
+    assert curves["600000 测试"].iloc[0] == pytest.approx(1.0)
+
+    summary = write_batch_report([row], curves, str(tmp_path))
+    assert len(summary) == 1
+    assert (tmp_path / "summary.csv").exists()

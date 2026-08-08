@@ -9,11 +9,21 @@ JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 
 回测参数
 --------
-  --stop_loss   止损比例，默认 0.20
-  --take_profit 止盈比例，默认 0.10
+  --stop_loss   止损比例，默认 0.10；传 none 关闭
+  --take_profit 止盈比例，默认关闭（none）；传数值则启用
   --capital     初始资金，默认 100000
   --index       大盘指数代码，默认 000300（沪深300）
   --shrink_exit 红柱缩短即离场，默认 True
+
+为什么默认不设止盈
+------------------
+本策略的立意是"截取 MACD 最陡峭的部分"，而 shrink_exit=True 本身已经是
+一套动能衰减离场规则。再叠加一个固定比例止盈，等于在陡坡刚起来时把它切断：
+策略最该赚到的那段被系统性砍掉，留下一堆小赢加少数大亏。
+早先的默认值是 stop_loss=0.20 / take_profit=0.10——1:2 的反向盈亏比，
+与策略前提直接冲突。现改为止损 0.10、止盈交给 shrink_exit。
+要验证这个选择，跑：
+    python backtest/param_sweep.py --axis stop_loss take_profit
 
 数据与买入逻辑
 --------------
@@ -55,10 +65,24 @@ from jcy.lib.common import JSON_PATH, load_candidates
 setup_matplotlib()
 
 
+# ── 止损/止盈参数处理 ─────────────────────────────────────────────────────────
+
+def _fmt_ratio(v: float | None) -> str:
+    return "关闭" if v is None else f"{v:.0%}"
+
+
+def _ratio_or_none(value: str) -> float | None:
+    """止损/止盈参数：接受比例数值，或 none/off/空字符串表示不启用。"""
+    if value is None or value.strip().lower() in ("", "none", "off", "no"):
+        return None
+    return float(value)
+
+
 # ── 单只股票回测 ──────────────────────────────────────────────────────────────
 
 def backtest_one(candidate: dict, end_date: str, index_df,
-                 capital: float, stop_loss: float, take_profit: float,
+                 capital: float,
+                 stop_loss: float | None, take_profit: float | None,
                  shrink_exit: bool, base_output_dir: str,
                  warmup_days: int = 600) -> dict | None:
     """
@@ -99,7 +123,8 @@ def backtest_one(candidate: dict, end_date: str, index_df,
     status_csv = paths.status
 
     print(f"\n  [{code}] {name}  |  推荐日期：{trade_start_date}  "
-          f"数据起始：{data_start}  止损：{stop_loss}  止盈：{take_profit}")
+          f"数据起始：{data_start}  止损：{_fmt_ratio(stop_loss)}  "
+          f"止盈：{_fmt_ratio(take_profit)}")
     print(f"    推荐原因：{reason}")
 
     try:
@@ -154,10 +179,10 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="JCY 增持股票批量回测（卢麒元 MACD 牛市动能截取策略）"
     )
-    parser.add_argument("--stop_loss",   type=float, default=0.20,
-                        help="止损比例，默认 0.20")
-    parser.add_argument("--take_profit", type=float, default=0.10,
-                        help="止盈比例，默认 0.10")
+    parser.add_argument("--stop_loss",   type=_ratio_or_none, default=0.10,
+                        help="止损比例，默认 0.10；传 none/空 关闭")
+    parser.add_argument("--take_profit", type=_ratio_or_none, default=None,
+                        help="止盈比例，默认关闭（由 shrink_exit 决定离场）")
     parser.add_argument("--capital",     type=float, default=100000,
                         help="初始资金，默认 100000")
     parser.add_argument("--index",       type=str,   default="000300",
@@ -179,7 +204,8 @@ def main():
     print("  JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略")
     print("─" * 60)
     print(f"  数据来源：{JSON_PATH}")
-    print(f"  止损：{args.stop_loss}  止盈：{args.take_profit}  "
+    print(f"  止损：{_fmt_ratio(args.stop_loss)}  "
+          f"止盈：{_fmt_ratio(args.take_profit)}  "
           f"资金：{args.capital:,.0f}  大盘：{args.index}")
     print(f"  结束日期：{end_date}  输出目录：{args.output}/")
     print("─" * 60)

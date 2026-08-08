@@ -163,27 +163,46 @@ def run_backtest(
     cost_price = 0.0        # 买入成本价（已含买入滑点，即真实持仓成本）
     entry_date = None       # 建仓日；T+1 规则下当日不得卖出
 
+    entry_fee  = 0.0        # 建仓时付出的佣金；平仓算净收益要把它摊进成本
+
     pending     = 0         # 未成交的挂单方向：1=待买 / -1=待卖 / 0=无
     pending_age = 0         # 挂单已顺延的交易日数
+    abandoned   = 0         # 已因超时作废的挂单方向；信号消失前不再重新挂单
     blocked     = []        # 因涨跌停/停牌未能成交的记录
 
     trades = []             # 交易记录
     equity = []             # 每日资产
 
-    def _sell(date, raw_price, action, pnl_base):
-        """按 raw_price 卖出全部持仓，返回成交价（已含滑点）。"""
-        nonlocal cash, shares, position, cost_price, entry_date
+    def _sell(date, raw_price, action):
+        """
+        按 raw_price 卖出全部持仓，返回成交价（已含滑点）。
+
+        return_pct 为**净收益**：买入佣金 + 卖出佣金 + 印花税全部计入。
+        毛收益另记在 gross_return_pct，便于对照成本吃掉了多少。
+        对一个平均持仓只有几天的高频策略，往返成本约占 0.2%，用毛收益算
+        胜率会把一批实际亏损的交易记成盈利。
+        """
+        nonlocal cash, shares, position, cost_price, entry_date, entry_fee
         exec_price = raw_price * (1 - slippage)
         proceeds   = shares * exec_price
-        fee        = _commission(proceeds, commission_rate, min_commission) \
-                     + proceeds * stamp_duty
-        cash += proceeds - fee
+        commission = _commission(proceeds, commission_rate, min_commission)
+        duty       = proceeds * stamp_duty
+        cash += proceeds - commission - duty
+
+        outlay = shares * cost_price + entry_fee     # 建仓总支出（含买入佣金）
+        net    = proceeds - commission - duty        # 平仓净回款
         trades.append({
             "date": date, "action": action, "price": exec_price,
             "shares": shares, "cash": cash,
-            "return_pct": (exec_price - pnl_base) / pnl_base * 100,
+            "return_pct": (net - outlay) / outlay * 100,
+            "gross_return_pct": (exec_price - cost_price) / cost_price * 100,
+            "commission": commission,
+            "stamp_duty": duty,
+            # 滑点成本：相对未滑点的理论价少收到的部分
+            "slippage_cost": shares * raw_price * slippage,
         })
-        shares = 0; position = 0; cost_price = 0.0; entry_date = None
+        shares = 0; position = 0; cost_price = 0.0
+        entry_date = None; entry_fee = 0.0
         return exec_price
 
     for date, row in df.iterrows():
@@ -199,9 +218,16 @@ def run_backtest(
             can_buy = can_sell = True
 
         # ── 挂单簿更新：新信号覆盖旧挂单 ──
-        sig = row["signal_exec"]
-        if sig != 0:
-            pending, pending_age = int(sig), 0
+        # 动能策略在持续期会**连日发出同向信号**。若每天都把 pending_age 归零、
+        # 或在超时作废后立刻用当天的同向信号重新挂单，max_pending_days 就形同
+        # 虚设——一字连板期间挂单被无限续期，最终追在最高点上。
+        # 因此：同向信号重复出现不重置年龄；已作废的方向要等信号真正消失
+        # （出现 0 或反向信号）才允许重新挂单。
+        sig = int(row["signal_exec"])
+        if sig != abandoned:
+            abandoned = 0
+        if sig != 0 and sig != abandoned and pending != sig:
+            pending, pending_age = sig, 0
         # 方向与当前仓位矛盾的挂单直接作废（已持仓还挂买 / 空仓还挂卖）
         if (pending == 1 and position == 1) or (pending == -1 and position == 0):
             pending, pending_age = 0, 0
@@ -227,10 +253,14 @@ def run_backtest(
                     position   = 1
                     cost_price = exec_price
                     entry_date = date
+                    entry_fee  = fee
                     pending, pending_age = 0, 0
                     trades.append({
                         "date": date, "action": "买入", "price": exec_price,
-                        "shares": shares, "cash": cash, "return_pct": None,
+                        "shares": shares, "cash": cash,
+                        "return_pct": None, "gross_return_pct": None,
+                        "commission": fee, "stamp_duty": 0.0,
+                        "slippage_cost": shares * open_ * slippage,
                     })
                 else:
                     pending, pending_age = 0, 0     # 钱不够一手，放弃
@@ -240,7 +270,7 @@ def run_backtest(
 
         elif pending == -1 and position == 1:
             if can_sell:
-                _sell(date, open_, "卖出", cost_price)
+                _sell(date, open_, "卖出")
                 pending, pending_age = 0, 0
             else:
                 blocked.append({"date": date, "action": "卖出受阻",
@@ -250,6 +280,7 @@ def run_backtest(
         if pending != 0:
             pending_age += 1
             if pending_age > max_pending_days:
+                abandoned = pending
                 pending, pending_age = 0, 0
 
         # ── 步骤 2：盘中止损 / 止盈 ──
@@ -266,28 +297,35 @@ def run_backtest(
                 exit_price  = max(open_, tp_price)      # 跳空高开则按开盘价
                 exit_action = "止盈卖出"
             if exit_price is not None:
-                _sell(date, exit_price, exit_action, cost_price)
+                _sell(date, exit_price, exit_action)
 
         # ── 步骤 3：收盘估值 ──
         equity.append({"date": date, "equity": cash + shares * price, "close": price})
 
     # 如果结束时仍持仓，按最后收盘价清算
     if shares > 0:
-        _sell(df.index[-1], df["close"].iloc[-1], "期末清仓", cost_price)
+        _sell(df.index[-1], df["close"].iloc[-1], "期末清仓")
         equity[-1]["equity"] = cash
 
     # ── 统计指标 ──
     eq_full = pd.DataFrame(equity).set_index("date")
 
     # 统计窗口：预热期权益恒等于初始资金，计入会摊薄年化并稀释夏普
+    trades_full = pd.DataFrame(trades)
     if eval_start:
         cut = pd.to_datetime(eval_start, format="%Y%m%d")
         eq_df = eq_full.loc[eq_full.index >= cut]
         px    = df.loc[df.index >= cut]
         if eq_df.empty:
             raise ValueError(f"eval_start={eval_start} 之后没有任何交易日")
+        # 交易级统计同样只看窗口内：预热期通常无成交，但调用方若在预热期放了
+        # 信号，这些成交不该混进胜率与成本统计。
+        # 已知边界：跨窗口边界的那笔（窗口前买入、窗口内卖出）按卖出日归属。
+        win_trades = (trades_full[trades_full["date"] >= cut]
+                      if not trades_full.empty else trades_full)
     else:
         eq_df, px = eq_full, df
+        win_trades = trades_full
 
     eq_df = eq_df.copy()
     # 窗口起点的基准资金：取窗口前最后一天的权益。
@@ -309,7 +347,20 @@ def run_backtest(
         annual_return = None
     max_drawdown    = eq_df["drawdown"].min() * 100
     sharpe          = _calc_sharpe(eq_df["returns"], annual_trading_days)
-    win_rate, avg_win, avg_loss, profit_factor = _calc_trade_stats(trades)
+    win_rate, avg_win, avg_loss, profit_factor = _calc_trade_stats(
+        win_trades.to_dict("records") if not win_trades.empty else []
+    )
+
+    # ── 交易成本：窗口内实际付出的钱 ──
+    # 只报费率假设是不够的——高频策略的成本吃掉多少收益，必须直接看金额。
+    # cost_drag_pct 的含义：这些成本相当于窗口起点资金的百分之几。
+    def _cost_sum(col: str) -> float:
+        return float(win_trades[col].sum()) if not win_trades.empty else 0.0
+
+    total_commission = _cost_sum("commission")
+    total_stamp_duty = _cost_sum("stamp_duty")
+    total_slippage   = _cost_sum("slippage_cost")
+    total_cost       = total_commission + total_stamp_duty + total_slippage
 
     # 基准（买入持有）：与策略同口径 —— 同一个统计窗口、同样开盘买入收盘估值
     bench_base   = px["open"].iloc[0]
@@ -327,12 +378,13 @@ def run_backtest(
         "benchmark_base": bench_base,
         "max_drawdown": max_drawdown,
         "sharpe_ratio": sharpe,
-        "total_trades": len([t for t in trades if t["action"] == "买入"]),
+        "total_trades": (0 if win_trades.empty
+                         else int((win_trades["action"] == "买入").sum())),
         "win_rate": win_rate,
         "avg_win": avg_win,
         "avg_loss": avg_loss,
         "profit_factor": profit_factor,
-        "trades": pd.DataFrame(trades),
+        "trades": trades_full,
         "blocked_trades": pd.DataFrame(blocked),
         "equity_curve": eq_df,
         "equity_curve_full": eq_full,
@@ -344,6 +396,12 @@ def run_backtest(
             "stamp_duty": stamp_duty,
             "slippage": slippage,
             "limit_pct": limit_pct if limit_move_check else None,
+            # 实际发生额（仅统计窗口内）
+            "total_commission": total_commission,
+            "total_stamp_duty": total_stamp_duty,
+            "total_slippage": total_slippage,
+            "total_cost": total_cost,
+            "cost_drag_pct": total_cost / base_equity * 100,
         },
     }
 
@@ -371,7 +429,12 @@ def _calc_sharpe(returns: pd.Series, annual_days: int = 252, rf: float = 0.02,
 
 
 def _calc_trade_stats(trades: list):
-    closed = [t for t in trades if t.get("return_pct") is not None]
+    # 必须同时排除 None 和 NaN：调用方传的是 DataFrame.to_dict("records")，
+    # pandas 已把建仓行的 return_pct=None 转成 float NaN。只判 `is not None`
+    # 会把建仓记录算进胜率分母（NaN 既不 >0 也不 <=0，于是分子不变、分母翻倍，
+    # 一笔盈利的交易会被报成 50% 胜率）。
+    closed = [t for t in trades
+              if t.get("return_pct") is not None and not pd.isna(t["return_pct"])]
     if not closed:
         return 0.0, 0.0, 0.0, 0.0
     wins   = [t["return_pct"] for t in closed if t["return_pct"] > 0]
@@ -415,7 +478,13 @@ def _print_summary(r: dict):
     shp = r['sharpe_ratio']
     print(f"  夏普比率      : {'  N/A(样本不足)' if shp is None else f'{shp:>8.2f}'}")
     print(f"  交易次数      : {r['total_trades']:>8}  次")
-    print(f"  胜率          : {r['win_rate']:>8.1f}%")
+    if c.get("total_cost") is not None:
+        print(f"  交易成本合计  : ¥{c['total_cost']:>12,.2f}  "
+              f"（占起点资金 {c['cost_drag_pct']:.2f}%）")
+        print(f"    其中 佣金 ¥{c['total_commission']:,.2f}  "
+              f"印花税 ¥{c['total_stamp_duty']:,.2f}  "
+              f"滑点 ¥{c['total_slippage']:,.2f}")
+    print(f"  胜率(净额)    : {r['win_rate']:>8.1f}%")
     print(f"  平均盈利      : {r['avg_win']:>+8.2f}%")
     print(f"  平均亏损      : {r['avg_loss']:>+8.2f}%")
     pf = r['profit_factor']
