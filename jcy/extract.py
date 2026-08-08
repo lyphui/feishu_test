@@ -1,4 +1,4 @@
-"""Step 3 — LLM 结构化提取，按 S3_PROVIDERS 顺序自动回退（DashScope / Azure / Coze）。"""
+"""Step 3 — LLM 结构化提取，按 S3_PROVIDERS 顺序自动回退（DashScope / Azure / Coze / Custom）。"""
 
 import json
 import os
@@ -72,6 +72,22 @@ def _call_provider(provider, user_prompt):
                 {"role": "user",   "content": user_prompt},
             ],
             max_completion_tokens=16000,
+            response_format={"type": "json_object"},
+        )
+        return parse_json_loose(response.choices[0].message.content.strip())
+
+    if provider["type"] == "custom":
+        client = OpenAI(
+            api_key=config.S3_CUSTOM_API_KEY,
+            base_url=config.S3_CUSTOM_BASE_URL,
+        )
+        response = client.chat.completions.create(
+            model=config.S3_CUSTOM_MODEL,
+            messages=[
+                {"role": "system", "content": config.S3_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_prompt},
+            ],
+            max_tokens=16000,
             response_format={"type": "json_object"},
         )
         return parse_json_loose(response.choices[0].message.content.strip())

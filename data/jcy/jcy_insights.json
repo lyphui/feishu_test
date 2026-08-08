@@ -1,7 +1,104 @@
 {
-  "updated_at": "2026-08-07 17:13:27",
-  "total": 270,
+  "updated_at": "2026-08-08 16:17:00",
+  "total": 271,
   "articles": [
+    {
+      "date": "2026-08-07",
+      "title": "Vol.260807 非常关键的一天",
+      "link": "https://feishu.cn/wiki/E6lPwUfBwi9t4rkA8ZXcMPtSnTt",
+      "advice_file": "2026-08-07__Vol.260807 非常关键的一天.md",
+      "extracted_at": "2026-08-08 16:17:00",
+      "llm_provider": "Custom",
+      "companies": [
+        {
+          "name": "鹏鼎控股",
+          "code": "002938",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "深南电路",
+          "code": "002916",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "景旺电子",
+          "code": "603228",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "东山精密",
+          "code": "002384",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "大族数控",
+          "code": "301200",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "芯碁微装",
+          "code": "688630",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "东威科技",
+          "code": "688700",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "盛美上海",
+          "code": "688082",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "德福科技",
+          "code": "301511",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "方邦股份",
+          "code": "688020",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "宝鼎科技",
+          "code": "002552",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "天承科技",
+          "code": "688603",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "福斯特",
+          "code": "603806",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "技术反弹至压力位，谨慎对待，关注出海链和高端PCB/材料国产替代，避免追高",
+      "key_advice": [
+        "理解指数压力位（如3927）附近的波动风险，避免情绪化追高。",
+        "分批建仓，关注有真实订单和业绩支撑的出海链及mSAP PCB/材料公司。",
+        "等待指数有效突破压力位和龙头业绩改善后再考虑加大仓位。"
+      ]
+    },
     {
       "date": "2026-08-06",
       "title": "Vol.260806 美股达子大涨",

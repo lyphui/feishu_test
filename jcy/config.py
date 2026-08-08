@@ -83,6 +83,9 @@ S3_COZE_MODEL       = os.getenv("COZE_MODEL", "doubao-pro")
 S3_DASHSCOPE_API_KEY  = os.getenv("DASHSCOPE_API_KEY", "")
 S3_DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 S3_DASHSCOPE_MODEL    = os.getenv("DASHSCOPE_MODEL", "deepseek-v4-pro")
+S3_CUSTOM_API_KEY   = os.getenv("CUSTOM_API_KEY", "")
+S3_CUSTOM_BASE_URL  = os.getenv("CUSTOM_BASE_URL", "")
+S3_CUSTOM_MODEL     = os.getenv("CUSTOM_MODEL", "")
 S3_OUTPUT_FILE      = os.path.join(_DATA_DIR, "jcy_insights.json")
 S3_SLEEP            = 2
 
@@ -91,6 +94,7 @@ S3_PROVIDERS = [
     {"name": "DashScope", "type": "dashscope", "enabled": bool(S3_DASHSCOPE_API_KEY)},
     # {"name": "Azure OpenAI", "type": "azure", "enabled": bool(S3_AZURE_API_KEY)},
     # {"name": "Coze",         "type": "coze",  "enabled": bool(S3_COZE_API_KEY)},
+    {"name": "Custom", "type": "custom", "enabled": bool(S3_CUSTOM_API_KEY)},
 ]
 
 S3_SYSTEM_PROMPT = read_prompt("step3_extract_system.md")

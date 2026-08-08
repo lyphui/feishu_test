@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ```bash
   pip install pandas numpy matplotlib requests openai python-dotenv pyyaml akshare yfinance pytest
   ```
+- `authorize/` 下的一次性授权脚本另需 `flask flask-sslify pyOpenSSL`（不在主流水线依赖内，仅手动获取/刷新飞书 token 时用到）。
 
 ## 项目概述
 
@@ -90,8 +91,13 @@ feishu_test/
 │   └── advice/                    # Perplexity 生成的投资建议 Markdown 文件
 │       └── YYYY-MM-DD__标题.md     # 复合命名（date + 安全化 title），对应每期 JCY 文章
 │
-├── authorize/feishu_key/
-│   └── feishu_token.txt           # 飞书 Bearer Token（手动维护）
+├── authorize/                     # 飞书 OAuth 授权工具（手动运行一次性获取/刷新 token，不属于自动化流水线）
+│   ├── get_usr_key.py             # 完整授权（打开浏览器换 code→token）/ 静默刷新（用 refresh_token），写入 feishu_key/*.txt
+│   ├── feishu_callback.py         # 本地自签名 HTTPS 回调服务（Flask，:8080/callback），接收飞书授权 code 供手动复制
+│   └── feishu_key/
+│       ├── feishu_token.txt       # 飞书 Bearer Token（get_usr_key.py 写入 / jcy/feishu.py 读取）
+│       ├── feishu_token_refresh.txt # refresh_token（get_usr_key.py 静默刷新用，不提交）
+│       └── localhost.crt / .key   # feishu_callback.py 自动生成的自签名证书（不提交）
 │
 ├── ── 测试 ────────────────────────────────────
 ├── tests/                         # pytest（不联网、不读真实 data/）
@@ -102,6 +108,15 @@ feishu_test/
 ---
 
 ## 核心功能模块
+
+### 0. 飞书 OAuth 授权工具 (`authorize/`，手动运行，独立于自动化流水线)
+
+**职责：** 首次获取 / 过期后刷新 `jcy/feishu.py` 采集数据所需的飞书 `user_access_token`，产出 `authorize/feishu_key/feishu_token.txt`（`TOKEN_FILE` 指向的文件）。不在 Step 1-4 的自动执行链路中，需要人工触发。
+
+- `get_usr_key.py` — 主入口，交互式二选一：
+  1. **完整授权**：打开浏览器走飞书 OAuth 页面 → 用户手动复制回调 URL 中的 `code` 粘贴回终端 → 换取 `access_token`/`refresh_token`，写入 `feishu_token.txt` / `feishu_token_refresh.txt`
+  2. **静默刷新**：用已保存的 `refresh_token` 换新 token，免去重新授权；失败时自动回退到完整授权
+- `feishu_callback.py` — 可选的本地 HTTPS 回调服务（Flask + 自签名证书，监听 `:8080/callback`），把飞书跳转回来的 `code` 打印/展示在页面上，方便手动复制（`get_usr_key.py` 的完整授权流程也可以只用浏览器地址栏读 code，不强依赖此服务）
 
 ### 1. 数据准备一体化流水线 (`jcy/` 包，入口 `prepare_jcy_data.py`)
 
@@ -141,7 +156,8 @@ wiki_token → bitable app_token
 - 去重统一以 `jcy_insights.json` 为单一真值源；`advice_cache.json` 已废弃
 
 **环境变量：**
-- `TOKEN_FILE` — 飞书 Bearer Token 文件路径
+- `TOKEN_FILE` — 飞书 Bearer Token 文件路径（`authorize/get_usr_key.py` 写入，`jcy/feishu.py` 读取）
+- `FEISHU_APP_ID` / `FEISHU_APP_SECRET` — 飞书应用凭证，仅 `authorize/get_usr_key.py` 换取/刷新 token 时使用
 - `JCY_WIKI_TOKEN` — 飞书 Wiki 节点 token
 - `JCY_APP_TABLE_ID` — 多维表格 ID
 - `JCY_VIEW_ID` — 视图 ID（可选）
@@ -289,6 +305,8 @@ shrink_exit = true         # true=红柱缩短即走，false=等死叉
 
 ```
 TOKEN_FILE=...                     # 飞书 Bearer Token 文件路径
+FEISHU_APP_ID=...                  # 飞书应用 ID（仅 authorize/get_usr_key.py 用）
+FEISHU_APP_SECRET=...              # 飞书应用密钥（仅 authorize/get_usr_key.py 用）
 PPLX_API_KEY=pplx-...
 PPLX_GROUP_ID=...
 JCY_WIKI_TOKEN=...
