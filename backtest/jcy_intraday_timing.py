@@ -22,9 +22,9 @@ JCY 日线信号 + 分时择时（多周期共振）
   4. 卖出跌停：一字跌停，分时无成交，"好的卖出时机"已不存在
   5. 小盘流动性不足：分时 MACD 因稀疏成交而失真
 
-  应对建议（本脚本会自动提示）：
-    买入无 GO 窗口 → 挂限价单，不追高，等次日再观察   ⚠️ 见下方「实测」：这条已被证伪
-    卖出无 GO 窗口 → 次日集合竞价直接挂单卖出，不等盘中机会
+  应对建议（本脚本会自动提示，两条旧建议都已被实测推翻，见下方「实测」）：
+    买入无 GO 窗口 → 次日开盘集合竞价直接买，不要挂低价等回调
+    卖出无 GO 窗口 → 尾盘 15:00 前卖掉，不要留到次日集合竞价
 
 买入信号的完整链路（代码走向）
 ──────────────────────────────
@@ -61,26 +61,64 @@ JCY 日线信号 + 分时择时（多周期共振）
       直接跳过建仓，等于让执行层条件充当隐式策略过滤器——无 GO 占四成日子，
       影响远超它该有的分量。现在一律建仓，只是成交价不同。
 
-实测：这套择时到底有没有用（JCY 抽样池，45 只 × 48332 个股票-交易日，2022-01~2026-08）
+卖出信号的链路（与买入共用 ①③，仓位规则不同）
+──────────────────────────────────────────────
+  三级递进离场，只有**第一级**走分时择时，后两级直接用日线收盘价：
+
+    一级  红柱缩短      → `_sell_portion(level=1)`  减半仓   ← 有分时择时
+    二级  DIF < DEA 死叉 → `_sell_portion(level=2)`  再减    ← 无，日线收盘价
+    三级  DIF < 0        → `_sell_remaining()`       清空    ← 无，日线收盘价
+    另：初仓阶段遇 红柱缩短 / DIF<DEA / DIF<0 直接全退（不分级）
+
+  分时侧 `classify_timing(action="sell")` 的 GO 定义与买入**不对称**：
+    GO   = hist_shrinking（红柱缩短）**或** death_cross（DIF 下穿 DEA）
+    WAIT = 其余；没有 AVOID 这一档
+  买侧要求方向与动能同时成立，卖侧只要动能转弱就放行，死叉那一路根本不看
+  红柱正负。所以卖侧 GO 天数占比天然更高（本池 64% vs 买侧 57%），
+  两侧的 bp 不能横向比较。`lib.execution.intraday_macd()` 的 `go_sell` 同式。
+
+  ⚠️ 已知的一处不对称，**尚未修改**：买入信号默认在信号次日执行
+  （`_determine_exec_date` 的 next），而二级/三级卖出在 `PositionTracker.run()`
+  里用**信号当日的收盘价**当场成交。可日线的"红柱缩短""死叉"要等当天收盘才
+  算得出来，等于在知道结果的同一刻按那个价成交。买卖两侧因此差了一天：
+  修它会改动全部历史卖出记录，属于独立的行为变更，另开一条改。
+
+实测：这套择时到底有没有用（JCY 抽样池 45 只 × 46728 个股票-交易日，2022-01~2026-08）
 ──────────────────────────────────────────────────────────────────────────
-以当日 VWAP 为基准（负 = 买得比当天典型成交价便宜），复现见 lib/execution.py：
+复现：`python backtest/exec_bench.py --universe jcy --side both --limit 45`
+（定种子抽样，度量层在 `lib/execution.py`，分时缓存在 `data/market/intraday/`）
+下表一律**优势bp**：正 = 优于当日 VWAP（买得更便宜 / 卖得更贵）。
 
-    A 开盘集合竞价买        −18.7bp   t=−17.3   ← 最好
-    B 尾盘 15:00 买         −6.6bp   t= −9.7
-    F2 GO 窗口（真实口径）   −9.7bp   t=−15.9
-    E 限价挂开盘−0.5%       +46.4bp   t= 63.1   ← 最差（成交率 66%）
+                          买入          卖出
+    A 开盘集合竞价        +16.7 ★最优   −16.7 ✗最差
+    B 尾盘 15:00           +5.4         −5.4
+    C GO 窗口              +9.4         −3.2 ★最优
+    D 限价挂开盘∓0.5%     −46.6 ✗最差  −72.9 ✗最差（成交率均 66%）
+    逐股最优计票        开盘 27/45     GO 29/45（尾盘 12、开盘 4）
 
-  结论：**GO 窗口用于择时，比开盘直接买差约 9bp**；逐股看 45 只里 38 只是开盘买更优。
-  「无 GO 就挂限价单等回调」是所有做法里最贵的——没成交的 34% 恰是股票当天
-  一路走高的日子，最后被迫在更高的位置补，即逆向选择。
+  **两侧不对称，别把买入结论翻过来用。**A、B 两行买卖数值互为相反数，因为它们
+  测的是同一个日内形状：开盘价比 VWAP 低 16.7bp——买入正因这个"便宜"而首选开盘，
+  卖出遇上同一个便宜就是净亏。所以开盘集合竞价是**买入最优、卖出最差**。
 
-  GO 标签本身**有信息量但只是同期的**：有 GO 的日子开盘→收盘 +168bp、
-  无 GO 的日子 −178bp，区分很干净；可它要等当天走完才知道，用于**归因**成立，
+  **买入侧：GO 窗口不如直接开盘买**（差约 7bp，逐股 27/45 支持开盘）。
+  **卖出侧：GO 窗口反而是最优**（−3.2bp，逐股 29/45 支持），且 GO 卖出后
+  再等到收盘平均 −2.0bp / 中位 −12.4bp（t=−1.7 不显著）——等不出钱来，
+  说明 GO 给出的离场时点在本池上是对的，没有卖早。
+
+  **两侧最贵的都是限价单**，卖侧尤甚（−72.9bp）。逆向选择方向相反但都是亏：
+  买侧成交在没涨的日子、被迫追高在涨的日子；卖侧成交在冲高的日子、
+  被迫砸盘在跌的日子。看着漂亮的都是成交样本，账单在未成交的那 34% 里。
+
+  GO 标签本身**有信息量但只是同期的**：买侧有 GO 的日子开盘→收盘 +166bp、
+  无 GO 的日子 −177bp，区分很干净；可它要等当天走完才知道，用于**归因**成立，
   用于**决策**不成立（`lib.execution.split_by_go` 就是干这个归因用的）。
+  唯一可照着做决策的是 `lib.execution.wait_value()`：它比较的两个动作
+  （GO 一出现就做掉 / 放着等收盘）在同一时刻都摆在面前，不需要预知有没有 GO。
 
   ⚠️ 这些数字只属于 JCY 池（中小市值动量股）。同一套测算在油气蓝筹
-  （601857/600938）上跑出来的日内形状**不一样**——那边尾盘买是 +8bp（贵），
-  这边是 −6.6bp（反而便宜）。方向可外推，数值不可外推；换池子必须重测。
+  （601857/600938）上跑出来的日内形状**不一样**，卖出侧连排序都反了：
+  那边最优是尾盘（+8.6bp）而非 GO 窗口（+5.3bp），且 GO 卖完再等到收盘还能
+  多拿 6.2bp（t=2.1，卖早了）。方向可外推，数值与排序都不可外推，换池必须重测。
 
 用法：
     python backtest/jcy_intraday_timing.py
@@ -560,7 +598,14 @@ def add_macd(df: pd.DataFrame,
              fast: int = MACD_FAST,
              slow: int = MACD_SLOW,
              sig: int = MACD_SIGNAL) -> pd.DataFrame:
-    """在 DataFrame 上追加 DIF / DEA / MACD / hist_expanding / hist_shrinking 列。"""
+    """
+    在 DataFrame 上追加 DIF / DEA / MACD / hist_expanding / hist_shrinking / death_cross 列。
+
+    三个布尔列都要在**连续跨日**序列上算，因为它们都用 `shift(1)` 看前一根：
+    切成日切片再算，每天第一根的 shift 是 NaN，当天开盘那根就永远判不出
+    「红柱开始缩短」或「隔夜死叉」——而隔夜跳空恰恰是这类翻转最集中的地方。
+    `classify_timing()` 因此只读这些列，不自己重算。
+    """
     df = df.copy()
     ema_f = df["close"].ewm(span=fast, adjust=False).mean()
     ema_s = df["close"].ewm(span=slow, adjust=False).mean()
@@ -573,6 +618,7 @@ def add_macd(df: pd.DataFrame,
     df["MACD"] = hist
     df["hist_expanding"] = (hist > 0) & (hist > hist.shift(1))
     df["hist_shrinking"] = (hist > 0) & (hist < hist.shift(1))
+    df["death_cross"] = (dif < dea) & (dif.shift(1) >= dea.shift(1))
     return df
 
 
@@ -592,6 +638,14 @@ def classify_timing(day_slice: pd.DataFrame, action: str) -> pd.DataFrame:
     卖出判断：
       GO    → 红柱开始缩短（动能衰减）或 DIF 下穿 DEA（死叉）
       WAIT  → 动能仍在高位（暂时持有）
+
+    两侧**不对称**：买侧要求方向与动能同时成立，还留了 AVOID 一档；
+    卖侧只要动能转弱就放行，死叉那一路根本不看红柱正负，也没有 AVOID。
+    所以卖侧的 GO 天数占比天然高得多，两边的 bp 不可横向比较。
+
+    所有依赖前一根的布尔列都由 `add_macd()` 在连续跨日序列上算好，这里只读不算——
+    在日切片上重算会丢掉每天第一根的判定（见 `add_macd` docstring）。
+    与 `lib.execution.intraday_macd()` 的 `go_buy`/`go_sell` 同口径。
     """
     df = day_slice.copy()
 
@@ -602,9 +656,8 @@ def classify_timing(day_slice: pd.DataFrame, action: str) -> pd.DataFrame:
         ]
         df["timing"] = np.select(conditions, ["GO", "WAIT"], default="AVOID")
     else:
-        death_cross = (df["DIF"] < df["DEA"]) & (df["DIF"].shift(1) >= df["DEA"].shift(1))
         df["timing"] = np.select(
-            [df["hist_shrinking"] | death_cross],
+            [df["hist_shrinking"] | df["death_cross"]],
             ["GO"],
             default="WAIT",
         )
@@ -801,7 +854,10 @@ def _print_timing_advice(summary: TimingSummary, action_cn: str):
         print(f"         建议：次日开盘集合竞价直接买（实测最优），不要挂低价等回调")
     else:
         print(f"      ⚠️  全天无明确缩量 / 死叉信号")
-        print(f"         建议：若持仓，在次日集合竞价挂单卖出，不等盘中机会")
+        # 旧建议是「次日集合竞价挂单卖出」，实测是所有固定时点里最差的一个：
+        # 开盘价在 JCY 池比 VWAP 低 16.7bp、在油气池低 12.3bp——买入侧正因为
+        # 这个"便宜"而首选开盘，卖出侧同一个便宜就是净亏。两池都是尾盘更好。
+        print(f"         建议：尾盘 15:00 前卖出，不要留到次日集合竞价")
 
 
 def print_timing_table(exec_bars: pd.DataFrame, summary: TimingSummary,

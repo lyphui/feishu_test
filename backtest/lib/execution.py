@@ -1,14 +1,28 @@
 """
 日内下单方案的成交价测算（与标的、与策略无关的度量层）。
 
-回答的问题只有一个：**已经决定要买了，用哪种下单方式成交价更好。**
+回答的问题只有一个：**已经决定要买（卖）了，用哪种下单方式成交价更好。**
 这跟"买不买""买多少"无关——那些是策略的事，在 strategies/ 和 lib/ladder.py 里。
 
 基准取当日 VWAP（`sum(amount) / sum(volume)`，全天成交的加权均价）。
 为什么是 VWAP 而不是当日最低价：最低价只有事后才知道、谁也挂不到，
 拿它当标准会让所有方案都是"失败"，比不出高下。VWAP 是**可达成的中性结果**
-（把单子摊到全天慢慢买就大致能买到），因此"跑赢 VWAP"才是有意义的说法。
-输出单位一律 bp（万分之一），负 = 买得比当天典型成交价便宜。
+（把单子摊到全天慢慢做就大致能拿到），因此"跑赢 VWAP"才是有意义的说法。
+
+买卖两侧共用这一套基准，只有方向相反
+------------------------------------
+原始偏离 `bp = (成交价 / VWAP − 1) × 1e4` 是**中性的日内形状描述**，
+与你是买是卖无关：某天开盘价低于 VWAP 18bp，就是低 18bp。
+好坏才分侧——买入低于基准是省钱，卖出低于基准是亏钱。所以：
+
+    优势bp = −原始bp （买）   |   +原始bp （卖）      正 = 优于 VWAP
+
+**直接推论：固定时点方案（开盘 / 尾盘）的卖出结论可以从买入表直接翻符号得到，
+不需要重测。**开盘价相对 VWAP 便宜多少，买入就省多少、卖出就亏多少。
+真正需要另测的只有两类**依赖侧向定义**的方案：
+  * GO 窗口——买侧看红柱拉长，卖侧看红柱缩短/死叉，是两个不同的条件
+  * 限价单——买侧挂低价等回调（`rest_low` 触发），卖侧挂高价等冲高（`rest_high` 触发），
+    连"成交与否"的判定都不一样
 
 三条踩过的坑，写在这里免得再踩
 ------------------------------
@@ -24,17 +38,31 @@
 
 3. **允许"不成交"的方案必须配一个强制兜底。**否则"没等到好价就不买"
    等于偷偷给策略加了一个免费的择时期权，回测会凭空变好。
-   `add_limit_plan()` 强制要求 `fallback`，没得选。
+   `add_limit_plan()` 强制要求 `fallback`，没得选。卖侧更要命：
+   "没卖掉就继续拿着"是把一次择时失败变成了一个未平仓头寸，代价不在这张表里。
+
+4. **这张表是「所有交易日」的无条件形状，不是「你真的会下单那些天」的形状。**
+   买侧影响不大：结论是"开盘就买"，无条件规则用无条件样本刚好对得上。
+   **卖侧要当心**——两个固定时点的差额（尾盘 − 开盘）本质上就是全样本的
+   开盘→收盘平均漂移。若这段漂移为正，表会告诉你"拖到尾盘再卖更划算"，
+   可你之所以要卖，往往正是因为动能已经衰减，那天未必还随大流上漂。
+   要判断"再等等"值不值，看 `split_by_go()` 的 `方案→收盘 bp`：
+   它比较的两个动作在同一时刻都可选，是因果的（见该函数 docstring）。
 
 用法
 ----
     from lib.execution import intraday_macd, daily_panel, add_limit_plan, benchmark
 
     bars = pd.read_csv(...)                     # 30min 不复权 K 线
-    bars = intraday_macd(bars)                  # 追加 DIF/DEA/hist/go_buy
-    panel = daily_panel(bars)                   # 压成每日一行
+    bars = intraday_macd(bars)                  # 追加 DIF/DEA/hist/go_buy/go_sell
+
+    panel = daily_panel(bars)                            # 买侧
     panel = add_limit_plan(panel, offset=-0.005, fallback="close")
     print(benchmark(panel, ["open", "close", "go_price", "limit_-50bp"]))
+
+    panel = daily_panel(bars, side="sell")               # 卖侧
+    panel = add_limit_plan(panel, offset=+0.005, fallback="close", side="sell")
+    print(benchmark(panel, ["open", "close", "go_price", "limit_+50bp"], side="sell"))
 """
 
 import numpy as np
@@ -45,14 +73,30 @@ REQUIRED = ["dt", "date", "open", "high", "low", "close", "volume", "amount"]
 # close/vwap 的中位比值偏离 1 超过这个幅度，判定为复权口径不一致
 _BASIS_TOL = 0.02
 
+SIDES = ("buy", "sell")
+# 每侧的 GO 列与限价单的成交判定参考列
+_GO_COL = {"buy": "go_buy", "sell": "go_sell"}
+_LIMIT_REF = {"buy": "rest_low", "sell": "rest_high"}
+
+
+def _check_side(side: str) -> str:
+    if side not in SIDES:
+        raise ValueError(f"side 必须是 {SIDES} 之一，收到 {side!r}")
+    return side
+
 
 def intraday_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26,
                   signal: int = 9) -> pd.DataFrame:
     """
-    在**连续跨日**的分时序列上算 MACD，并标出买入侧的 GO 柱。
+    在**连续跨日**的分时序列上算 MACD，并标出买/卖两侧的 GO 柱。
 
-    与 `jcy_intraday_timing.add_macd` / `classify_timing(action="buy")` 同式：
-        go_buy = 红柱为正且正在拉长 且 DIF > DEA
+    与 `jcy_intraday_timing.add_macd` / `classify_timing()` 同式：
+        go_buy  = 红柱为正且正在拉长 且 DIF > DEA          （动能起步，进场）
+        go_sell = 红柱为正但正在缩短 或 DIF 下穿 DEA        （动能衰减，离场）
+
+    两侧**不是互补关系**：go_buy 要求方向与动能同时成立，条件严；
+    go_sell 只要动能转弱就成立，且死叉那一路完全不看红柱正负，条件宽得多。
+    所以卖侧的 has_go 天数占比天然远高于买侧，两边的 bp 不能横向比较。
 
     必须在跨日连续序列上算——每天单独重算会让每日头几根柱子处在 EMA 预热期，
     结果由预热噪声主导。调用方自行丢弃开头若干根（建议 ≥ 2×slow）。
@@ -65,27 +109,39 @@ def intraday_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26,
     hist = (dif - dea) * 2
     out["DIF"], out["DEA"], out["MACD"] = dif, dea, hist
     out["hist_expanding"] = (hist > 0) & (hist > hist.shift(1))
+    out["hist_shrinking"] = (hist > 0) & (hist < hist.shift(1))
+    death_cross = (dif < dea) & (dif.shift(1) >= dea.shift(1))
     out["go_buy"] = out["hist_expanding"] & (dif > dea)
+    out["go_sell"] = out["hist_shrinking"] | death_cross
     return out
 
 
-def daily_panel(df: pd.DataFrame, *, go_col: str = "go_buy",
+def daily_panel(df: pd.DataFrame, *, side: str = "buy", go_col: str | None = None,
                 warmup_bars: int = 60) -> pd.DataFrame:
     """
     把分时 K 线压成每日一行，产出各下单方案的**可成交价**。
 
+    `side` 只决定用哪个 GO 列（buy→`go_buy`，sell→`go_sell`）；其余各列
+    是中性的日内形状，两侧共用。`go_col` 可显式覆盖。
+
     列：
       vwap        当日成交量加权均价（基准）
       open/close  当日开盘价（= 集合竞价成交价）/ 收盘价
-      day_low     当日最低价
-      rest_low    首根 K 线之后的全天最低价（判断限价单能否成交用）
+      day_low     当日最低价        rest_low   首根之后的全天最低价
+      day_high    当日最高价        rest_high  首根之后的全天最高价
+                  （`rest_*` 用于判断限价单能否成交：买侧看 low，卖侧看 high）
       has_go      当天是否出现过 GO 柱（**事后信息**，只可用于归因，不可用于决策）
       go_time     首个 GO 柱的时刻
       go_price    按首个 GO 柱的**下一根开盘价**计的可成交价；
                   全天无 GO、或 GO 出现在最后一根 → 退化为收盘价
 
+    无 GO 兜底成收盘价，买卖两侧同理：规则是"等 GO"，等不到就只能最后一刻做掉。
+    卖侧尤其不许兜底成"不卖"——那是把择时失败变成留仓，代价落在这张表之外。
+
     `warmup_bars` 丢弃开头若干根（MACD 预热），默认 60（30min 下约 7.5 个交易日）。
     """
+    _check_side(side)
+    go_col = go_col or _GO_COL[side]
     missing = [c for c in REQUIRED if c not in df.columns]
     if missing:
         raise ValueError(f"分时数据缺列 {missing}；需要 {REQUIRED}")
@@ -118,6 +174,7 @@ def daily_panel(df: pd.DataFrame, *, go_col: str = "go_buy",
             "date": day, "vwap": vwap,
             "open": g.iloc[0]["open"], "close": g.iloc[-1]["close"],
             "day_low": g["low"].min(), "rest_low": g["low"].iloc[1:].min(),
+            "day_high": g["high"].max(), "rest_high": g["high"].iloc[1:].max(),
             "has_go": len(go) > 0, "go_time": go_time, "go_price": go_px,
         })
     panel = pd.DataFrame(rows)
@@ -140,22 +197,35 @@ def _check_same_basis(panel: pd.DataFrame) -> None:
 
 def add_limit_plan(panel: pd.DataFrame, *, offset: float,
                    fallback: str = "close", name: str | None = None,
-                   ref: str = "open") -> pd.DataFrame:
+                   ref: str = "open", side: str = "buy") -> pd.DataFrame:
     """
-    追加一个"挂限价单等回调"的方案，成交价写进新列。
+    追加一个"挂限价单等一个更好的价"的方案，成交价写进新列。
 
-    offset   相对 `ref` 的偏移，-0.005 = 挂在开盘价下方 0.5%
+    offset   相对 `ref` 的偏移。买侧用负数（挂低价等回调，-0.005 = 开盘价下方 0.5%），
+             卖侧用正数（挂高价等冲高）。方向与 side 不符直接报错——
+             挂在错误一侧会立刻成交，测的就不是"等价格"这件事了。
     fallback 全天未触及限价时的兜底成交列（**必填，不许省**）。
-             允许"没成交就不买"等于给策略白送一个择时期权，回测会凭空变好。
+             允许"没成交就不做"等于给策略白送一个择时期权，回测会凭空变好。
 
-    成交判定用 `rest_low`（首根之后的最低价）：开盘那一刻你还没挂上单，
-    用 day_low 会把开盘瞬间的下影线也算成成交，高估成交率。
+    成交判定用首根之后的极值（买 `rest_low` / 卖 `rest_high`）：开盘那一刻
+    你还没挂上单，用 day_low/day_high 会把开盘瞬间的影线也算成成交，高估成交率。
+
+    ⚠️ 两侧的逆向选择方向相反，但**都是亏**：买侧成交在没涨的日子、被迫追高在
+    涨的日子；卖侧成交在冲高的日子、被迫砸盘在跌的日子。成交的样本看着都很漂亮，
+    未成交的那部分才是账单——所以只看 `_filled` 那些行的均价一定会得出错误结论。
     """
+    side = _check_side(side)
     if fallback not in panel.columns:
         raise ValueError(f"fallback 列 {fallback!r} 不存在；必须给一个强制成交的兜底价")
-    col = name or f"limit_{int(offset * 1e4):+d}bp"
+    if side == "buy" and offset > 0:
+        raise ValueError(f"买侧限价单的 offset 应为负（挂低价等回调），收到 {offset:+}")
+    if side == "sell" and offset < 0:
+        raise ValueError(f"卖侧限价单的 offset 应为正（挂高价等冲高），收到 {offset:+}")
+
+    col = name or f"limit_{int(round(offset * 1e4)):+d}bp"
     limit = panel[ref] * (1 + offset)
-    filled = panel["rest_low"] <= limit
+    ref_col = _LIMIT_REF[side]
+    filled = (panel[ref_col] <= limit) if side == "buy" else (panel[ref_col] >= limit)
     out = panel.copy()
     out[col] = np.where(filled, limit, panel[fallback])
     out[col + "_filled"] = filled
@@ -163,13 +233,19 @@ def add_limit_plan(panel: pd.DataFrame, *, offset: float,
 
 
 def benchmark(panel: pd.DataFrame, cols: list[str],
-              labels: dict[str, str] | None = None) -> pd.DataFrame:
+              labels: dict[str, str] | None = None,
+              side: str = "buy") -> pd.DataFrame:
     """
     各方案成交价相对当日 VWAP 的偏离（bp），带 t 值与显著性。
 
-    负 = 买得比当天典型成交价便宜。`signif` 是 |t| > 1.96（均值为 0 的双尾检验）。
-    同时给中位数：均值容易被少数暴涨暴跌日主导，两者同号才算稳。
+    `均值bp` / `中位bp` 是**中性的原始偏离**（负 = 成交价低于 VWAP），与买卖无关；
+    `优势bp` 才分侧：正 = 优于 VWAP（买得更便宜 / 卖得更贵），买侧即原始偏离取反。
+
+    `signif` 是 |t| > 1.96（均值为 0 的双尾检验）。同时给中位数：
+    均值容易被少数暴涨暴跌日主导，两者同号才算稳。
     """
+    side = _check_side(side)
+    sign = -1.0 if side == "buy" else 1.0
     labels = labels or {}
     rows = []
     for c in cols:
@@ -179,25 +255,67 @@ def benchmark(panel: pd.DataFrame, cols: list[str],
         se = s.std(ddof=1) / np.sqrt(len(s))
         t = 0.0 if se == 0 else s.mean() / se       # 恒等于基准时方差为 0
         row = {"方案": labels.get(c, c), "n": len(s), "均值bp": s.mean(),
-               "中位bp": s.median(), "t值": t, "signif": abs(t) > 1.96}
+               "中位bp": s.median(), "优势bp": sign * s.mean(),
+               "t值": t, "signif": abs(t) > 1.96}
         fc = c + "_filled"
         row["成交率"] = f"{panel[fc].mean():.0%}" if fc in panel.columns else "100%"
         rows.append(row)
     return pd.DataFrame(rows)
 
 
-def split_by_go(panel: pd.DataFrame, price_col: str = "go_price") -> pd.DataFrame:
+def wait_value(panel: pd.DataFrame, price_col: str = "go_price",
+               side: str = "buy") -> pd.DataFrame:
+    """
+    「按方案价成交」之后**继续等到收盘**值多少 bp——卖出侧最该看的一张表。
+
+    只统计方案价真的不等于收盘价的那些行（无 GO 的日子兜底就是收盘价，
+    留着会掺进一堆恒等于 0 的样本，把均值和 t 值一起稀释掉）。
+
+    这是**因果可执行**的比较，与 `split_by_go` 的分组不同：GO 柱一出现，
+    "立刻做掉"和"放着等收盘"两个动作在那一刻都摆在你面前，不需要预知任何未来。
+    正 = 等一等更划算（卖侧卖得更贵 / 买侧买完还在涨）。
+    """
+    side = _check_side(side)
+    d = panel[panel[price_col] != panel["close"]]
+    s = ((d["close"] / d[price_col] - 1) * 1e4).dropna()
+    if len(s) < 30:
+        return pd.DataFrame()
+    se = s.std(ddof=1) / np.sqrt(len(s))
+    t = 0.0 if se == 0 else s.mean() / se
+    note = "等到收盘更贵→GO 卖早了" if side == "sell" else "买完还在涨→GO 买对了"
+    return pd.DataFrame([{
+        "比较": f"{price_col} 成交后等到收盘",
+        "n": len(s), "均值bp": s.mean(), "中位bp": s.median(),
+        "t值": t, "signif": abs(t) > 1.96, "正的含义": note,
+    }])
+
+
+def split_by_go(panel: pd.DataFrame, price_col: str = "go_price",
+                side: str = "buy") -> pd.DataFrame:
     """
     按"当天有无 GO"拆开看方案表现——用于**归因**，不是可执行的分组。
 
     `has_go` 要等当天走完才知道，拿它做决策是拿未来信息筛样本。
-    这张表的用途是看清一个规则的钱是在哪一侧赚到 / 亏掉的。
+    这张表的用途是看清一个规则的钱是在哪一侧赚到 / 亏掉的：
+    `方案优势bp` 已按 side 转成"正 = 好"，`开盘→收盘 bp` 保持中性（是当天的走势）。
+
+    `方案→收盘 bp`（= 成交后价格还走了多少）是**唯一可以照着做决策**的一列。
+    它比较的两个动作在同一时刻都是可选的：GO 柱一出现，你既可以立刻做掉，
+    也可以放着等收盘——不需要预知当天有没有 GO。因此在 has_go=True 那一行里，
+    它直接回答"看到 GO 之后继续等，值不值"：
+        卖侧为正 = 等到收盘卖得更贵，GO 卖早了
+        买侧为正 = 买完还在涨，GO 买对了
     """
+    side = _check_side(side)
+    sign = -1.0 if side == "buy" else 1.0
+
     def agg(s):
         return pd.Series({
             "天数": len(s),
             "开盘vsVWAP bp": ((s["open"] / s["vwap"] - 1) * 1e4).mean(),
             "方案vsVWAP bp": ((s[price_col] / s["vwap"] - 1) * 1e4).mean(),
+            "方案优势bp": sign * ((s[price_col] / s["vwap"] - 1) * 1e4).mean(),
+            "方案→收盘 bp": ((s["close"] / s[price_col] - 1) * 1e4).mean(),
             "开盘→收盘 bp": ((s["close"] / s["open"] - 1) * 1e4).mean(),
         })
     return panel.groupby("has_go").apply(agg, include_groups=False)

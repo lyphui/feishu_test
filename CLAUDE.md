@@ -67,6 +67,7 @@ feishu_test/
 │   ├── param_sweep.py             # 参数敏感性网格扫描（判断是否过拟合）
 │   ├── jcy_macd_bull_batch.py     # Step 4: 批量 MACD 牛市策略回测（读 jcy_insights.json）
 │   ├── jcy_intraday_timing.py     # 日线信号 + 分时择时（多周期共振）
+│   ├── exec_bench.py              # 日内下单方案实测台：买/卖两侧，按股票池分别出数
 │   ├── oil_track.py               # 油气双雄长期跟踪：增量更新 + 当前状态与打法 + 连续全样本回测
 │   ├── macd_analysis.py           # 薄入口：re-export engine + MACDStrategy CLI
 │   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
@@ -79,13 +80,14 @@ feishu_test/
 │   └── lib/                       # backtest 内部工具（被引擎/入口复用，from lib.x import）
 │       ├── market_data.py         # 行情数据获取：个股 + 指数（akshare → baostock → yfinance 三源，统一后复权 hfq）
 │       ├── price_store.py         # 本地行情仓库：增量更新 + 重叠对账 + 分红记录（data/market/）
+│       ├── intraday_store.py      # 本地分时仓库：**不复权**含 amount，供 execution.py 用（不入库）
 │       ├── swings.py              # ZigZag 波段分解、独立回撤事件与修复耗时剖面
 │       ├── regime.py              # 市场状态分类（趋势上行/宽幅震荡/趋势下行，严格只用历史数据）
 │       ├── ladder.py              # 分批建仓模拟器：梯度加仓/定投/网格/按状态自适应切换
 │       ├── plotting.py            # 绘图样式（GitHub Dark 配色 + matplotlib 配置）
 │       ├── bull_backtest.py       # 牛市策略通用适配器 BullStrategyAdapter
 │       ├── oil_price.py           # Brent/WTI/SC 原油价格（新浪源）+ 油价→股价传导相关性分析
-│       └── execution.py           # 日内下单方案测算（VWAP 基准，与标的/策略无关的度量层）
+│       └── execution.py           # 日内下单方案测算（VWAP 基准，买卖双向，与标的/策略无关的度量层）
 │
 ├── ── 策略包 ──────────────────────────────────
 ├── strategies/
@@ -99,7 +101,8 @@ feishu_test/
 ├── data/market/                   # 本地行情仓库（price_store.py 维护，增量追加）
 │   ├── daily/{symbol}_{adjust}.csv       # 日线 OHLCV，hfq=回测口径 / none=盘面实际价
 │   ├── daily/{symbol}_{adjust}.meta.json # 已覆盖的**请求区间** + 最后更新时间
-│   └── dividend/{symbol}.csv             # 派息记录（baostock），算股息率用
+│   ├── dividend/{symbol}.csv             # 派息记录（baostock），算股息率用
+│   └── intraday/{symbol}_{p}m_none.csv   # 分时 K 线，**不复权**含 amount（.gitignore，可重建）
 ├── data/jcy/
 │   ├── jcy_table.json             # 飞书多维表格原始记录（JSON）
 │   ├── jcy_docs.yaml              # 飞书文档内容（YAML，含正文）
@@ -348,45 +351,70 @@ IS 最优在 OOS 转负 = 选中的是噪声；默认格在 OOS 反而更好 = �
 
 ---
 
-### 4d. 日内下单测算 (`backtest/lib/execution.py`)
+### 4d. 日内下单测算 (`backtest/lib/execution.py` + `exec_bench.py` + `lib/intraday_store.py`)
 
-**职责：** 回答一个与标的、与策略都无关的问题——**已经决定要买了，用哪种下单方式成交价更好。**
+**职责：** 回答一个与标的、与策略都无关的问题——**已经决定要买（卖）了，用哪种下单方式成交价更好。**
 "买不买""买多少"是策略的事（`strategies/`、`lib/ladder.py`），不在这里。
 
 两条工作流（JCY 动量股 / 油气蓝筹）**共用这一套度量衡，但各自跑各自的读数**。
-方法可以共享，结论不能——实测两个池子的日内形状就不一样（见下）。
+方法可以共享，结论不能——实测两个池子的日内形状不一样，**卖出侧连排序都相反**（见下）。
 
-- **基准取当日 VWAP**（`sum(amount)/sum(volume)`），单位 bp，负 = 买得比当天典型成交价便宜。
-  不用当日最低价：最低价只有事后才知道、谁也挂不到，拿它当标准所有方案都是失败，比不出高下。
-  VWAP 是**可达成的中性结果**（把单子摊到全天慢慢买就大致能买到）。
+- **基准取当日 VWAP**（`sum(amount)/sum(volume)`）。不用当日最低价：最低价只有事后才知道、
+  谁也挂不到，拿它当标准所有方案都是失败，比不出高下。VWAP 是**可达成的中性结果**
+  （把单子摊到全天慢慢做就大致能拿到）。
+- **原始 bp 中性，好坏才分侧**：`(成交价/VWAP − 1)×1e4` 与买卖无关；
+  `优势bp = −原始bp（买） / +原始bp（卖）`，正 = 优于 VWAP。
+  **直接推论：固定时点方案（开盘/尾盘）的卖出结论是买入结论翻符号，不必重测。**
+  真正要单独测的只有依赖侧向定义的两类：GO 窗口（买看红柱拉长、卖看红柱缩短或死叉）
+  与限价单（买挂低价、`rest_low` 触发；卖挂高价、`rest_high` 触发）。
 - **VWAP 与价格必须同一复权口径**：`amount`/`volume` 恒为原始值，价格若取了前/后复权就是两个尺度，
   算出来是几百上千 bp 的系统性错位（实测踩过一次 −1500bp，看着像"天天抄到底"）。
   分时数据一律用**不复权**（baostock `adjustflag="3"`）；`daily_panel()` 会校验，不匹配直接抛错。
 - **"信号柱的收盘价"不是可成交价**：任何"这根 K 线满足条件"的判断都要等它走完才成立，
   那时收盘价已成历史。可成交的是**下一根的开盘价**，本模块统一按后者计价。
 - **允许"不成交"的方案必须配强制兜底**：`add_limit_plan()` 的 `fallback` 是必填。
-  没成交就不买 = 偷偷给策略加一个免费的择时期权，回测会凭空变好。
-- `split_by_go()` 按"当天有无 GO"拆开看钱赚在哪一侧——**仅用于归因**。
-  `has_go` 要等当天走完才知道，拿它做决策是用未来信息筛样本。
-- **`jcy_intraday_timing.py` 与本模块口径绑定**：它的 `_executable_price()` 必须与
-  `daily_panel()` 的 `go_price` 给出同样的价，`tests/test_intraday_exec_price.py`
-  逐日比对守住这一点。另外那边遵守一条相关铁律——**分时只决定「几点买」，
-  不决定「买不买」**：让择时条件左右持仓与否，等于把执行层开关变成隐式策略过滤器
-  （无 GO 占四成日子，影响远超它该有的分量）。
+  没成交就不做 = 偷偷给策略加一个免费的择时期权，回测会凭空变好。
+  卖侧更要命：「没卖掉就继续拿着」是把择时失败变成一个未平仓头寸，代价不在这张表里。
+- **这张表是「所有交易日」的无条件形状，不是「你真的会下单那些天」的形状。**
+  买侧影响不大（结论是无条件的"开盘就买"）；**卖侧要当心**——两个固定时点的差额
+  本质就是全样本的开盘→收盘平均漂移，而你要卖往往正因为动能已衰减，那天未必还随大流上漂。
+- `split_by_go()` 按"当天有无 GO"拆开看钱赚在哪一侧——**仅用于归因**，
+  `has_go` 要等当天走完才知道。唯一**因果可执行**的是 `wait_value()`：
+  它比较"GO 一出现就做掉"与"放着等收盘"，两个动作在同一时刻都摆在面前。
+- **`jcy_intraday_timing.py` 与本模块口径绑定**：`_executable_price()` 必须与
+  `daily_panel()` 的 `go_price` 同价，`go_buy`/`go_sell` 必须与 `classify_timing()` 同判，
+  `tests/test_intraday_exec_price.py` 与 `tests/test_execution.py` 逐日比对守住。
+  那边还遵守一条铁律——**分时只决定「几点做」，不决定「做不做」**：
+  让择时条件左右持仓与否，等于把执行层开关变成隐式策略过滤器。
+- **数字必须可复现**：`exec_bench.py` 是唯一的出数入口（定种子抽样），
+  分时行情由 `lib/intraday_store.py` 缓存在 `data/market/intraday/`（不复权、
+  只增不改、**不入库**，47 只 32MB，随时可从 baostock 重建）。
 
-**实测结论（各池子分开记，不可互相外推）：**
+**CLI：** `python backtest/exec_bench.py --universe jcy|oil --side buy|sell|both [--offline]`
 
-| 方案（vs 当日 VWAP） | JCY 抽样池 45 只 | 601857 | 600938 |
-|---|---|---|---|
-| 开盘集合竞价买 | **−18.7bp** | **−6.5bp** | **−14.0bp** |
-| 尾盘 15:00 买 | −6.6bp | +7.5bp | +8.5bp |
-| GO 窗口（真实口径） | −9.7bp | +1.4bp | +0.9bp |
-| 限价挂开盘−0.5% | +46.4bp | +17.5bp | +24.5bp |
+**实测结论（各池子分开记，不可互相外推）：优势bp，正 = 优于当日 VWAP**
 
-- **共同结论：开盘集合竞价买最优**，"等一个更好的日内买点"这件事本身在收费。
-  挂低价等回调最贵——没成交的那部分恰是股票当天走高的日子，最后被迫在更高处补（逆向选择）。
-- **不可外推的部分：**油气蓝筹尾盘买是 +8bp（贵），JCY 池反而是 −6.6bp（便宜）。
-  换池子必须重测，别照抄数值。
+| 方案 | JCY 池 45 只（买） | JCY 池（卖） | 油气 2 只（买） | 油气（卖） |
+|---|---|---|---|---|
+| 开盘集合竞价 | **+16.7** ★ | −16.7 ✗ | **+12.3** ★ | −12.3 ✗ |
+| 尾盘 15:00 | +5.4 | −5.4 | −8.6 | **+8.6** ★ |
+| GO 窗口 | +9.4 | **−3.2** ★ | −1.5（不显著） | +5.3 |
+| 限价挂开盘∓0.5% | −46.6 ✗ | −72.9 ✗ | −22.2 ✗ | −24.6 ✗ |
+| 逐股最优计票 | 开盘 27/45 | GO 29/45 | 开盘 2/2 | 尾盘 2/2 |
+
+样本：JCY 46728 个股票-交易日、油气 2142 个，均 2022-01~2026-08、30min K 线。
+
+- **买入侧两池共同结论：开盘集合竞价最优。**"等一个更好的日内买点"这件事本身在收费。
+- **卖出侧不是买入侧的镜像，也不是两池一致的。**开盘价便宜，买入因此首选它，
+  卖出遇上同一个便宜就是净亏——所以**开盘集合竞价是买入最优、卖出最差**。
+  两池卖出最优分别是 JCY 的 GO 窗口（−3.2bp）和油气的尾盘（+8.6bp），**排序相反**。
+- **`wait_value()`（GO 成交后再等到收盘）：**JCY 卖侧 −2.0bp（t=−1.7 不显著）——
+  等不出钱，GO 的离场时点是对的；油气卖侧 +6.2bp（t=2.1）——GO 卖早了，
+  这也是油气该用尾盘的原因。买侧两池都为正（JCY +9.7 / 油气 +14.3），GO 买点方向没错，
+  只是仍不如无条件开盘买。
+- **两侧最贵的都是限价单**，卖侧尤甚（JCY −72.9bp）。逆向选择方向相反但都是亏：
+  买侧成交在没涨的日子、被迫追高在涨的日子；卖侧成交在冲高的日子、被迫砸盘在跌的日子。
+  漂亮的都是成交样本，账单在未成交的那 34% 里。
 
 ---
 
@@ -414,7 +442,8 @@ IS 最优在 OOS 转负 = 选中的是噪声；默认格在 OOS 反而更好 = �
 | `plotting.py` | `COLORS` 字典（GitHub Dark 配色）、`setup_matplotlib()`、`style_ax(ax)` |
 | `bull_backtest.py` | `BullStrategyAdapter`（牛市策略通用适配器；绘图/CSV 在 `backtest/bull_report.py`） |
 | `oil_price.py` | `fetch_oil_price()` / `update_oil()` / `load_oil()`（Brent/WTI/SC，新浪源，整表覆盖）、`transmission_table()`（油价→股价领先滞后相关系数，纯描述性） |
-| `execution.py` | `intraday_macd()` / `daily_panel()` / `add_limit_plan()` / `benchmark()` / `split_by_go()` — 日内下单方案的成交价测算，基准为当日 VWAP，单位 bp。**与标的、与策略无关**：两条工作流共用同一套度量，各自跑各自的数 |
+| `execution.py` | `intraday_macd()` / `daily_panel(side=)` / `add_limit_plan(side=)` / `benchmark(side=)` / `wait_value()` / `split_by_go()` — 日内下单方案的成交价测算，基准为当日 VWAP，单位 bp，**买卖双向**（原始 bp 中性，`优势bp` 才分侧）。**与标的、与策略无关**：两条工作流共用同一套度量，各自跑各自的数 |
+| `intraday_store.py` | `load_intraday()` / `update_intraday()` / `fetch_intraday_raw()` — 本地分时仓库（`data/market/intraday/`）。存 **不复权**（`adjustflag="3"`）并带 `amount`，因为 VWAP 由 `amount/volume` 算出、必须与价格同口径；不复权价不回溯改写，追加比 hfq 还安全。只有 baostock 一条源（akshare 分钟接口打 eastmoney，本机被阻断）。缓存不入库，可重建 |
 
 ---
 
@@ -533,6 +562,11 @@ python backtest/jcy_macd_bull_batch.py      # Step 4：批量量化回测
 python backtest/jcy_intraday_timing.py                  # 全部候选股
 python backtest/jcy_intraday_timing.py --code 600519    # 单股分析
 python backtest/jcy_intraday_timing.py --period 60      # 60min K 线
+
+# 日内下单方案实测（买/卖两侧，两个池子分别出数，结论不可互相外推）
+python backtest/exec_bench.py --universe jcy --side both --limit 45
+python backtest/exec_bench.py --universe oil --side sell
+python backtest/exec_bench.py --universe oil --offline   # 不联网，只读分时缓存
 
 # 独立单股回测
 python backtest/macd_analysis.py --config jxty_jcy_260104.ini
