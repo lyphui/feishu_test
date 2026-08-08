@@ -69,11 +69,17 @@ def load_candidates(json_path: str = JSON_PATH) -> list[dict]:
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
-    articles = sorted(data.get("articles", []), key=lambda a: a.get("date", ""))
+    # date 可能是 None（Step 3 未能从标题解析出日期）。用 `or ""` 兜底：
+    # 既保证排序不因 None 与 str 比较而崩，也让无日期的文章排在最前、
+    # 随后被下面的 `if not date` 跳过——没有推荐日就无法确定回测起点。
+    articles = sorted(data.get("articles", []), key=lambda a: a.get("date") or "")
 
     seen: dict[str, dict] = {}
     for article in articles:
-        for company in article.get("companies", []):
+        date = (article.get("date") or "").replace("-", "")
+        if not date:
+            continue
+        for company in article.get("companies") or []:
             code   = company.get("code")
             rating = company.get("rating", "")
             if rating != "增持" or not is_ashare_code(code):
@@ -82,7 +88,7 @@ def load_candidates(json_path: str = JSON_PATH) -> list[dict]:
                 seen[code] = {
                     "code":   code,
                     "name":   company.get("name", ""),
-                    "date":   article.get("date", "").replace("-", ""),
+                    "date":   date,
                     "reason": company.get("rating_reason", ""),
                 }
 

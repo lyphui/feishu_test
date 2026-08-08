@@ -111,6 +111,41 @@ def load_backtest_config(filename: str, *, defaults: str | None = None) -> Backt
     )
 
 
+def execution_kwargs(cfg: BacktestConfig) -> dict:
+    """
+    从 [backtest] 段读取成交成本与交易约束，直接展开给 run_backtest(**kw)。
+
+    三个单股入口共用，保证它们的成本假设一致——否则同一只票用不同脚本
+    回测会得出不同收益，却看不出差在哪。缺省值即引擎默认值（A 股常见水平）。
+    """
+    return {
+        "commission_rate":  cfg.get_float("commission_rate", 0.0003),
+        "min_commission":   cfg.get_float("min_commission", 5.0),
+        "stamp_duty":       cfg.get_float("stamp_duty", 0.001),
+        "slippage":         cfg.get_float("slippage", 0.001),
+        "limit_move_check": cfg.get_bool("limit_move_check", True),
+        "max_pending_days": cfg.get_int("max_pending_days", 3),
+    }
+
+
+# 可粘进任意 preset .ini 的成本参数模板（留空即用默认值）
+EXECUTION_INI_BLOCK = """
+# ── 成交成本与交易约束（留空即用默认值）──────────────────────────────────────
+# 券商佣金费率（双边），默认 0.0003 万三
+commission_rate =
+# 单笔最低佣金（元），默认 5
+min_commission =
+# 印花税（仅卖出），默认 0.001 千一
+stamp_duty =
+# 单边滑点，默认 0.001 千一；设 0 可与旧版无滑点结果对比
+slippage =
+# 是否模拟涨跌停/停牌无法成交，默认 true
+limit_move_check =
+# 信号因涨跌停未成交时最多顺延几个交易日，默认 3
+max_pending_days =
+"""
+
+
 @dataclass
 class OutputPaths:
     """统一输出路径：{prefix}_{name}_{symbol}_{end_date} + .png/.csv/.status。

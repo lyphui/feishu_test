@@ -33,6 +33,7 @@ def export_bull_daily_status(result: dict, save_path: str) -> None:
         dea       = r.get("DEA",  float("nan"))
         macd      = r.get("MACD", float("nan"))
         expanding = bool(r.get("hist_expanding", False))
+        expand_run = bool(r.get("hist_expand_run", expanding))
         shrinking = bool(r.get("hist_shrinking", False))
         signal    = int(r.get("signal", 0))
 
@@ -41,7 +42,7 @@ def export_bull_daily_status(result: dict, save_path: str) -> None:
         dif_above_dea = dif > dea
 
         if signal == 1:
-            blocking = "✅ 买入信号触发（金叉 + 牛市 + 红柱拉长）"
+            blocking = "✅ 买入信号触发（近期金叉 + 牛市 + 红柱连续拉长）"
         elif signal == -1:
             if not bull:
                 blocking = "⚡ 卖出：熊市保护强制清仓"
@@ -61,9 +62,11 @@ def export_bull_daily_status(result: dict, save_path: str) -> None:
             else:
                 if not dif_above_dea:
                     reasons.append(f"⚠️ 个股DIF({dif:.4f})<DEA({dea:.4f})，未金叉")
-                if not expanding:
+                if not expand_run:
                     if macd <= 0:
                         reasons.append(f"⚠️ MACD柱({macd:.4f})≤0，红柱未出现")
+                    elif expanding:
+                        reasons.append(f"⚠️ 红柱仅拉长1根（MACD={macd:.4f}，等待连续确认）")
                     else:
                         reasons.append(f"⚠️ 红柱未拉长（MACD={macd:.4f}，等待加速）")
                 if not reasons:
@@ -82,6 +85,7 @@ def export_bull_daily_status(result: dict, save_path: str) -> None:
             "个股_DEA":     round(dea,  4),
             "个股_MACD柱":  round(macd, 4),
             "红柱拉长":     expanding,
+            "红柱连续拉长": expand_run,
             "红柱缩短":     shrinking,
             "信号":         signal,
             "判断依据":     blocking,
@@ -217,8 +221,9 @@ def plot_bull_backtest(result: dict, save_path: "str | None" = None,
 
     # ── 子图4：资产曲线 ──────────────────────────────────────────────────────
     ax4 = fig.add_subplot(gs[3], sharex=ax1)
-    norm_eq    = eq_df["equity"] / result["initial_capital"] * 100
-    norm_bench = eq_df["close"]  / eq_df["close"].iloc[0]  * 100
+    # 基准以统计窗口首日**开盘价**为基数，与策略的建仓口径一致
+    norm_eq    = eq_df["equity"] / result["equity_base"] * 100
+    norm_bench = eq_df["close"]  / result["benchmark_base"]  * 100
     ax4.plot(eq_df.index, norm_eq,    color=C_GREEN, lw=1.5, label="策略净值")
     ax4.plot(eq_df.index, norm_bench, color=C_MUTED, lw=1,
              linestyle="--", label="基准(买入持有)")

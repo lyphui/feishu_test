@@ -19,7 +19,7 @@ from matplotlib.gridspec import GridSpec
 
 # 复用回测引擎与共享配置层
 from engine import run_backtest, fmt_sharpe
-from config import load_backtest_config, OutputPaths
+from config import load_backtest_config, execution_kwargs, OutputPaths
 from strategies import LuMACDStrategy
 from lib.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS,
@@ -57,6 +57,20 @@ save_chart_dir = output/
 
 # HTTP 代理（如 http://127.0.0.1:7890），留空则直连
 proxy =
+
+# ── 成交成本与交易约束（留空即用默认值，见 backtest/config.py）────────────────
+# 券商佣金费率（双边），默认 0.0003
+commission_rate =
+# 单笔最低佣金（元），默认 5
+min_commission =
+# 印花税（仅卖出），默认 0.001
+stamp_duty =
+# 单边滑点，默认 0.001；设 0 可与无滑点结果对比
+slippage =
+# 是否模拟涨跌停/停牌无法成交，默认 true
+limit_move_check =
+# 信号因涨跌停未成交时最多顺延几个交易日，默认 3
+max_pending_days =
 
 # ── LuMACD 策略专属参数 ──────────────────────────────────────────────────────
 
@@ -189,8 +203,9 @@ def plot_lu_backtest(result: dict, save_path: "str | None" = None):
 
     # ── 子图5：资产曲线 vs 基准 ──────────────────────────────────────────────
     ax5 = fig.add_subplot(gs[4], sharex=ax1)
-    norm_eq    = eq_df["equity"] / result["initial_capital"] * 100
-    norm_bench = eq_df["close"]  / eq_df["close"].iloc[0]  * 100
+    norm_eq    = eq_df["equity"] / result["equity_base"] * 100
+    # 基准以统计窗口首日**开盘价**为基数，与策略的建仓口径一致
+    norm_bench = eq_df["close"]  / result["benchmark_base"]  * 100
     ax5.plot(eq_df.index, norm_eq,    color=C_GREEN, lw=1.5, label="策略净值")
     ax5.plot(eq_df.index, norm_bench, color=C_MUTED, lw=1,
              linestyle="--", label="基准(买入持有)")
@@ -420,6 +435,7 @@ def main():
             initial_capital=cfg.capital,
             stop_loss=cfg.stop_loss,
             take_profit=cfg.take_profit,
+            **execution_kwargs(cfg),
             verbose=True,
         )
 

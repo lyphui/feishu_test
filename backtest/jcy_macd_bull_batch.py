@@ -24,6 +24,8 @@ JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 输出目录结构
 ------------
   output/
+    summary.csv                    # 横截面汇总：每股一行，按超额收益排序
+    summary_portfolio.csv / .png   # 等权组合净值 vs 大盘
     jcy_{股票代码}_{股票名称}_{推荐日期}/
       lu_bull_{股票名称}_{股票代码}_{结束日期}.png
       lu_bull_{股票名称}_{股票代码}_{结束日期}.csv          # 交易记录
@@ -43,6 +45,7 @@ from datetime import date as _date, timedelta
 from engine import run_backtest, fmt_sharpe
 from config import OutputPaths
 from bull_report import export_bull_daily_status, plot_bull_backtest
+from batch_report import result_to_row, normalized_equity, write_batch_report
 from strategies import LuMACDBullStrategy
 from lib.plotting import setup_matplotlib
 from lib.market_data import fetch_index_data
@@ -54,17 +57,24 @@ setup_matplotlib()
 
 # ── 单只股票回测 ──────────────────────────────────────────────────────────────
 
-def backtest_one(candidate: dict, end_date: str, index_symbol: str,
+def backtest_one(candidate: dict, end_date: str, index_df,
                  capital: float, stop_loss: float, take_profit: float,
                  shrink_exit: bool, base_output_dir: str,
-                 warmup_days: int = 600) -> bool:
+                 warmup_days: int = 600) -> dict | None:
     """
     对单只股票执行回测并保存结果。
-    返回 True 表示成功，False 表示失败。
+    返回 run_backtest 的结果 dict；失败返回 None。
+
+    index_df : 大盘指数日线（由调用方统一取一次后复用，避免 N 次重复请求）
 
     warmup_days : int
-        在 JSON 推荐日期前额外取多少天的历史数据，用于 MACD 预热。
-        默认 365 天（约 250 个交易日，足以让 EMA-26 充分稳定）。
+        在 JSON 推荐日期前额外取多少个**自然日**的历史数据，用于指标预热。
+        默认 600 天（约 400 个交易日）：日线 EMA-26 只需几十根就稳定，但
+        牛市过滤器要算大盘**月线** MACD，EMA-26 需要 26 根月线 ≈ 2 年数据，
+        取少了会让推荐日附近的 bull_market 判断失真。
+
+    预热期只喂数据不交易（BullStrategyAdapter 清零信号），且通过
+    run_backtest(eval_start=...) 排除在收益/回撤/夏普/基准统计之外。
     """
     code             = candidate["code"]
     name             = candidate["name"]
@@ -93,10 +103,8 @@ def backtest_one(candidate: dict, end_date: str, index_symbol: str,
     print(f"    推荐原因：{reason}")
 
     try:
-        print(f"    获取大盘指数 {index_symbol} 数据（{data_start} → {end_date}）...")
-        index_df = fetch_index_data(index_symbol, data_start, end_date)
-        if index_df.empty:
-            raise ValueError(f"大盘指数数据为空")
+        if index_df is None or index_df.empty:
+            raise ValueError("大盘指数数据为空")
 
         inner_strategy = LuMACDBullStrategy(shrink_exit=shrink_exit)
         strategy       = BullStrategyAdapter(inner_strategy, index_df,
@@ -104,18 +112,22 @@ def backtest_one(candidate: dict, end_date: str, index_symbol: str,
 
         result = run_backtest(
             symbol=code,
-            start_date=data_start,        # 含预热期，保证 MACD 稳定
+            start_date=data_start,        # 含预热期，保证指标稳定
             end_date=end_date,
             strategy=strategy,
             initial_capital=capital,
             stop_loss=stop_loss,
             take_profit=take_profit,
+            eval_start=trade_start_date,  # 预热期不计入收益/回撤/夏普/基准
         )
 
+        blocked = result.get("blocked_trades")
+        blocked_txt = ("" if blocked is None or blocked.empty
+                       else f"  受阻：{len(blocked)}次")
         print(f"    总收益：{result['total_return']:+.2f}%  "
               f"基准：{result['benchmark_return']:+.2f}%  "
               f"夏普：{fmt_sharpe(result['sharpe_ratio'])}  "
-              f"最大回撤：{result['max_drawdown']:.2f}%")
+              f"最大回撤：{result['max_drawdown']:.2f}%{blocked_txt}")
 
         plot_bull_backtest(result, save_path=save_chart,
                            trade_start_date=trade_start_date)
@@ -127,13 +139,13 @@ def backtest_one(candidate: dict, end_date: str, index_symbol: str,
         else:
             print("    本次回测无成交记录")
 
-        return True
+        return result
 
     except Exception as e:
         print(f"    ❌ 回测失败：{e}")
         import traceback
         traceback.print_exc()
-        return False
+        return None
 
 
 # ── 主入口 ────────────────────────────────────────────────────────────────────
@@ -188,29 +200,47 @@ def main():
 
     os.makedirs(args.output, exist_ok=True)
 
+    # 大盘指数只取一次：所有个股共用（区间取全体候选中最早的预热起点）
+    warmup_days = 600
+    earliest = min(c["date"] for c in candidates)
+    index_start = (_date(int(earliest[:4]), int(earliest[4:6]), int(earliest[6:]))
+                   - timedelta(days=warmup_days)).strftime("%Y%m%d")
+    print(f"\n  获取大盘指数 {args.index} 数据（{index_start} → {end_date}）...")
+    try:
+        index_df = fetch_index_data(args.index, index_start, end_date)
+    except Exception as e:
+        print(f"  ❌ 大盘指数获取失败：{e}")
+        sys.exit(1)
+
     # 逐只回测
-    success_count = 0
-    fail_count    = 0
+    rows: list[dict] = []
+    curves: dict[str, "object"] = {}
+    fail_count = 0
     for candidate in candidates:
-        ok = backtest_one(
+        result = backtest_one(
             candidate     = candidate,
             end_date      = end_date,
-            index_symbol  = args.index,
+            index_df      = index_df,
             capital       = args.capital,
             stop_loss     = args.stop_loss,
             take_profit   = args.take_profit,
             shrink_exit   = args.shrink_exit,
             base_output_dir = args.output,
+            warmup_days   = warmup_days,
         )
-        if ok:
-            success_count += 1
-        else:
+        if result is None:
             fail_count += 1
+            continue
+        rows.append(result_to_row(candidate, result))
+        curves[f"{candidate['code']} {candidate['name']}"] = normalized_equity(result)
 
     print("\n" + "─" * 60)
-    print(f"  批量回测完成：成功 {success_count} 只，失败 {fail_count} 只")
+    print(f"  批量回测完成：成功 {len(rows)} 只，失败 {fail_count} 只")
     print(f"  结果已保存至：{os.path.abspath(args.output)}/")
     print("─" * 60)
+
+    write_batch_report(rows, curves, args.output,
+                       index_df=index_df, index_name=args.index)
 
 
 if __name__ == "__main__":

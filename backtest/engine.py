@@ -27,6 +27,59 @@ setup_matplotlib()
 
 
 # ─────────────────────────────────────────
+# A 股交易规则
+# ─────────────────────────────────────────
+
+def infer_limit_pct(symbol: str) -> float:
+    """
+    按代码前缀推断涨跌停幅度。
+
+    688/689 科创板、300/301 创业板 → 20%
+    4xx/8xx 北交所                 → 30%
+    其余主板                        → 10%
+
+    注意：ST / *ST 为 5%，但从代码看不出来，也不随时间回溯，这里按主板 10%
+    处理，对 ST 股会**低估**涨跌停的封单概率（结果偏乐观），需要时显式传
+    limit_pct=0.05。
+    """
+    if symbol.startswith(("688", "689", "300", "301")):
+        return 0.20
+    if symbol.startswith(("4", "8")):
+        return 0.30
+    return 0.10
+
+
+def _tradability(row, prev_close: float, limit_pct: float) -> tuple[bool, bool]:
+    """
+    判断当日开盘能否买入 / 卖出，返回 (can_buy, can_sell)。
+
+    - 停牌（无成交量）：买卖都不可能成交
+    - 开盘即涨停：买单排在队尾，成交不了；卖出不受影响
+    - 开盘即跌停：卖不掉；买入不受影响
+
+    价格用相对容差比较而不是 round(_, 2)：复权后的价格已不是真实报价，
+    绝对分位对不上。
+    """
+    if row.get("volume", 1) is not None and float(row.get("volume", 1)) <= 0:
+        return False, False
+    if prev_close is None or not np.isfinite(prev_close) or prev_close <= 0:
+        return True, True
+
+    tol = 1e-4
+    open_ = row["open"]
+    limit_up   = prev_close * (1 + limit_pct)
+    limit_down = prev_close * (1 - limit_pct)
+    can_buy  = open_ < limit_up   * (1 - tol)
+    can_sell = open_ > limit_down * (1 + tol)
+    return bool(can_buy), bool(can_sell)
+
+
+def _commission(amount: float, rate: float, minimum: float) -> float:
+    """券商佣金：按成交额比例收取，但不低于单笔最低佣金（A 股普遍 5 元）。"""
+    return max(amount * rate, minimum)
+
+
+# ─────────────────────────────────────────
 # 回测引擎
 # ─────────────────────────────────────────
 
@@ -37,10 +90,17 @@ def run_backtest(
     strategy=None,                      # BaseStrategy 实例，默认使用 MACDStrategy
     initial_capital: float = 100_000.0,
     commission_rate: float = 0.0003,    # 佣金：万三
+    min_commission: float = 5.0,        # 单笔最低佣金（元），A 股券商普遍 5 元
     stamp_duty: float = 0.001,          # 印花税：千一（仅卖出收取）
+    slippage: float = 0.001,            # 单边滑点，千一；买价上浮、卖价下压
     position_size: float = 1.0,         # 每次建仓比例（1.0 = 全仓）
     stop_loss: float = None,            # 止损比例，如 0.08 = 8%，None = 不止损
     take_profit: float = None,          # 止盈比例，如 0.20 = 20%，None = 不止盈
+    limit_move_check: bool = True,      # 是否模拟涨跌停/停牌无法成交
+    limit_pct: float = None,            # 涨跌停幅度，None = 按代码前缀推断
+    max_pending_days: int = 3,          # 信号因涨跌停未成交时最多顺延几个交易日
+    eval_start: str = None,             # 统计口径起点 "YYYYMMDD"，None = 全区间
+    df: pd.DataFrame = None,            # 直接注入行情（测试/复用，跳过网络请求）
     verbose: bool = False,              # True 时打印表头/数据量/结果汇总（库默认静默）
 ) -> dict:
     """
@@ -48,11 +108,29 @@ def run_backtest(
 
     verbose=False（默认）时引擎不打印任何内容，由调用方决定如何展示结果，
     避免批量回测刷屏；需要完整汇总表时传 verbose=True 或自行调用 print_summary。
+
+    单根 K 线内的事件顺序（与实盘一致）
+    ------------------------------------
+      1. 开盘：执行上一日产生的信号（受涨跌停/停牌约束，成交不了则顺延挂单）
+      2. 盘中：检查止损/止盈；**当日刚建仓的不检查**（A 股 T+1，当天买当天卖不掉）
+      3. 收盘：按收盘价给持仓估值，记入权益曲线
+
+    旧实现把第 2 步放在第 1 步之前，会出现"盘中最低价止损出场后，又用当天
+    开盘价重新买入"——买在了比出场更早的时点上。
+
+    eval_start
+    ----------
+      批量回测常在推荐日前多取一年数据给 MACD 预热，这段时间策略不交易、
+      权益恒为初始资金。若把它算进统计，年化被摊薄、夏普被稀释、基准还多算
+      了一年买入持有收益。传 eval_start 后，收益/回撤/夏普/基准全部只在
+      该日之后的区间上计算，图表仍显示完整区间（保留指标上下文）。
     """
 
     from strategies import MACDStrategy
     if strategy is None:
         strategy = MACDStrategy()
+    if limit_pct is None:
+        limit_pct = infer_limit_pct(symbol)
 
     if verbose:
         print(f"\n{'='*55}")
@@ -61,7 +139,8 @@ def run_backtest(
         print(f"{'='*55}")
 
     # ── 获取数据 ──
-    df = fetch_stock_data(symbol, start_date, end_date)
+    if df is None:
+        df = fetch_stock_data(symbol, start_date, end_date)
     if df.empty or len(df) < 50:
         raise ValueError("数据不足，请检查股票代码或延长时间范围")
 
@@ -75,28 +154,110 @@ def run_backtest(
     # signal 用 T 日收盘价算出，不可能在 T 日收盘价成交；shift(1) 后
     # 第 T 日看到的 signal_exec 实为 T-1 日信号，配合 T 日 open 成交。
     df["signal_exec"] = df["signal"].shift(1).fillna(0)
+    prev_close_series = df["close"].shift(1)
 
     # ── 模拟交易 ──
-    cash     = initial_capital
-    shares   = 0
-    position = 0        # 0=空仓，1=持仓
-    cost_price = 0.0    # 买入成本价
+    cash       = initial_capital
+    shares     = 0
+    position   = 0          # 0=空仓，1=持仓
+    cost_price = 0.0        # 买入成本价（已含买入滑点，即真实持仓成本）
+    entry_date = None       # 建仓日；T+1 规则下当日不得卖出
 
-    trades    = []      # 交易记录
-    equity    = []      # 每日资产
+    pending     = 0         # 未成交的挂单方向：1=待买 / -1=待卖 / 0=无
+    pending_age = 0         # 挂单已顺延的交易日数
+    blocked     = []        # 因涨跌停/停牌未能成交的记录
+
+    trades = []             # 交易记录
+    equity = []             # 每日资产
+
+    def _sell(date, raw_price, action, pnl_base):
+        """按 raw_price 卖出全部持仓，返回成交价（已含滑点）。"""
+        nonlocal cash, shares, position, cost_price, entry_date
+        exec_price = raw_price * (1 - slippage)
+        proceeds   = shares * exec_price
+        fee        = _commission(proceeds, commission_rate, min_commission) \
+                     + proceeds * stamp_duty
+        cash += proceeds - fee
+        trades.append({
+            "date": date, "action": action, "price": exec_price,
+            "shares": shares, "cash": cash,
+            "return_pct": (exec_price - pnl_base) / pnl_base * 100,
+        })
+        shares = 0; position = 0; cost_price = 0.0; entry_date = None
+        return exec_price
 
     for date, row in df.iterrows():
         price = row["close"]          # 估值用收盘价
         open_ = row["open"]           # 成交用开盘价（T+1 开盘）
         low   = row["low"]
         high  = row["high"]
+        prev_close = prev_close_series.get(date, float("nan"))
 
-        # 止损 / 止盈检查（持仓中）——盘中触及即成交，更贴近实盘
-        if position == 1 and shares > 0:
+        if limit_move_check:
+            can_buy, can_sell = _tradability(row, prev_close, limit_pct)
+        else:
+            can_buy = can_sell = True
+
+        # ── 挂单簿更新：新信号覆盖旧挂单 ──
+        sig = row["signal_exec"]
+        if sig != 0:
+            pending, pending_age = int(sig), 0
+        # 方向与当前仓位矛盾的挂单直接作废（已持仓还挂买 / 空仓还挂卖）
+        if (pending == 1 and position == 1) or (pending == -1 and position == 0):
+            pending, pending_age = 0, 0
+
+        # ── 步骤 1：开盘执行挂单 ──
+        if pending == 1 and position == 0:
+            if can_buy:
+                exec_price = open_ * (1 + slippage)
+                budget     = cash * position_size
+                lots       = int(budget / exec_price / 100)   # A股最小单位100股
+                # 佣金可能让总支出超出可用现金，逐手回退直到付得起
+                while lots >= 1:
+                    cost = lots * 100 * exec_price
+                    fee  = _commission(cost, commission_rate, min_commission)
+                    if cost + fee <= cash:
+                        break
+                    lots -= 1
+                if lots >= 1:
+                    shares = lots * 100
+                    cost   = shares * exec_price
+                    fee    = _commission(cost, commission_rate, min_commission)
+                    cash  -= (cost + fee)
+                    position   = 1
+                    cost_price = exec_price
+                    entry_date = date
+                    pending, pending_age = 0, 0
+                    trades.append({
+                        "date": date, "action": "买入", "price": exec_price,
+                        "shares": shares, "cash": cash, "return_pct": None,
+                    })
+                else:
+                    pending, pending_age = 0, 0     # 钱不够一手，放弃
+            else:
+                blocked.append({"date": date, "action": "买入受阻",
+                                "reason": "开盘涨停或停牌"})
+
+        elif pending == -1 and position == 1:
+            if can_sell:
+                _sell(date, open_, "卖出", cost_price)
+                pending, pending_age = 0, 0
+            else:
+                blocked.append({"date": date, "action": "卖出受阻",
+                                "reason": "开盘跌停或停牌"})
+
+        # 未成交的挂单顺延，超过上限则放弃（避免一字板连板时追到天上）
+        if pending != 0:
+            pending_age += 1
+            if pending_age > max_pending_days:
+                pending, pending_age = 0, 0
+
+        # ── 步骤 2：盘中止损 / 止盈 ──
+        # T+1：当日建仓的不检查，当天买入无法当天卖出
+        if position == 1 and shares > 0 and entry_date != date and can_sell:
             stop_price = cost_price * (1 - stop_loss)   if stop_loss   is not None else None
             tp_price   = cost_price * (1 + take_profit) if take_profit is not None else None
-            exit_price = None
-            exit_action = None
+            exit_price = exit_action = None
             # 同一根 K 线内若同时触及，保守起见优先止损
             if stop_price is not None and low <= stop_price:
                 exit_price  = min(open_, stop_price)    # 跳空低开则按开盘价
@@ -104,73 +265,40 @@ def run_backtest(
             elif tp_price is not None and high >= tp_price:
                 exit_price  = max(open_, tp_price)      # 跳空高开则按开盘价
                 exit_action = "止盈卖出"
-
             if exit_price is not None:
-                proceeds = shares * exit_price
-                fee = proceeds * (commission_rate + stamp_duty)
-                cash += proceeds - fee
-                pnl_pct = (exit_price - cost_price) / cost_price
-                trades.append({
-                    "date": date, "action": exit_action, "price": exit_price,
-                    "shares": shares, "cash": cash,
-                    "return_pct": pnl_pct * 100
-                })
-                shares = 0; position = 0; cost_price = 0.0
+                _sell(date, exit_price, exit_action, cost_price)
 
-        # 策略信号交易（按 T+1 开盘价成交）
-        if row["signal_exec"] == 1 and position == 0:
-            # 买入
-            invest = cash * position_size
-            raw_shares = int(invest / open_ / 100) * 100  # A股最小单位100股
-            if raw_shares >= 100:
-                cost = raw_shares * open_
-                fee  = cost * commission_rate
-                cash -= (cost + fee)
-                shares = raw_shares
-                position = 1
-                cost_price = open_
-                trades.append({
-                    "date": date, "action": "买入", "price": open_,
-                    "shares": shares, "cash": cash, "return_pct": None
-                })
-
-        elif row["signal_exec"] == -1 and position == 1 and shares > 0:
-            # 卖出
-            proceeds = shares * open_
-            fee = proceeds * (commission_rate + stamp_duty)
-            cash += proceeds - fee
-            pnl_pct = (open_ - cost_price) / cost_price * 100
-            trades.append({
-                "date": date, "action": "卖出", "price": open_,
-                "shares": shares, "cash": cash,
-                "return_pct": pnl_pct
-            })
-            shares = 0; position = 0; cost_price = 0.0
-
-        # 记录当日资产（按收盘价估值）
-        total = cash + shares * price
-        equity.append({"date": date, "equity": total, "close": price})
+        # ── 步骤 3：收盘估值 ──
+        equity.append({"date": date, "equity": cash + shares * price, "close": price})
 
     # 如果结束时仍持仓，按最后收盘价清算
     if shares > 0:
-        last_price = df["close"].iloc[-1]
-        last_date  = df.index[-1]
-        proceeds = shares * last_price
-        fee = proceeds * (commission_rate + stamp_duty)
-        cash += proceeds - fee
-        pnl_pct = (last_price - cost_price) / cost_price * 100
-        trades.append({
-            "date": last_date, "action": "期末清仓", "price": last_price,
-            "shares": shares, "cash": cash, "return_pct": pnl_pct
-        })
+        _sell(df.index[-1], df["close"].iloc[-1], "期末清仓", cost_price)
         equity[-1]["equity"] = cash
 
     # ── 统计指标 ──
-    eq_df = pd.DataFrame(equity).set_index("date")
+    eq_full = pd.DataFrame(equity).set_index("date")
+
+    # 统计窗口：预热期权益恒等于初始资金，计入会摊薄年化并稀释夏普
+    if eval_start:
+        cut = pd.to_datetime(eval_start, format="%Y%m%d")
+        eq_df = eq_full.loc[eq_full.index >= cut]
+        px    = df.loc[df.index >= cut]
+        if eq_df.empty:
+            raise ValueError(f"eval_start={eval_start} 之后没有任何交易日")
+    else:
+        eq_df, px = eq_full, df
+
+    eq_df = eq_df.copy()
+    # 窗口起点的基准资金：取窗口前最后一天的权益。
+    # 正常用法下预热期不交易，它就等于 initial_capital；但若调用方在
+    # eval_start 之前也放了信号，这里才不会把预热期的盈亏算进窗口收益。
+    prior = eq_full.loc[eq_full.index < eq_df.index[0], "equity"]
+    base_equity = float(prior.iloc[-1]) if len(prior) else initial_capital
     eq_df["returns"]  = eq_df["equity"].pct_change()
     eq_df["drawdown"] = eq_df["equity"] / eq_df["equity"].cummax() - 1
 
-    total_return    = (eq_df["equity"].iloc[-1] / initial_capital - 1) * 100
+    total_return    = (eq_df["equity"].iloc[-1] / base_equity - 1) * 100
     annual_trading_days = 252
     n_days          = len(eq_df)
     # 年化收益：样本不足一年时按日历外推会几何放大（如 10 天 +8% → 年化 ~600%），
@@ -183,16 +311,20 @@ def run_backtest(
     sharpe          = _calc_sharpe(eq_df["returns"], annual_trading_days)
     win_rate, avg_win, avg_loss, profit_factor = _calc_trade_stats(trades)
 
-    # 基准（持有不动）
-    bench_return = (df["close"].iloc[-1] / df["close"].iloc[0] - 1) * 100
+    # 基准（买入持有）：与策略同口径 —— 同一个统计窗口、同样开盘买入收盘估值
+    bench_base   = px["open"].iloc[0]
+    bench_return = (px["close"].iloc[-1] / bench_base - 1) * 100
 
     result = {
         "symbol": symbol, "start": start_date, "end": end_date,
+        "eval_start": eval_start,
         "initial_capital": initial_capital,
+        "equity_base": base_equity,     # 统计窗口起点权益（无 eval_start 时 == initial_capital）
         "final_equity": eq_df["equity"].iloc[-1],
         "total_return": total_return,
         "annual_return": annual_return,
         "benchmark_return": bench_return,
+        "benchmark_base": bench_base,
         "max_drawdown": max_drawdown,
         "sharpe_ratio": sharpe,
         "total_trades": len([t for t in trades if t["action"] == "买入"]),
@@ -201,9 +333,18 @@ def run_backtest(
         "avg_loss": avg_loss,
         "profit_factor": profit_factor,
         "trades": pd.DataFrame(trades),
+        "blocked_trades": pd.DataFrame(blocked),
         "equity_curve": eq_df,
+        "equity_curve_full": eq_full,
         "df": df,
         "strategy": strategy,
+        "costs": {
+            "commission_rate": commission_rate,
+            "min_commission": min_commission,
+            "stamp_duty": stamp_duty,
+            "slippage": slippage,
+            "limit_pct": limit_pct if limit_move_check else None,
+        },
     }
 
     if verbose:
@@ -256,6 +397,13 @@ def print_summary(r: dict):
 
 def _print_summary(r: dict):
     print(f"\n  ── 回测结果 ──────────────────────────────")
+    c = r.get("costs", {})
+    if c:
+        limit_txt = "不限" if c.get("limit_pct") is None else f"±{c['limit_pct']:.0%}"
+        print(f"  成本假设      : 佣金{c['commission_rate']:.2%}(最低{c['min_commission']:.0f}元) "
+              f"印花税{c['stamp_duty']:.2%} 滑点{c['slippage']:.2%} 涨跌停{limit_txt}")
+    if r.get("eval_start"):
+        print(f"  统计起点      : {r['eval_start']}（此前为指标预热期，不计入）")
     print(f"  初始资金      : ¥{r['initial_capital']:>12,.2f}")
     print(f"  期末资产      : ¥{r['final_equity']:>12,.2f}")
     print(f"  策略总收益    : {r['total_return']:>+8.2f}%")
@@ -272,6 +420,9 @@ def _print_summary(r: dict):
     print(f"  平均亏损      : {r['avg_loss']:>+8.2f}%")
     pf = r['profit_factor']
     print(f"  盈亏比        : {'    N/A' if pf == 0 else f'{pf:>8.2f}'}")
+    blocked = r.get("blocked_trades")
+    if blocked is not None and not blocked.empty:
+        print(f"  受阻未成交    : {len(blocked):>8}  次（涨跌停/停牌）")
     print(f"  ──────────────────────────────────────────")
 
 
@@ -319,8 +470,9 @@ def plot_backtest(result: dict, save_path: str = None):
 
     # ── 子图3：资产曲线 vs 基准 ──
     ax3 = fig.add_subplot(gs[2], sharex=ax1, **ax_kwargs)
-    norm_eq    = eq_df["equity"] / result["initial_capital"] * 100
-    norm_bench = eq_df["close"]  / eq_df["close"].iloc[0]  * 100
+    # 基准以统计窗口首日**开盘价**为基数，与策略的建仓口径一致
+    norm_eq    = eq_df["equity"] / result["equity_base"] * 100
+    norm_bench = eq_df["close"]  / result["benchmark_base"]  * 100
     ax3.plot(eq_df.index, norm_eq,    color=C_GREEN, lw=1.5, label="策略净值")
     ax3.plot(eq_df.index, norm_bench, color=C_MUTED, lw=1,   label="基准(买入持有)", linestyle="--")
     ax3.axhline(100, color=C_MUTED, lw=0.5, linestyle=":")

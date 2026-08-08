@@ -14,7 +14,7 @@ import sys
 
 # 复用回测引擎、共享配置层与报告输出
 from engine import run_backtest
-from config import load_backtest_config, OutputPaths
+from config import load_backtest_config, execution_kwargs, OutputPaths
 from bull_report import export_bull_daily_status, plot_bull_backtest
 from strategies import LuMACDBullStrategy
 from lib.plotting import setup_matplotlib
@@ -53,6 +53,20 @@ save_chart_dir = output/
 
 # HTTP 代理（如 http://127.0.0.1:7890），留空则直连
 proxy =
+
+# ── 成交成本与交易约束（留空即用默认值，见 backtest/config.py）────────────────
+# 券商佣金费率（双边），默认 0.0003
+commission_rate =
+# 单笔最低佣金（元），默认 5
+min_commission =
+# 印花税（仅卖出），默认 0.001
+stamp_duty =
+# 单边滑点，默认 0.001；设 0 可与无滑点结果对比
+slippage =
+# 是否模拟涨跌停/停牌无法成交，默认 true
+limit_move_check =
+# 信号因涨跌停未成交时最多顺延几个交易日，默认 3
+max_pending_days =
 
 # ── LuMACDBull 策略专属参数 ────────────────────────────────────────────────────
 
@@ -94,6 +108,7 @@ def main():
             initial_capital=cfg.capital,
             stop_loss=cfg.stop_loss,
             take_profit=cfg.take_profit,
+            **execution_kwargs(cfg),
             verbose=True,
         )
 

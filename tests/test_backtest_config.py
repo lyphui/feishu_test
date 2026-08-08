@@ -103,3 +103,39 @@ def test_extra_holds_strategy_params(monkeypatch, tmp_path):
     assert cfg.get_bool("shrink_exit", False) is True
     assert cfg.get_bool("missing_key", True) is True   # 缺省回退
     assert cfg.get_int("missing_key", 99) == 99
+
+
+# ── execution_kwargs：三个单股入口共用的成本参数 ──────────────────────────────
+
+def test_execution_kwargs_defaults(monkeypatch, tmp_path):
+    """.ini 未写成本参数时，回退到引擎默认值（A 股常见水平）。"""
+    _write_cfg(monkeypatch, tmp_path, "full.ini", _INI_FULL)
+    kw = bt_config.execution_kwargs(load_backtest_config("full.ini"))
+    assert kw == {
+        "commission_rate": 0.0003,
+        "min_commission": 5.0,
+        "stamp_duty": 0.001,
+        "slippage": 0.001,
+        "limit_move_check": True,
+        "max_pending_days": 3,
+    }
+
+
+def test_execution_kwargs_overrides(monkeypatch, tmp_path):
+    text = _INI_FULL + "slippage = 0\nlimit_move_check = false\nmin_commission = 0\n"
+    _write_cfg(monkeypatch, tmp_path, "cost.ini", text)
+    kw = bt_config.execution_kwargs(load_backtest_config("cost.ini"))
+    assert kw["slippage"] == 0.0
+    assert kw["limit_move_check"] is False
+    assert kw["min_commission"] == 0.0
+
+
+def test_execution_kwargs_feed_run_backtest():
+    """返回的键必须全部是 run_backtest 认识的参数名。"""
+    import inspect
+    from engine import run_backtest
+    cfg = BacktestConfig(symbol="600519", name="x", start_date="20200101",
+                         end_date="20240101")
+    sig = inspect.signature(run_backtest).parameters
+    for key in bt_config.execution_kwargs(cfg):
+        assert key in sig, f"execution_kwargs 产出了 run_backtest 不接受的参数：{key}"

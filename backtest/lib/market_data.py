@@ -1,9 +1,39 @@
-"""共享行情数据获取：个股 + 指数，akshare → baostock → yfinance 三源。"""
+"""
+共享行情数据获取：个股 + 指数，akshare → baostock → yfinance 三源。
+
+复权口径
+--------
+回测默认取 **后复权（hfq）**，不要用前复权：
+
+  前复权(qfq) 以"最新价"为基准回算历史价，每逢新的分红送股，**整段历史价格
+  都会变**。同一个脚本今天跑和下个月跑会得到不同的买入价、不同的整手股数、
+  不同的收益——回测结果不可复现，也无法和实盘对账。
+  后复权(hfq) 以"上市价"为基准，历史价格一旦确定就不再变动。
+
+ADJUST 常量集中管理三个数据源的口径映射，避免回退到备用源时口径悄悄变掉。
+yfinance 的 auto_adjust=True 实为前复权口径（最新价不变、历史价下修），
+与 hfq 不等价，仅作为最后兜底并会打印告警。
+"""
 
 import os
 import time
+import warnings
 
 import pandas as pd
+
+# 复权方式 → 各数据源的参数值
+ADJUST = {
+    "hfq":  {"akshare": "hfq", "baostock": "1"},   # 后复权（回测默认）
+    "qfq":  {"akshare": "qfq", "baostock": "2"},   # 前复权（看盘习惯，不适合回测）
+    "none": {"akshare": "",    "baostock": "3"},   # 不复权
+}
+DEFAULT_ADJUST = "hfq"
+
+
+def _adjust_params(adjust: str) -> dict:
+    if adjust not in ADJUST:
+        raise ValueError(f"未知复权方式：{adjust}，可选 {list(ADJUST)}")
+    return ADJUST[adjust]
 
 
 # ── baostock 辅助 ──────────────────────────────────────────────────────────────
@@ -112,6 +142,17 @@ def _yfinance_download(
     )
 
 
+def _warn_yfinance_adjust(adjust: str) -> None:
+    """yfinance 只能给出前复权口径，与 hfq 不一致时明确告警而不是悄悄换口径。"""
+    if adjust != "qfq":
+        warnings.warn(
+            f"已回退到 yfinance，其 auto_adjust 为**前复权**口径，"
+            f"与请求的 adjust='{adjust}' 不一致：历史价会随未来分红变动，"
+            "该股回测结果不可复现。建议装好 akshare 或 baostock 后重跑。",
+            UserWarning, stacklevel=3,
+        )
+
+
 def _to_yfinance_ticker(symbol: str, is_index: bool = False) -> str:
     """A 股代码 → yfinance ticker（沪/深自动判断）。"""
     if is_index:
@@ -133,25 +174,30 @@ def fetch_stock_data(
     start_date: str,
     end_date: str,
     proxy: str = "",
+    adjust: str = DEFAULT_ADJUST,
 ) -> pd.DataFrame:
     """
-    获取 A 股个股历史行情数据（前复权）。
+    获取 A 股个股历史行情数据。
 
     symbol     : 股票代码，如 "600519"
     start_date : "YYYYMMDD"
     end_date   : "YYYYMMDD"
     proxy      : HTTP 代理地址，留空则不使用
+    adjust     : 复权方式，"hfq"（默认，后复权，回测唯一可复现的口径）
+                 / "qfq" / "none"，见模块 docstring
     """
     if proxy:
         os.environ["HTTP_PROXY"] = proxy
         os.environ["HTTPS_PROXY"] = proxy
 
+    params = _adjust_params(adjust)
+
     try:
         import akshare as ak
-        print(f"  正在从 akshare 获取 {symbol} 数据...")
+        print(f"  正在从 akshare 获取 {symbol} 数据（{adjust}）...")
         df = ak.stock_zh_a_hist(
             symbol=symbol, period="daily",
-            start_date=start_date, end_date=end_date, adjust="qfq",
+            start_date=start_date, end_date=end_date, adjust=params["akshare"],
         )
         df = df.rename(columns={
             "日期": "date", "开盘": "open", "收盘": "close",
@@ -171,8 +217,9 @@ def fetch_stock_data(
         bs_code = _to_baostock_code(symbol)
         start_dash = _date_yyyymmdd_to_dash(start_date)
         end_dash = _date_yyyymmdd_to_dash(end_date)
-        print(f"  正在从 baostock 获取 {bs_code} 日线数据...")
-        df = _baostock_query(bs_code, start_dash, end_dash, frequency="d")
+        print(f"  正在从 baostock 获取 {bs_code} 日线数据（{adjust}）...")
+        df = _baostock_query(bs_code, start_dash, end_dash, frequency="d",
+                             adjustflag=params["baostock"])
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"])
             df = df.set_index("date").sort_index()
@@ -182,6 +229,7 @@ def fetch_stock_data(
         print(f"  baostock 获取失败：{e}，尝试 yfinance 备用...")
 
     # ── yfinance 备用 ──
+    _warn_yfinance_adjust(adjust)
     ticker = _to_yfinance_ticker(symbol, is_index=False)
     raw = _yfinance_download(
         ticker,
@@ -242,7 +290,7 @@ def fetch_index_data(
     except Exception as e:
         print(f"  baostock 指数获取失败：{e}，尝试 yfinance 备用...")
 
-    # ── yfinance 备用 ──
+    # ── yfinance 备用 ──（指数无复权概念，不需要口径告警）
     ticker = _to_yfinance_ticker(symbol, is_index=True)
     raw = _yfinance_download(
         ticker,
