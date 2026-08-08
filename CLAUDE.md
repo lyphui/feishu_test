@@ -384,8 +384,11 @@ IS 最优在 OOS 转负 = 选中的是噪声；默认格在 OOS 反而更好 = �
 - **`jcy_intraday_timing.py` 与本模块口径绑定**：`_executable_price()` 必须与
   `daily_panel()` 的 `go_price` 同价，`go_buy`/`go_sell` 必须与 `classify_timing()` 同判，
   `tests/test_intraday_exec_price.py` 与 `tests/test_execution.py` 逐日比对守住。
-  那边还遵守一条铁律——**分时只决定「几点做」，不决定「做不做」**：
-  让择时条件左右持仓与否，等于把执行层开关变成隐式策略过滤器。
+  那边还遵守两条铁律——**分时只决定「几点做」，不决定「做不做」**
+  （让择时条件左右持仓与否，等于把执行层开关变成隐式策略过滤器）；
+  以及 **`PositionTracker` 统一 T+1 成交**：日线的 signal / 红柱缩短 / 死叉 / DIF<0
+  全都要等当日收盘才算得出来，一律排到下一个交易日，`intraday_map` 只换价不换日。
+  旧实现里窗口内 T+1、窗口外当日收盘，等于 `--lookback` 这个打印参数在改历史收益。
 - **数字必须可复现**：`exec_bench.py` 是唯一的出数入口（定种子抽样），
   分时行情由 `lib/intraday_store.py` 缓存在 `data/market/intraday/`（不复权、
   只增不改、**不入库**，47 只 32MB，随时可从 baostock 重建）。

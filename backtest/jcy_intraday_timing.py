@@ -77,11 +77,19 @@ JCY 日线信号 + 分时择时（多周期共振）
   红柱正负。所以卖侧 GO 天数占比天然更高（本池 64% vs 买侧 57%），
   两侧的 bp 不能横向比较。`lib.execution.intraday_macd()` 的 `go_sell` 同式。
 
-  ⚠️ 已知的一处不对称，**尚未修改**：买入信号默认在信号次日执行
-  （`_determine_exec_date` 的 next），而二级/三级卖出在 `PositionTracker.run()`
-  里用**信号当日的收盘价**当场成交。可日线的"红柱缩短""死叉"要等当天收盘才
-  算得出来，等于在知道结果的同一刻按那个价成交。买卖两侧因此差了一天：
-  修它会改动全部历史卖出记录，属于独立的行为变更，另开一条改。
+执行时点：统一 T+1（2026-08-09 修正）
+────────────────────────────────────
+  日线的 signal / 红柱缩短 / 死叉 / DIF<0 **全都要等当日收盘才算得出来**，
+  所以每一条都排到下一个交易日成交，买卖两侧、`lookback` 窗口内外一视同仁。
+  实现见 `PositionTracker._place()` / `_execute()`。
+
+  修掉的是三套口径并存：窗口内的信号 T+1 成交、窗口外的当日收盘成交、
+  二三级卖出一律当日收盘成交。后两者是零延迟假设——在知道结果的同一刻
+  按那个价成交；而分界线取决于 `--lookback`，改一个只该影响打印的参数
+  就能改变历史收益。现在 `intraday_map` **只换成交价、不换成交日**。
+
+  唯一保留的当日成交是 `--exec_day same`：那是使用者明确选的盘中实时口径
+  （信号当天就在盘中发现并操作），不是回测默认路径。
 
 实测：这套择时到底有没有用（JCY 抽样池 45 只 × 46728 个股票-交易日，2022-01~2026-08）
 ──────────────────────────────────────────────────────────────────────────
@@ -199,22 +207,10 @@ class SignalTimingResult:
 
 # ── 仓位管理 ────────────────────────────────────────────────────────────────
 
-def _exec_price_or_daily(info: dict, df_sig: pd.DataFrame,
-                         cur_price: float) -> float:
-    """
-    取 `intraday_map` 里的分时成交价；没有（分时数据缺失）就兜底用日线收盘价。
-
-    兜底必须取**执行日**的收盘价而不是当前遍历日（= 信号日）的——两者可能差一天，
-    拿信号日的价去成交一笔发生在次日的单，是把一个已知价错配到另一天。
-    执行日不在日线索引里（停牌等）才退回当前价。
-    """
-    px = info.get("exec_price")
-    if px is not None:
-        return float(px)
-    exec_date = info.get("exec_date")
-    if exec_date is not None and exec_date in df_sig.index:
-        return float(df_sig.loc[exec_date, "close"])  # type: ignore[arg-type]
-    return float(cur_price)
+def _next_trading_day(index: pd.Index, date) -> pd.Timestamp | None:
+    """下一个交易日；`date` 已是最后一根 K 线时返回 None。"""
+    future = index[index > date]
+    return future[0] if len(future) > 0 else None
 
 
 @dataclass
@@ -269,94 +265,81 @@ class PositionTracker:
         """
         遍历日线数据，按分级买入 + 三级递进卖出规则模拟交易。
 
-        intraday_map: {sig_date: {"exec_date", "exec_price", "action", "dif"}}
-          - 覆盖 lookback 窗口内的信号日执行时机和价格
-          - buy/sell + exec_price float → 在 exec_date 以该价格执行
-          - exec_price 为 None（分时数据缺失）→ 兜底用日线收盘价，仍然执行
-          - 不在 map 中的信号日 → 历史回退，使用日线收盘价当日执行
+        **统一 T+1 执行。**日线的 signal / 红柱缩短 / 死叉 / DIF<0 都要等当日收盘
+        才算得出来，所以每一条都排到**下一个交易日**成交，没有例外。信号落在
+        最后一根 K 线时没有 T+1，该操作作废（仓位交给期末清算）。
 
-        分时信息**只影响成交价，不影响是否建仓**。早先的实现在"买入且分时无
-        GO"时直接跳过建仓，等于让一个执行层条件充当隐式策略过滤器——
-        实测无 GO 的日子占四成，这个开关对结果的影响远大于它该有的分量。
+        成交价按这个优先级取：
+          ① `intraday_map` 给的分时价（`_executable_price()`，见其 docstring）
+          ② 执行日的日线收盘价——注意是**执行日**不是信号日，两者差一天，
+             拿信号日的价成交次日的单是把已知价错配到另一天
+
+        intraday_map: {sig_date: {"exec_date", "exec_price", "action", "dif"}}
+          - 只覆盖 lookback 窗口内的信号日，用来把成交价换成分时价
+          - `exec_price` 为 None（分时数据缺失）→ 走 ②，仍然照常成交
+          - `exec_date == sig_date`（`--exec_day same` 的盘中实时模式）→ 当日成交；
+            这是使用者明确选的实盘口径，回测默认的 next 模式不会走到
+
+        两条铁律：
+          * **分时只决定「几点做」，不决定「做不做」。**早先在"买入且分时无 GO"
+            时直接跳过建仓，等于让执行层条件充当隐式策略过滤器——无 GO 占四成日子。
+          * **执行时点不许依赖 `--lookback`。**早先窗口内的信号 T+1 成交、窗口外的
+            当日收盘成交，等于同一次回测前后两段用两套规则，改个打印参数就能改变
+            历史收益。现在两段同为 T+1，`intraday_map` 只换价、不换日。
         """
         intraday_map = intraday_map or {}
 
-        # pending_ops: exec_date → {action, price, dif[, level, reason]}
+        # exec_date → op；每个遍历日最多排一条，故 key 不会冲突
         _pending: dict[pd.Timestamp, dict] = {}
-        # 记录已被 intraday_map 覆盖的信号日，避免重复执行
-        _overridden_sig_dates: set = set(intraday_map.keys())
 
         for date, row in df_sig.iterrows():
-            price = row["close"]
-            dif   = row.get("DIF", 0)
-            dea   = row.get("DEA", 0)
+            dif = row.get("DIF", 0)
+            dea = row.get("DEA", 0)
 
-            # ── 执行待定操作（由前一信号日推迟到今天）────────────────────────
+            # ── 先执行昨日排定的操作，再用更新后的状态判断今天 ────────────────
             if date in _pending:
-                op = _pending.pop(date)  # type: ignore[call-overload]
-                exec_p = op["price"]
-                if op["action"] == "buy" and self.shares == 0:
-                    self._buy_initial(date, exec_p, op["dif"])
-                elif op["action"] == "sell" and self.shares > 0:
-                    if op.get("level") == 1:
-                        self._sell_portion(date, exec_p, 1, op["reason"])
-                    else:
-                        self._sell_remaining(date, exec_p, op["reason"])
+                self._execute(_pending.pop(date), date, df_sig)  # type: ignore[call-overload]
+
+            nxt = _next_trading_day(df_sig.index, date)
 
             # ── 空仓：等买入信号 ─────────────────────────────────────────────
             if self.shares == 0:
                 if row.get("signal") == 1:
-                    if date in intraday_map:
-                        info = intraday_map[date]
-                        # 分时无 GO / 分时数据缺失 → 兜底用日线价，**不再跳过建仓**。
-                        # 分时条件只该决定「几点买」，不该决定「买不买」——
-                        # 后者是日线信号的职责。让择时条件左右持仓与否，会把
-                        # 一个执行层的开关变成隐式的策略过滤器（且无 GO 占四成日子）。
-                        exec_p = _exec_price_or_daily(info, df_sig, price)
-                        if info["exec_date"] == date:
-                            self._buy_initial(date, exec_p, info["dif"])
-                        else:
-                            _pending[info["exec_date"]] = {
-                                "action": "buy",
-                                "price":  exec_p,
-                                "dif":    info["dif"],
-                            }
-                    elif date not in _overridden_sig_dates:
-                        # 历史信号（不在 lookback 窗口）：用日线收盘价
-                        self._buy_initial(date, price, dif)
+                    info = intraday_map.get(date)
+                    self._place(_pending, df_sig, date, nxt, info, {
+                        "action": "buy_initial",
+                        "dif": info["dif"] if info else dif,
+                        "reason": "金叉+红柱拉长",
+                    })
 
             # ── 初仓阶段：等候次日确认加仓，或提前退出 ──────────────────────
             elif self._buy_level == 1:
                 if date == self._buy_date:
                     pass  # 初仓当日不重复操作
                 elif dif < 0:
-                    self._sell_remaining(date, price, "DIF<0")
+                    self._place(_pending, df_sig, date, nxt, None,
+                                {"action": "sell_all", "reason": "DIF<0"})
                 elif row.get("hist_expanding", False):
-                    self._buy_add(date, price)
+                    self._place(_pending, df_sig, date, nxt, None,
+                                {"action": "buy_add", "reason": "红柱续拉长"})
                 elif row.get("hist_shrinking", False) or dif < dea:
-                    self._sell_remaining(date, price, "初仓退出")
+                    self._place(_pending, df_sig, date, nxt, None,
+                                {"action": "sell_all", "reason": "初仓退出"})
 
             # ── 满仓阶段：三级递进卖出 ───────────────────────────────────────
             else:
                 if dif < 0:
-                    self._sell_remaining(date, price, "DIF<0")
+                    self._place(_pending, df_sig, date, nxt, None,
+                                {"action": "sell_all", "reason": "DIF<0"})
                 elif self._sell_level == 0 and row.get("hist_shrinking", False):
-                    if date in intraday_map:
-                        info   = intraday_map[date]
-                        exec_p = _exec_price_or_daily(info, df_sig, price)
-                        if info["exec_date"] == date:
-                            self._sell_portion(date, exec_p, 1, "红柱缩短")
-                        else:
-                            _pending[info["exec_date"]] = {
-                                "action": "sell", "level": 1,
-                                "price":  exec_p, "reason": "红柱缩短", "dif": dif,
-                            }
-                    else:
-                        self._sell_portion(date, price, 1, "红柱缩短")
+                    self._place(_pending, df_sig, date, nxt, intraday_map.get(date),
+                                {"action": "sell_1", "reason": "红柱缩短"})
                 elif self._sell_level == 1 and dif < dea:
-                    self._sell_portion(date, price, 2, "死叉")
+                    self._place(_pending, df_sig, date, nxt, None,
+                                {"action": "sell_2", "reason": "死叉"})
                 elif self._sell_level == 2 and dif < 0:
-                    self._sell_remaining(date, price, "DIF<0")
+                    self._place(_pending, df_sig, date, nxt, None,
+                                {"action": "sell_all", "reason": "DIF<0"})
 
         # 期末仍有持仓 → 按最新价清算
         if self.shares > 0:
@@ -365,6 +348,42 @@ class PositionTracker:
             self._sell_remaining(last_date, last_price, "期末清算")
 
         return self.trades
+
+    # ── 排单与成交 ───────────────────────────────────────────────────────────
+
+    def _place(self, pending: dict, df_sig: pd.DataFrame, cur_date,
+               nxt, info: dict | None, op: dict) -> None:
+        """
+        把一个操作排到执行日。**执行日恒为下一个交易日**，`info` 只用来换成交价。
+
+        唯一的例外是 `--exec_day same`：`info["exec_date"] == cur_date`，
+        使用者明确要求按盘中实时口径当日成交。
+        """
+        exec_date = info["exec_date"] if info else nxt
+        if exec_date is None:
+            return                      # 信号在最后一根 K 线，没有 T+1 可成交
+        op = {**op, "price": info.get("exec_price") if info else None}
+        if exec_date == cur_date:
+            self._execute(op, cur_date, df_sig)
+        else:
+            pending[exec_date] = op
+
+    def _execute(self, op: dict, date, df_sig: pd.DataFrame) -> None:
+        """按 op 成交。价缺失时兜底取**执行日**（= `date`）的日线收盘价。"""
+        px = op.get("price")
+        price = float(px) if px is not None else float(df_sig.loc[date, "close"])
+        action = op["action"]
+
+        if action == "buy_initial" and self.shares == 0:
+            self._buy_initial(date, price, op["dif"])
+        elif action == "buy_add" and self.shares > 0:
+            self._buy_add(date, price)
+        elif action == "sell_1" and self.shares > 0:
+            self._sell_portion(date, price, 1, op["reason"])
+        elif action == "sell_2" and self.shares > 0:
+            self._sell_portion(date, price, 2, op["reason"])
+        elif action == "sell_all" and self.shares > 0:
+            self._sell_remaining(date, price, op["reason"])
 
     # ── 买入 ─────────────────────────────────────────────────────────────────
 

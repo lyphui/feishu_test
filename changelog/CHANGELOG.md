@@ -10,6 +10,7 @@
 
 | 日期 | 条目 | 主题 | 含行为变更 |
 |------|------|------|:----------:|
+| 2026-08-09 | [PositionTracker 统一 T+1](2026-08-09-position-tracker-t1-execution.md) | 修掉三套执行口径并存（零延迟成交 + 分界线取决于 `--lookback`），全部排到下一个交易日 | **是**（平均 −1.97pp，动量票影响最大） |
 | 2026-08-09 | [卖出端下单窗口](2026-08-09-sell-side-execution-window.md) | `execution.py` 买卖双向化、新增 `exec_bench.py` 与分时仓库；两池卖出侧实测（结论排序相反） | **是**（`death_cross` 改连续算，影响隔夜死叉日） |
 | 2026-08-09 | [分时执行口径修正](2026-08-09-intraday-exec-price-caliber.md) | 可成交价改取下一根开盘价（去前视）；分时无 GO 不再跳过建仓 | **是** |
 | 2026-08-09 | [日内下单测算](2026-08-09-intraday-execution-benchmark.md) | 新增 `lib/execution.py`（VWAP 基准的成交价测算）；`jcy_intraday_timing` GO 窗口实测无效，仅改建议文案 | 否（回测数值不变，仅打印文案） |
