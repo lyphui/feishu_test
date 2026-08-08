@@ -42,22 +42,24 @@ JCY 日线信号 + 分时择时（多周期共振）
          GO    = hist_expanding 且 DIF > DEA
          WAIT  = DIF > DEA 但红柱未拉长
          AVOID = DIF <= DEA
-       exec_price = 首个 GO 柱收盘价；**无 GO → None**
+       exec_price（`_executable_price()`，买卖同口径）：
+         有 GO → 首个 GO 柱的**下一根 K 线开盘价**（GO 在最后一根时退化为收盘价）
+         无 GO → 当日最后一柱收盘价
   ④ 落仓位      `PositionTracker.run(df_sig, intraday_map)`
-       exec_price is None      → 跳过买入（不建仓）
        exec_date == 信号日      → 当日建仓
        否则                    → 挂 _pending[exec_date]，到日执行
+       exec_price 为 None（分时数据缺失）→ 兜底用日线收盘价，仍然建仓
        信号日不在 intraday_map（历史信号）→ 回退用日线收盘价当日执行
   ⑤ 建仓规模    `_buy_initial()`  DIF<0 → 1/3 可用资金；DIF≥0 → 1/2
                 `_buy_add()`      次日红柱续拉长 → 补满仓
                 初仓阶段遇 红柱缩短 / DIF<DEA / DIF<0 → 全退，不等满仓
 
-  已知口径问题（未改动行为，改之前先想清楚会动到哪些既有输出）：
-    * ③ 的 exec_price 取的是**首个 GO 柱的收盘价**，而这根 K 线要走完才能判定
-      它是 GO——那一刻这个价已成历史，属前视。真实可成交的是**下一根的开盘价**。
-      实测两者差异很小（1.8bp → 1.4bp），不影响结论，但口径上不干净。
-    * ④ 的「无 GO 就不买」把「是否建仓」和「几点建仓」耦合在了一起：
-      本该只影响成交价的分时条件，实际改变了持仓与否。
+  两条必须守住的口径（2026-08-09 修正，详见 `_analyze_single_signal` docstring）：
+    * **可成交价不是信号柱的收盘价。**要等这根 K 线走完才能判定它是 GO，
+      那一刻收盘价已成历史。能下的第一个单成交在**下一根的开盘**。
+    * **分时只决定「几点买」，不决定「买不买」。**旧实现在"买入且无 GO"时
+      直接跳过建仓，等于让执行层条件充当隐式策略过滤器——无 GO 占四成日子，
+      影响远超它该有的分量。现在一律建仓，只是成交价不同。
 
 实测：这套择时到底有没有用（JCY 抽样池，45 只 × 48332 个股票-交易日，2022-01~2026-08）
 ──────────────────────────────────────────────────────────────────────────
@@ -159,6 +161,24 @@ class SignalTimingResult:
 
 # ── 仓位管理 ────────────────────────────────────────────────────────────────
 
+def _exec_price_or_daily(info: dict, df_sig: pd.DataFrame,
+                         cur_price: float) -> float:
+    """
+    取 `intraday_map` 里的分时成交价；没有（分时数据缺失）就兜底用日线收盘价。
+
+    兜底必须取**执行日**的收盘价而不是当前遍历日（= 信号日）的——两者可能差一天，
+    拿信号日的价去成交一笔发生在次日的单，是把一个已知价错配到另一天。
+    执行日不在日线索引里（停牌等）才退回当前价。
+    """
+    px = info.get("exec_price")
+    if px is not None:
+        return float(px)
+    exec_date = info.get("exec_date")
+    if exec_date is not None and exec_date in df_sig.index:
+        return float(df_sig.loc[exec_date, "close"])  # type: ignore[arg-type]
+    return float(cur_price)
+
+
 @dataclass
 class TradeRecord:
     """单笔交易记录。"""
@@ -213,9 +233,13 @@ class PositionTracker:
 
         intraday_map: {sig_date: {"exec_date", "exec_price", "action", "dif"}}
           - 覆盖 lookback 窗口内的信号日执行时机和价格
-          - buy + exec_price None → 跳过（分时无 GO，不买）
           - buy/sell + exec_price float → 在 exec_date 以该价格执行
+          - exec_price 为 None（分时数据缺失）→ 兜底用日线收盘价，仍然执行
           - 不在 map 中的信号日 → 历史回退，使用日线收盘价当日执行
+
+        分时信息**只影响成交价，不影响是否建仓**。早先的实现在"买入且分时无
+        GO"时直接跳过建仓，等于让一个执行层条件充当隐式策略过滤器——
+        实测无 GO 的日子占四成，这个开关对结果的影响远大于它该有的分量。
         """
         intraday_map = intraday_map or {}
 
@@ -246,14 +270,17 @@ class PositionTracker:
                 if row.get("signal") == 1:
                     if date in intraday_map:
                         info = intraday_map[date]
-                        if info["exec_price"] is None:
-                            pass  # 分时无 GO，跳过买入
-                        elif info["exec_date"] == date:
-                            self._buy_initial(date, info["exec_price"], info["dif"])
+                        # 分时无 GO / 分时数据缺失 → 兜底用日线价，**不再跳过建仓**。
+                        # 分时条件只该决定「几点买」，不该决定「买不买」——
+                        # 后者是日线信号的职责。让择时条件左右持仓与否，会把
+                        # 一个执行层的开关变成隐式的策略过滤器（且无 GO 占四成日子）。
+                        exec_p = _exec_price_or_daily(info, df_sig, price)
+                        if info["exec_date"] == date:
+                            self._buy_initial(date, exec_p, info["dif"])
                         else:
                             _pending[info["exec_date"]] = {
                                 "action": "buy",
-                                "price":  info["exec_price"],
+                                "price":  exec_p,
                                 "dif":    info["dif"],
                             }
                     elif date not in _overridden_sig_dates:
@@ -278,7 +305,7 @@ class PositionTracker:
                 elif self._sell_level == 0 and row.get("hist_shrinking", False):
                     if date in intraday_map:
                         info   = intraday_map[date]
-                        exec_p = info["exec_price"] or price   # 无 GO 兜底用日线价
+                        exec_p = _exec_price_or_daily(info, df_sig, price)
                         if info["exec_date"] == date:
                             self._sell_portion(date, exec_p, 1, "红柱缩短")
                         else:
@@ -859,11 +886,21 @@ def _analyze_single_signal(
     获取分时数据 → 计算 MACD → 择时分类。
     返回 (intra_df, exec_bars, summary, exec_price) 或 None（数据缺失时打印原因）。
 
-    exec_price:
-      买入 + 有 GO → 首个 GO 柱收盘价
-      买入 + 无 GO → None（不执行）
-      卖出 + 有 GO → 首个 GO 柱收盘价
-      卖出 + 无 GO → 当日最后一柱收盘价（兜底，不宜持仓不动）
+    exec_price（买入卖出同一套口径，恒为 float，不再有 None）：
+      有 GO → 首个 GO 柱的**下一根 K 线开盘价**
+      无 GO → 当日最后一柱收盘价（= 收盘集合竞价）
+
+    为什么是"下一根的开盘价"而不是"GO 柱的收盘价"：
+      要等这根 K 线走完才能判定它是不是 GO，那一刻它的收盘价已经成为历史，
+      挂不进去。你看到 GO 之后能下的第一个单，成交在下一根的开盘。
+      GO 出现在当日最后一根时，后面没有 K 线了，只能按收盘价成交。
+
+    为什么无 GO 的兜底是"收盘价"而不是"开盘价"：
+      "今天没出 GO" 这件事本身要等收盘才知道。若在无 GO 分支里用当日开盘价，
+      等于用当天的结果去挑当天的入场点，是前视。既然规则是"等 GO"，
+      等不到就只能在最后一刻买。
+      （实测**不等 GO、直接在执行日开盘买**才是最优解——那是一条不依赖任何
+        分时信息的无条件规则，因此完全因果。见模块 docstring 的「实测」一节。）
     """
     intra_start = (exec_date - timedelta(days=INTRADAY_WARMUP_DAYS)).strftime("%Y%m%d")
     intra_end   = exec_date.strftime("%Y%m%d")
@@ -885,14 +922,24 @@ def _analyze_single_signal(
     exec_bars = classify_timing(exec_bars, action)
     summary   = summarize_timing(exec_bars)
 
-    if summary.has_go and summary.first_go is not None:
-        exec_price: float | None = float(exec_bars["close"][summary.first_go])  # type: ignore[arg-type]
-    elif action == "sell":
-        exec_price = float(exec_bars["close"].iloc[-1])   # 卖出兜底
-    else:
-        exec_price = None   # 买入无 GO → 跳过
-
+    exec_price = _executable_price(exec_bars, summary)
     return intra_df, exec_bars, summary, exec_price
+
+
+def _executable_price(exec_bars: pd.DataFrame, summary: TimingSummary) -> float:
+    """
+    把择时结论换算成**可成交价**（口径见 `_analyze_single_signal` docstring）。
+
+    与 `lib.execution.daily_panel()` 的 `go_price` 同口径，两处若要改动请一起改；
+    `tests/test_intraday_exec_price.py` 守住这条一致性。
+    """
+    last_close = float(exec_bars["close"].iloc[-1])
+    if not (summary.has_go and summary.first_go is not None):
+        return last_close
+    pos = exec_bars.index.get_loc(summary.first_go)
+    if pos + 1 >= len(exec_bars):
+        return last_close                      # GO 在最后一根，身后没有可成交的 K 线
+    return float(exec_bars["open"].iloc[pos + 1])
 
 
 def _save_signal_chart(intra_df: pd.DataFrame, exec_date: pd.Timestamp,
@@ -1044,10 +1091,13 @@ def analyze_candidate(
             analysis = _analyze_single_signal(code, exec_date, action, period)
 
             if analysis is None:
-                # 无分时数据：买入跳过，卖出兜底用日线收盘
+                # 无分时数据：买卖都兜底用日线收盘价。取不到分时数据是数据问题，
+                # 不该让它决定这一笔到底建不建仓。
+                daily_close = (float(df_sig.loc[exec_date, "close"])  # type: ignore[arg-type]
+                               if exec_date in df_sig.index else None)
                 intraday_map[sig_date] = {
                     "exec_date":  exec_date,
-                    "exec_price": None if action == "buy" else float(df_sig.loc[exec_date, "close"]) if exec_date in df_sig.index else None,  # type: ignore[arg-type]
+                    "exec_price": daily_close,
                     "action":     action,
                     "dif":        sig_dif,
                 }

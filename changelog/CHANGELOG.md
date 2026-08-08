@@ -10,6 +10,7 @@
 
 | 日期 | 条目 | 主题 | 含行为变更 |
 |------|------|------|:----------:|
+| 2026-08-09 | [分时执行口径修正](2026-08-09-intraday-exec-price-caliber.md) | 可成交价改取下一根开盘价（去前视）；分时无 GO 不再跳过建仓 | **是** |
 | 2026-08-09 | [日内下单测算](2026-08-09-intraday-execution-benchmark.md) | 新增 `lib/execution.py`（VWAP 基准的成交价测算）；`jcy_intraday_timing` GO 窗口实测无效，仅改建议文案 | 否（回测数值不变，仅打印文案） |
 | 2026-08-08 | [油价→股价传导性分析](2026-08-08-oil-price-transmission.md) | 新增 `lib/oil_price.py`（新浪源 Brent/WTI/SC）与 `oil_track.py` 传导相关性报告 | 否（纯新增报告小节） |
 | 2026-08-08 | [长期跟踪与分批建仓](2026-08-08-oil-tracking-ladder.md) | 本地行情仓库、波段/回撤剖面、市场状态识别、分批建仓模拟器与 `oil_track.py` | 否（全为新增模块） |
