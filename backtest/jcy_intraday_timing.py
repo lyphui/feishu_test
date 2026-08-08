@@ -23,8 +23,62 @@ JCY 日线信号 + 分时择时（多周期共振）
   5. 小盘流动性不足：分时 MACD 因稀疏成交而失真
 
   应对建议（本脚本会自动提示）：
-    买入无 GO 窗口 → 挂限价单，不追高，等次日再观察
+    买入无 GO 窗口 → 挂限价单，不追高，等次日再观察   ⚠️ 见下方「实测」：这条已被证伪
     卖出无 GO 窗口 → 次日集合竞价直接挂单卖出，不等盘中机会
+
+买入信号的完整链路（代码走向）
+──────────────────────────────
+  ① 日线定方向  `_fetch_daily_signals()`
+       fetch_stock_data(code, trade_start − WARMUP_DAYS, today)  → 日线（hfq）
+       fetch_index_data(index_symbol, ...)                       → 大盘
+       LuMACDBullStrategy(shrink_exit=True) 包进 BullStrategyAdapter(index_df,
+       trade_start_date)，adapter 把 trade_start 之前的信号清零（防未来数据）
+       → df_sig["signal"]==1 即买入信号；再按 lookback_days 截出最近的信号日
+  ② 定执行日    `_determine_exec_date()`   next=信号次日（默认）/ same=信号当日
+  ③ 分时定时机  `_analyze_single_signal()`
+       fetch_intraday(code, exec_date − INTRADAY_WARMUP_DAYS, exec_date, period)
+       add_macd() 在**连续跨日**序列上算 30min MACD(12/26/9)
+       切出执行日 8 根 → classify_timing(action="buy")
+         GO    = hist_expanding 且 DIF > DEA
+         WAIT  = DIF > DEA 但红柱未拉长
+         AVOID = DIF <= DEA
+       exec_price = 首个 GO 柱收盘价；**无 GO → None**
+  ④ 落仓位      `PositionTracker.run(df_sig, intraday_map)`
+       exec_price is None      → 跳过买入（不建仓）
+       exec_date == 信号日      → 当日建仓
+       否则                    → 挂 _pending[exec_date]，到日执行
+       信号日不在 intraday_map（历史信号）→ 回退用日线收盘价当日执行
+  ⑤ 建仓规模    `_buy_initial()`  DIF<0 → 1/3 可用资金；DIF≥0 → 1/2
+                `_buy_add()`      次日红柱续拉长 → 补满仓
+                初仓阶段遇 红柱缩短 / DIF<DEA / DIF<0 → 全退，不等满仓
+
+  已知口径问题（未改动行为，改之前先想清楚会动到哪些既有输出）：
+    * ③ 的 exec_price 取的是**首个 GO 柱的收盘价**，而这根 K 线要走完才能判定
+      它是 GO——那一刻这个价已成历史，属前视。真实可成交的是**下一根的开盘价**。
+      实测两者差异很小（1.8bp → 1.4bp），不影响结论，但口径上不干净。
+    * ④ 的「无 GO 就不买」把「是否建仓」和「几点建仓」耦合在了一起：
+      本该只影响成交价的分时条件，实际改变了持仓与否。
+
+实测：这套择时到底有没有用（JCY 抽样池，45 只 × 48332 个股票-交易日，2022-01~2026-08）
+──────────────────────────────────────────────────────────────────────────
+以当日 VWAP 为基准（负 = 买得比当天典型成交价便宜），复现见 lib/execution.py：
+
+    A 开盘集合竞价买        −18.7bp   t=−17.3   ← 最好
+    B 尾盘 15:00 买         −6.6bp   t= −9.7
+    F2 GO 窗口（真实口径）   −9.7bp   t=−15.9
+    E 限价挂开盘−0.5%       +46.4bp   t= 63.1   ← 最差（成交率 66%）
+
+  结论：**GO 窗口用于择时，比开盘直接买差约 9bp**；逐股看 45 只里 38 只是开盘买更优。
+  「无 GO 就挂限价单等回调」是所有做法里最贵的——没成交的 34% 恰是股票当天
+  一路走高的日子，最后被迫在更高的位置补，即逆向选择。
+
+  GO 标签本身**有信息量但只是同期的**：有 GO 的日子开盘→收盘 +168bp、
+  无 GO 的日子 −178bp，区分很干净；可它要等当天走完才知道，用于**归因**成立，
+  用于**决策**不成立（`lib.execution.split_by_go` 就是干这个归因用的）。
+
+  ⚠️ 这些数字只属于 JCY 池（中小市值动量股）。同一套测算在油气蓝筹
+  （601857/600938）上跑出来的日内形状**不一样**——那边尾盘买是 +8bp（贵），
+  这边是 −6.6bp（反而便宜）。方向可外推，数值不可外推；换池子必须重测。
 
 用法：
     python backtest/jcy_intraday_timing.py
@@ -714,7 +768,10 @@ def _print_timing_advice(summary: TimingSummary, action_cn: str):
                   f"  ← 动能加速确认后{action_cn}")
     elif action_cn == "买入":
         print(f"      ⚠️  全天无明确 GO 窗口（分时条件未共振）")
-        print(f"         建议：挂限价单，不追高；或等次日再观察")
+        # 旧建议是「挂限价单，不追高；或等次日再观察」，实测是所有做法里最贵的一种：
+        # 挂开盘−0.5% 的限价单在 JCY 抽样池上比 VWAP 贵 46bp（t=63），
+        # 因为没成交的那 34% 恰是股票当天一路走高的日子，最后被迫在更高处补。
+        print(f"         建议：次日开盘集合竞价直接买（实测最优），不要挂低价等回调")
     else:
         print(f"      ⚠️  全天无明确缩量 / 死叉信号")
         print(f"         建议：若持仓，在次日集合竞价挂单卖出，不等盘中机会")
