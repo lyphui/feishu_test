@@ -35,7 +35,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 feishu_test/
-├── CLAUDE.md                      # 本文件
+├── CLAUDE.md                      # 本文件（索引）
+├── docs/                          # 各模块详细设计文档（按需读取，见下方「详细文档索引」）
 ├── .env                           # 环境变量（API 密钥等，不提交）
 │
 ├── ── 入口脚本 ────────────────────────────────
@@ -131,322 +132,20 @@ feishu_test/
 
 ---
 
-## 核心功能模块
+## 核心功能模块（速览 + 详细文档索引）
 
-### 0. 飞书 OAuth 授权工具 (`authorize/`，手动运行，独立于自动化流水线)
+下表只给每个模块一句话定位；**具体实现细节、设计取舍、踩过的坑都拆到 `docs/` 里**，
+按需读取对应文档，不要求每次都通读全部——这正是本次重构要解决的"CLAUDE.md 太臃肿"问题。
 
-**职责：** 首次获取 / 过期后刷新 `jcy/feishu.py` 采集数据所需的飞书 `user_access_token`，产出 `authorize/feishu_key/feishu_token.txt`（`TOKEN_FILE` 指向的文件）。不在 Step 1-4 的自动执行链路中，需要人工触发。
-
-- `get_usr_key.py` — 主入口，交互式二选一：
-  1. **完整授权**：打开浏览器走飞书 OAuth 页面 → 用户手动复制回调 URL 中的 `code` 粘贴回终端 → 换取 `access_token`/`refresh_token`，写入 `feishu_token.txt` / `feishu_token_refresh.txt`
-  2. **静默刷新**：用已保存的 `refresh_token` 换新 token，免去重新授权；失败时自动回退到完整授权
-- `feishu_callback.py` — 可选的本地 HTTPS 回调服务（Flask + 自签名证书，监听 `:8080/callback`），把飞书跳转回来的 `code` 打印/展示在页面上，方便手动复制（`get_usr_key.py` 的完整授权流程也可以只用浏览器地址栏读 code，不强依赖此服务）
-
-### 1. 数据准备一体化流水线 (`jcy/` 包，入口 `prepare_jcy_data.py`)
-
-**职责：** 整合 Step 1-3，完成飞书数据采集 → AI 投资建议 → 结构化提取。实现拆分在 `jcy/`（config/store/feishu/advice/extract/pipeline），`prepare_jcy_data.py` 为薄入口。
-
-**Step 1 — 飞书数据采集：**
-```
-wiki_token → bitable app_token
-    → get_all_records()            # 分页读取多维表格所有记录
-    → extract_links_from_records() # 正则提取飞书文档 URL
-    → fetch_doc_content_json()     # 按文档类型（docx/wiki）调用对应 API
-    → save_data()                  # 表格 → JSON，文档 → YAML
-```
-
-**Step 2 — AI 投资建议生成（Perplexity）：**
-- 模型：`sonar-reasoning-pro`（联网搜索 + 推理，去掉 `<think>` 标签后保留正文）
-- system prompt 外置于 `jcy/prompts/step2_advice_system.md`
-- 增量机制：以 `jcy_insights.json` 为单一真值源；record 的 `advice_file` 字段存在且文件实际存在即跳过
-- 原子性：先落 advice 文件 → 再写 record 的 `advice_file` 字段
-- 输出格式：今日核心观点 / 股票行业详解 / 投资小白行动建议 / 风险提示 / 一句话总结
-- 超时保护：连续超时 `MAX_CONSECUTIVE_TIMEOUTS` 次时终止，不写入无效响应
-
-**Step 3 — 结构化信息提取（LLM，按 provider 回退）：**
-- `S3_PROVIDERS` 回退顺序：**DashScope**（默认启用）→ Azure OpenAI（默认注释关闭）→ Coze（默认注释关闭）→ **Custom**（OpenAI 兼容端点，设置 `CUSTOM_API_KEY` 即自动启用，未注释）
-- 原文 + 建议文档 → `response_format=json_object` → 结构化 JSON
-- system prompt 外置于 `jcy/prompts/step3_extract_system.md`
-- 输出 schema：
-```json
-{
-  "companies": [{"name", "code", "exchange", "rating", "rating_reason"}],
-  "markets": ["A股", "港股", ...],
-  "tendency": "整体投资倾向（一句话）",
-  "key_advice": ["建议1", "建议2", ...]
-}
-```
-- 增量机制：以 `(date, title)` 复合键去重；record 含 `extracted_at` 即跳过
-- 去重统一以 `jcy_insights.json` 为单一真值源；`advice_cache.json` 已废弃
-
-**环境变量：**
-- `TOKEN_FILE` — 飞书 Bearer Token 文件路径（`authorize/get_usr_key.py` 写入，`jcy/feishu.py` 读取）
-- `FEISHU_APP_ID` / `FEISHU_APP_SECRET` — 飞书应用凭证，仅 `authorize/get_usr_key.py` 换取/刷新 token 时使用
-- `JCY_WIKI_TOKEN` — 飞书 Wiki 节点 token
-- `JCY_APP_TABLE_ID` — 多维表格 ID
-- `JCY_VIEW_ID` — 视图 ID（可选）
-- `PPLX_API_KEY` — Perplexity API 密钥
-- `PPLX_GROUP_ID` — API Group ID
-- `DASHSCOPE_API_KEY` — DashScope API 密钥（Step 3 默认 provider）
-- `DASHSCOPE_BASE_URL` — DashScope 端点（默认 compatible-mode/v1）
-- `DASHSCOPE_MODEL` — DashScope 模型名
-- `CUSTOM_API_KEY` / `CUSTOM_BASE_URL` / `CUSTOM_MODEL` — 自定义 OpenAI 兼容 provider（Step 3 回退候选，`CUSTOM_API_KEY` 非空即启用）
-- `AZURE_OPENAI_*` / `COZE_*` — 可选 provider，默认在 `S3_PROVIDERS` 中注释关闭
-
----
-
-### 2. MACD 策略回测引擎 (`backtest/engine.py`)
-
-**职责：** 核心回测引擎（纯函数，无 CLI），被所有回测入口脚本复用。`macd_analysis.py` 为薄入口，re-export `run_backtest`/`plot_backtest`/`fetch_stock_data` 以兼容历史 `from macd_analysis import ...` 导入。
-
-**关键函数：**
-- `fetch_stock_data(symbol, start, end)` — 从 `lib.market_data` 再导出（canonical 位置在 `backtest/lib/market_data.py`）
-- `run_backtest(symbol, strategy, capital, stop_loss, take_profit, ...)` — 执行回测
-  - 按信号买卖，100 股整数手，T 日信号在 **T+1 开盘**成交（`signal.shift(1)`）
-  - **单根 K 线内的事件顺序**：① 开盘执行挂单 → ② 盘中止损/止盈 → ③ 收盘估值。
-    当日刚建仓的不检查止损（A 股 T+1，当天买当天卖不掉）
-  - **A 股成交约束**：开盘涨停买不进、开盘跌停卖不掉、`volume==0` 停牌不可成交；
-    未成交的信号顺延最多 `max_pending_days` 天，之后作废（避免一字连板追到天上）。
-    涨跌停幅度由 `infer_limit_pct(symbol)` 按代码前缀推断（主板 10% / 双创 20% / 北交所 30%）
-  - **挂单年龄语义**：同向信号连日重复**不重置** `pending_age`；挂单超时作废后，
-    必须等信号真正消失（出现 0 或反向信号）才允许重新挂单。
-    否则动能策略在连板期间每天都发买入信号，挂单被无限续期，`max_pending_days` 失效
-  - **成本**：佣金（双边万三，单笔最低 5 元）+ 印花税（单边千一）+ 双边滑点（默认千一）。
-    `result["costs"]` 除费率假设外还含**实际发生额**：`total_commission` / `total_stamp_duty` /
-    `total_slippage` / `total_cost` / `cost_drag_pct`（占窗口起点资金比例），只统计 `eval_start` 之后
-  - **交易级收益按净额计**：`trades["return_pct"]` 已扣双边佣金与印花税，
-    `gross_return_pct` 保留毛收益供对照。胜率/盈亏比由净额算出——高频策略往返成本约 0.2%，
-    用毛收益会把一批实际亏损的交易记成盈利。
-    建仓行的 `return_pct` 是 `None`，经 DataFrame 会变成 `NaN`，
-    `_calc_trade_stats` 必须同时排除两者，否则建仓记录进了胜率分母（全胜报成 50%）
-  - `eval_start="YYYYMMDD"` — 统计窗口起点，把指标预热期排除在收益/回撤/夏普/基准之外，
-    **交易级统计（次数/胜率/成本）同样只看窗口内**；`trades` 本身仍返回完整记录供绘图
-  - `df=` — 直接注入行情，跳过网络请求（测试与参数扫描复用）
-  - 基准（买入持有）与策略同口径：窗口首日**开盘价**买入、末日收盘估值
-- `plot_backtest(result, save_path)` — 标准 4 面板图（价格+信号、指标、权益、回撤）
-
-**共享配置层（`backtest/config.py`）：** 三个单股入口共用
-- `load_backtest_config(filename, *, defaults)` → `BacktestConfig`：统一解析 `backtest/presets/*.ini` 的 `[backtest]` 段（end_date 默认今日、止损止盈空值转 None、proxy 写环境变量、缺失时按 defaults 写出）；策略专属参数经 `cfg.get_int/get_bool/get_float` 从 `.extra` 读取
-- `execution_kwargs(cfg)` → dict：从 `.ini` 读成本与交易约束（commission_rate / min_commission / stamp_duty / slippage / limit_move_check / max_pending_days），直接 `**` 展开给 `run_backtest`，保证三个入口的成本假设一致
-- `OutputPaths(save_dir, prefix, name, symbol, end_date)`：统一输出路径（`.chart/.csv/.status`），`OutputPaths.safe()` 清洗文件名
-
-**CLI：** `python backtest/macd_analysis.py --config jxty_jcy_260104.ini`
-
----
-
-### 3. 策略体系 (`strategies/`)
-
-| 策略类 | 文件 | 适用场景 |
-|--------|------|----------|
-| `MACDStrategy` | `macd.py` | 教科书金叉/死叉，无过滤 |
-| `LuMACDStrategy` | `lu_macd.py` | 三级底部确认（0 轴上，底背离，金叉），长线建仓 |
-| `LuMACDBullStrategy` | `lu_macd_bull.py` | 牛市过滤（大盘月线）+ 截取红柱最陡段，高频战术 |
-
-**BaseStrategy 接口（必须实现）：**
-```python
-prepare(df) -> df          # 计算指标，生成 signal 列（1/-1/0）
-plot_indicators(ax, df, colors) -> None
-name: str                   # 策略名（图表标题）
-params: dict               # 参数字典（展示用）
-```
-
-**BaseStrategy 共享方法：**
-- `_ema(series, period)` — 静态方法，EMA 计算，所有 MACD 策略子类共用（避免各子类重复定义）
-- `_resample_period(df, rule, agg, drop_incomplete=True)` — **跨周期重采样必须走这里**。
-  以区间内最后一个**真实交易日**为标签（不是 `"MS"` 月初），并丢掉末尾未走完的那根 K 线。
-  直接用 `df.resample("MS")` 会把月末收盘价打上月初标签，构成整月的未来函数
-- `_align_to_daily(series, daily_index)` — 低频 → 日线对齐。先在**并集**索引上 ffill 再收敛回日线；
-  直接 `series.reindex(daily_index).ffill()` 会把标签不在交易日上的 K 线整根丢掉
-
-> ⚠️ 多周期策略的时序铁律：周/月线信号只在该区间**收盘当天**生效，再由引擎 `shift(1)` 到 T+1 成交。
-> `tests/test_strategy_lookahead.py` 用"截断数据重算、历史信号不得改变"的属性测试守住这一点。
-
-**LuMACDBullStrategy 特殊设计：**
-- 构造函数接受 `index_df`（大盘数据），`prepare()` 参数中的 `index_df` 优先，否则 fallback 到构造函数传入的值
-- 牛市判断：大盘**已收盘**月线 DIF > 0 且 DIF > DEA
-- 买入：近 `cross_window`(默认3) 根内出现金叉 **且** 红柱连续 `expand_bars`(默认2) 根拉长。
-  单根"红柱拉长"在金叉当根恒为真（hist 由 ≤0 翻正），起不到过滤作用，故必须连续确认；
-  `expand_bars=1, cross_window=1` 可复现旧口径
-- 卖出模式：`shrink_exit=True`（红柱缩短即走）或 `False`（等死叉）
-
----
-
-### 4. 批量回测 (`backtest/jcy_macd_bull_batch.py` + `backtest/batch_report.py`)
-
-**职责：** 读取 `jcy_insights.json` → 筛选 A 股推荐 → 批量执行牛市策略回测 → 横截面汇总
-
-**关键逻辑：**
-- `is_ashare_code(code)` — 过滤 A 股代码（沪深交易所）
-- `BullStrategyAdapter` — 包装 `LuMACDBullStrategy`，将推荐日期前的信号清零（避免未来数据）
-- `backtest_one()` — 单股回测，`eval_start=推荐日`，预热期不计入统计；返回 result dict
-- 大盘指数只取一次，全部个股共用（原来每只票各拉一次）
-- 预热 600 自然日：牛市过滤器要算大盘**月线** MACD，EMA-26 需要 26 根月线 ≈ 2 年
-
-**默认止损止盈：** `--stop_loss 0.10`、`--take_profit` **默认关闭**（传 `none/off/空` 亦可关闭）。
-本策略靠 `shrink_exit` 的动能衰减离场，再叠加固定比例止盈会把"最陡峭的那段"提前切断。
-早先的 `stop_loss=0.20 / take_profit=0.10` 是 1:2 的反向盈亏比，与策略前提直接冲突。
-
-**汇总输出（`batch_report.py`）：**
-- `output/summary.csv` — 每股一行，按 **日均超额bp** 降序排。
-  各股统计窗口从几十到几百个交易日不等，用总超额排序等于按"谁跑得久"排；
-  `日均超额bp = 超额收益% × 100 ÷ 统计交易日数` 对窗口长度线性归一，跨标的才可比。
-  不用年化：`(1+r)^(252/n)` 在 n 小时会几何放大（引擎的 `annual_return` 在 n<252 时返回 None 同理）
-- `output/summary_portfolio.csv|.png` — **平均单股净值** vs 大盘。各股推荐日不同，采用
-  "平均在场净值"：每只票从自己的统计起点归一为 1.0，按日历对齐后对当日已在场的取算术平均。
-  ⚠️ 每只票都按满仓独立回测，N 只同时满仓在现实中不可能——这条曲线**不是可投资的组合净值**
-- 控制台汇总：跑赢基准比例、日均超额与总超额各自的均值/**中位数**、交易成本占比、
-  **按窗口长度分组**（<3月 / 3-6月 / 6-12月 / ≥1年）的日均超额，最好/最差各 5 只。
-  收益分布右偏，均值会被个别翻倍股拉高；分组则用来识别"信号只在推荐后一两个月有效"这种衰减
-
-**CLI：** `python backtest/jcy_macd_bull_batch.py [--output output/] [--take_profit 0.2]`
-
----
-
-### 4b. 参数敏感性扫描 (`backtest/param_sweep.py`)
-
-**职责：** 在推荐股票池上网格遍历两个参数轴，判断当前参数是"策略有效"还是"恰好挑中幸运点"。
-
-- 可扫轴见 `AXES`：`expand_bars` / `cross_window` / `fast` / `slow` / `signal_period` / `shrink_exit` / `stop_loss` / `take_profit`。
-  `stop_loss` / `take_profit` 的候选值含 `None`（=不启用），`None` 正是 `take_profit` 的默认值
-- `DEFAULTS` 必须与 `jcy_macd_bull_batch.py` 的 CLI 默认值一致，否则热力图标出的"默认格"
-  不是实际在跑的参数；`tests/test_param_sweep.py::test_defaults_match_batch_cli` 守住这一点
-- 判读看**稳健性**不看最大值：整片偏绿=结论稳健；孤立亮点、邻居全负=过拟合
-- 输出 `output/sweep/sweep_results.csv` + `sweep_heatmap.png`（默认参数格用金框标出）。
-  热力图走 `build_matrix()` 而非 `df.pivot_table`：pivot 会把 `None` 当 NaN 丢掉整行整列，
-  且按值排序会打乱 `True/False` 这类轴的语义顺序
-- `--metric` 的合法取值收在 `METRICS` 并作为 argparse `choices`：指标名拼错要在启动时
-  就退出，而不是跑完几十分钟的网格才在最后一步 KeyError
-- 行情在进程内缓存，同一只票整个网格只拉一次
-
-**样本外验证（`--oos-frac`）：** 网格本身是**纯样本内**的——在同一批数据上遍历再挑最好的，
-只能说明参数高原平不平坦。`--oos-frac 0.3` 按推荐日把候选股切成两段（较早 70% 选参数，
-最近 30% 只用于验证），切点落在日期边界上，保证同一天推荐的标的不跨界污染样本外。
-选完参数后自动把 IS 最优格与默认格拿到 OOS 上重跑并给出判读：
-IS 最优在 OOS 转负 = 选中的是噪声；默认格在 OOS 反而更好 = 最优格是拟合出来的。
-
-**CLI：** `python backtest/param_sweep.py [--axis stop_loss take_profit] [--limit 20] [--oos-frac 0.3]`
-
----
-
-### 4c. 长期跟踪与分批建仓 (`backtest/oil_track.py` + `lib/price_store|swings|regime|ladder`)
-
-**职责：** 对固定的几只票做长期迭代跟踪：本地存行情、判定当前市场状态、给出该状态对应的打法与具体挂单价。
-
-- **`lib/price_store.py`** — 本地行情仓库。首次全量、之后只补增量；因为存的是 **hfq（基准为上市价，历史不改写）**才可以安全追加，`adjust="qfq"` 一律强制整表重建。
-  每次增量都多抓 `OVERLAP_DAYS` 天与本地**对账收盘价**，不一致就整表重建（数据源改口径/修历史数据时不会把两段缝起来）。
-  `*.meta.json` 记的是**请求过的区间**而非数据首尾日 —— 否则请求起点落在节假日时，每次都会去补一个永远为空的头段。
-- **`lib/swings.py`** — ZigZag 波段分解 + 独立回撤事件。回撤按"创新高→再创新高"切分，**不要**用"低于前高 X%"逐日计数（价格在阈值附近抖动时同一轮回调会被记成几十次）。
-- **`lib/regime.py`** — 市场状态分类（趋势上行 / 宽幅震荡 / 趋势下行）。全部 rolling/expanding，**只用当日及以前的数据**；带 `confirm_days` 滞回防止状态天天翻。
-  `regime_stats()` 用未来收益检验标签有没有信息量 —— 三档收益没差别就说明分类器是噪声。
-- **`lib/ladder.py`** — 分批建仓模拟器。引擎 `run_backtest` 是二元仓位（全仓/空仓），承载不了"三成仓/满仓/闲置现金"这些中间状态，故另起一套；成本与 T+1 口径与 `engine.py` 对齐，闲置现金按 `cash_rate` 计息。
-  止损型离场后**锁住再入场**直到趋势转好，否则下跌途中会刷出成百上千笔来回交易。
-  `PLAYBOOK` 定义每个状态的打法，`simulate_adaptive()` 按状态切换。
-- **`lib/oil_price.py`** — Brent/WTI/SC 原油价格，走**新浪财经**（`futures_foreign_hist` / `futures_main_sina`）而不是 `market_data.py` 的 akshare→baostock→yfinance 三源：那三源里油价相关接口大多打 eastmoney 域名，本机 eastmoney 被主动阻断（DPI 重置特征）、yfinance 商品期货长期 429，只有新浪这条线通；baostock 不提供商品期货，没有备用可回退。
-  新浪这两个接口不支持增量拉取（每次全量返回），所以本地缓存 `data/market/oil/{symbol}.csv` 每次整表覆盖，没有 `price_store.py` 那套头尾段 + 重叠对账逻辑。
-  `transmission_table()` 算油价对股价的**领先滞后相关系数**（`merge_asof` 对齐两套不同的交易日历后再算收益率相关性）：纯描述性统计，不是回测信号。实测 601857/600938 上 WTI/Brent 在 **lag=1**（隔夜美盘收盘 → 次日 A 股）相关性明显高于 lag=0，SC（人民币计价、与 A 股同日历）反而在 **lag=0** 最高——原始信号被隔夜时区错位，同日对齐会低估外盘油价的传导。
-
-**关键回测教训：** 分段回测（每段重置资金重铺梯子）会**系统性美化**固定阶梯策略 —— 601857 连续跑 8.5 年，"固定梯度+半止盈+MA250"平均仓位只有 15%，长期空仓。判断长期打法要看**连续全样本**，不要看分段汇总。
-
-**CLI：** `python backtest/oil_track.py [--offline] [--backtest] [--chart] [--symbols ...] [--capital N]`
-
----
-
-### 4d. 日内下单测算 (`backtest/lib/execution.py` + `exec_bench.py` + `lib/intraday_store.py`)
-
-**职责：** 回答一个与标的、与策略都无关的问题——**已经决定要买（卖）了，用哪种下单方式成交价更好。**
-"买不买""买多少"是策略的事（`strategies/`、`lib/ladder.py`），不在这里。
-
-两条工作流（JCY 动量股 / 油气蓝筹）**共用这一套度量衡，但各自跑各自的读数**。
-方法可以共享，结论不能——实测两个池子的日内形状不一样，**卖出侧连排序都相反**（见下）。
-
-- **基准取当日 VWAP**（`sum(amount)/sum(volume)`）。不用当日最低价：最低价只有事后才知道、
-  谁也挂不到，拿它当标准所有方案都是失败，比不出高下。VWAP 是**可达成的中性结果**
-  （把单子摊到全天慢慢做就大致能拿到）。
-- **原始 bp 中性，好坏才分侧**：`(成交价/VWAP − 1)×1e4` 与买卖无关；
-  `优势bp = −原始bp（买） / +原始bp（卖）`，正 = 优于 VWAP。
-  **直接推论：固定时点方案（开盘/尾盘）的卖出结论是买入结论翻符号，不必重测。**
-  真正要单独测的只有依赖侧向定义的两类：GO 窗口（买看红柱拉长、卖看红柱缩短或死叉）
-  与限价单（买挂低价、`rest_low` 触发；卖挂高价、`rest_high` 触发）。
-- **VWAP 与价格必须同一复权口径**：`amount`/`volume` 恒为原始值，价格若取了前/后复权就是两个尺度，
-  算出来是几百上千 bp 的系统性错位（实测踩过一次 −1500bp，看着像"天天抄到底"）。
-  分时数据一律用**不复权**（baostock `adjustflag="3"`）；`daily_panel()` 会校验，不匹配直接抛错。
-- **"信号柱的收盘价"不是可成交价**：任何"这根 K 线满足条件"的判断都要等它走完才成立，
-  那时收盘价已成历史。可成交的是**下一根的开盘价**，本模块统一按后者计价。
-- **允许"不成交"的方案必须配强制兜底**：`add_limit_plan()` 的 `fallback` 是必填。
-  没成交就不做 = 偷偷给策略加一个免费的择时期权，回测会凭空变好。
-  卖侧更要命：「没卖掉就继续拿着」是把择时失败变成一个未平仓头寸，代价不在这张表里。
-- **这张表是「所有交易日」的无条件形状，不是「你真的会下单那些天」的形状。**
-  买侧影响不大（结论是无条件的"开盘就买"）；**卖侧要当心**——两个固定时点的差额
-  本质就是全样本的开盘→收盘平均漂移，而你要卖往往正因为动能已衰减，那天未必还随大流上漂。
-- `split_by_go()` 按"当天有无 GO"拆开看钱赚在哪一侧——**仅用于归因**，
-  `has_go` 要等当天走完才知道。唯一**因果可执行**的是 `wait_value()`：
-  它比较"GO 一出现就做掉"与"放着等收盘"，两个动作在同一时刻都摆在面前。
-- **`jcy_intraday_timing.py` 与本模块口径绑定**：`_executable_price()` 必须与
-  `daily_panel()` 的 `go_price` 同价，`go_buy`/`go_sell` 必须与 `classify_timing()` 同判，
-  `tests/test_intraday_exec_price.py` 与 `tests/test_execution.py` 逐日比对守住。
-  那边还遵守两条铁律——**分时只决定「几点做」，不决定「做不做」**
-  （让择时条件左右持仓与否，等于把执行层开关变成隐式策略过滤器）；
-  以及 **`PositionTracker` 统一 T+1 成交**：日线的 signal / 红柱缩短 / 死叉 / DIF<0
-  全都要等当日收盘才算得出来，一律排到下一个交易日，`intraday_map` 只换价不换日。
-  旧实现里窗口内 T+1、窗口外当日收盘，等于 `--lookback` 这个打印参数在改历史收益。
-- **数字必须可复现**：`exec_bench.py` 是唯一的出数入口（定种子抽样），
-  分时行情由 `lib/intraday_store.py` 缓存在 `data/market/intraday/`（不复权、
-  只增不改、**不入库**，47 只 32MB，随时可从 baostock 重建）。
-
-**CLI：** `python backtest/exec_bench.py --universe jcy|oil --side buy|sell|both [--offline]`
-
-**实测结论（各池子分开记，不可互相外推）：优势bp，正 = 优于当日 VWAP**
-
-| 方案 | JCY 池 45 只（买） | JCY 池（卖） | 油气 2 只（买） | 油气（卖） |
-|---|---|---|---|---|
-| 开盘集合竞价 | **+16.7** ★ | −16.7 ✗ | **+12.3** ★ | −12.3 ✗ |
-| 尾盘 15:00 | +5.4 | −5.4 | −8.6 | **+8.6** ★ |
-| GO 窗口 | +9.4 | **−3.2** ★ | −1.5（不显著） | +5.3 |
-| 限价挂开盘∓0.5% | −46.6 ✗ | −72.9 ✗ | −22.2 ✗ | −24.6 ✗ |
-| 逐股最优计票 | 开盘 27/45 | GO 29/45 | 开盘 2/2 | 尾盘 2/2 |
-
-样本：JCY 46728 个股票-交易日、油气 2142 个，均 2022-01~2026-08、30min K 线。
-
-- **买入侧两池共同结论：开盘集合竞价最优。**"等一个更好的日内买点"这件事本身在收费。
-- **卖出侧不是买入侧的镜像，也不是两池一致的。**开盘价便宜，买入因此首选它，
-  卖出遇上同一个便宜就是净亏——所以**开盘集合竞价是买入最优、卖出最差**。
-  两池卖出最优分别是 JCY 的 GO 窗口（−3.2bp）和油气的尾盘（+8.6bp），**排序相反**。
-- **`wait_value()`（GO 成交后再等到收盘）：**JCY 卖侧 −2.0bp（t=−1.7 不显著）——
-  等不出钱，GO 的离场时点是对的；油气卖侧 +6.2bp（t=2.1）——GO 卖早了，
-  这也是油气该用尾盘的原因。买侧两池都为正（JCY +9.7 / 油气 +14.3），GO 买点方向没错，
-  只是仍不如无条件开盘买。
-- **两侧最贵的都是限价单**，卖侧尤甚（JCY −72.9bp）。逆向选择方向相反但都是亏：
-  买侧成交在没涨的日子、被迫追高在涨的日子；卖侧成交在冲高的日子、被迫砸盘在跌的日子。
-  漂亮的都是成交样本，账单在未成交的那 34% 里。
-
----
-
-### 5. 包内工具层（`jcy/lib/` 与 `backtest/lib/`）
-
-工具按归属沉入各自包的 `lib/` 子目录，不再有根级 `utils/` 伪共享包。每个模块只有单一归属者，import 语义清晰。
-
-**`jcy/lib/`**（被流水线步骤调用，`from jcy.lib.x import`；跨包时 backtest 也 `from jcy.lib.common import`）
-
-| 模块 | 核心内容 |
-|------|----------|
-| `common.py` | `title_to_date()`、`title_to_filename()`、`record_key()`、`safe_title()`、`load_docs()`、`load_candidates()`、`is_ashare_code()`、路径常量（`JSON_PATH/DOCS_FILE/ADVICE_DIR`） |
-| `text.py` | `blocks_to_text()`（飞书 block → 文本）、`parse_json_loose()`（宽松 JSON 解析） |
-| `pplx.py` | `PerplexityAPI` 客户端（`chat()`、`sonar_deep_research()`） |
-
-**`backtest/lib/`**（被引擎/入口脚本复用，脚本模式下 `from lib.x import`）
-
-| 模块 | 核心内容 |
-|------|----------|
-| `market_data.py` | `fetch_stock_data()` + `fetch_index_data()` — 个股/指数行情，akshare → baostock → yfinance 三源（含限流重试）；`ADJUST` 统一三源复权口径，回测默认 **hfq 后复权**（qfq 会随分红回溯改写历史价，结果不可复现） |
-| `price_store.py` | `load_daily()` / `update_daily()` / `load_dividends()` — 本地行情仓库（`data/market/`）。首次全量、之后只补增量；只有 hfq 能安全追加（qfq 强制整表重建），每次增量重叠 `OVERLAP_DAYS` 天对账收盘价，不一致即重建；`*.meta.json` 记**请求过的区间**而非数据首尾日 |
-| `swings.py` | `zigzag()` / `swing_table()` / `drawdown_episodes()` / `drawdown_profile()` — 波段分解与独立回撤事件（按"创新高→再创新高"切分，不逐日比对阈值） |
-| `regime.py` | `classify()` / `regime_stats()` / `regime_episodes()` — 市场状态分类（趋势上行/宽幅震荡/趋势下行），严格只用当日及以前数据，带 `confirm_days` 滞回 |
-| `ladder.py` | `simulate_buy_hold/dca/ladder/grid/adaptive()` + `PLAYBOOK` — 分批建仓模拟器，成本与 T+1 口径对齐 `engine.py`，闲置现金计息，额外报 `avg_exposure` / `deployed_return` |
-| `plotting.py` | `COLORS` 字典（GitHub Dark 配色）、`setup_matplotlib()`、`style_ax(ax)` |
-| `bull_backtest.py` | `BullStrategyAdapter`（牛市策略通用适配器；绘图/CSV 在 `backtest/bull_report.py`） |
-| `oil_price.py` | `fetch_oil_price()` / `update_oil()` / `load_oil()`（Brent/WTI/SC，新浪源，整表覆盖）、`transmission_table()`（油价→股价领先滞后相关系数，纯描述性） |
-| `execution.py` | `intraday_macd()` / `daily_panel(side=)` / `add_limit_plan(side=)` / `benchmark(side=)` / `wait_value()` / `split_by_go()` — 日内下单方案的成交价测算，基准为当日 VWAP，单位 bp，**买卖双向**（原始 bp 中性，`优势bp` 才分侧）。**与标的、与策略无关**：两条工作流共用同一套度量，各自跑各自的数 |
-| `intraday_store.py` | `load_intraday()` / `update_intraday()` / `fetch_intraday_raw()` — 本地分时仓库（`data/market/intraday/`）。存 **不复权**（`adjustflag="3"`）并带 `amount`，因为 VWAP 由 `amount/volume` 算出、必须与价格同口径；不复权价不回溯改写，追加比 hfq 还安全。只有 baostock 一条源（akshare 分钟接口打 eastmoney，本机被阻断）。缓存不入库，可重建 |
+| # | 模块 | 一句话 | 详细文档 |
+|---|------|--------|----------|
+| 0-1 | 飞书授权 + JCY 数据流水线 | `authorize/` 换取 token；`jcy/` 完成 Step1-3（采集→AI建议→结构化提取），含全部 provider 与环境变量 | [docs/jcy-pipeline.md](docs/jcy-pipeline.md) |
+| 2 | MACD 回测引擎 | `backtest/engine.py` 核心 `run_backtest`：A股成交约束、T+1、成本口径、`eval_start` 窗口；`backtest/config.py` 共享配置层；预设 `.ini` 格式 | [docs/backtest-engine.md](docs/backtest-engine.md) |
+| 3 | 策略体系 | `strategies/`：MACDStrategy / LuMACDStrategy / LuMACDBullStrategy，BaseStrategy 共享方法与时序铁律 | [docs/strategies.md](docs/strategies.md) |
+| 4, 4b | 批量回测 + 参数扫描 | `jcy_macd_bull_batch.py` 批量跑 + `batch_report.py` 横截面汇总；`param_sweep.py` 网格扫描判断过拟合，含样本外验证 | [docs/batch-and-sweep.md](docs/batch-and-sweep.md) |
+| 4c | 长期跟踪 + 分批建仓 | `oil_track.py` + `lib/price_store\|swings\|regime\|ladder`：本地行情仓库、市场状态分类、分批建仓模拟器 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) |
+| 4d | 日内下单测算 | `lib/execution.py` + `exec_bench.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表 | [docs/execution-bench.md](docs/execution-bench.md) |
+| 5 | 包内工具层参考表 | `jcy/lib/` 与 `backtest/lib/` 全部模块的速查表 | [docs/lib-reference.md](docs/lib-reference.md) |
 
 ---
 
@@ -475,27 +174,6 @@ data/jcy/jcy_docs.yaml          （原始文档正文）
                                           ├── *.png  （5面板图表）
                                           ├── *.csv  （交易记录）
                                           └── *_daily_status.csv
-```
-
----
-
-## 回测预设格式 (`backtest/presets/*.ini`)
-
-```ini
-[backtest]
-symbol      = 600519       # 股票代码
-name        = maotai       # 名称（用于文件名）
-start_date  = 20180101
-end_date    =              # 留空 = 今日
-index_symbol = 000300      # 大盘指数（牛市判断）
-capital     = 100000
-stop_loss   =              # 如 0.10 = 10%，留空不设
-take_profit =
-save_chart_dir = output/
-proxy       =              # 如 http://127.0.0.1:7890
-
-# LuMACDBull 专属
-shrink_exit = true         # true=红柱缩短即走，false=等死叉
 ```
 
 ---
@@ -529,6 +207,8 @@ AZURE_OPENAI_DEPLOYMENT=gpt-5
 AZURE_OPENAI_API_VERSION=2024-12-01-preview
 COZE_URL=...
 ```
+
+每个变量的用途与所属 provider 见 [docs/jcy-pipeline.md](docs/jcy-pipeline.md)。
 
 ---
 
@@ -589,3 +269,17 @@ python backtest/param_sweep.py --oos-frac 0.3          # 留最近 30% 推荐做
 # 测试（离线，不联网、不读真实 data/）
 pytest
 ```
+
+---
+
+## 详细文档索引 (`docs/`)
+
+| 文档 | 内容 |
+|------|------|
+| [docs/jcy-pipeline.md](docs/jcy-pipeline.md) | 飞书 OAuth 授权 + JCY 数据流水线 Step1-3，含全部环境变量 |
+| [docs/backtest-engine.md](docs/backtest-engine.md) | `engine.py` 核心回测逻辑、`config.py` 共享配置层、预设 `.ini` 格式 |
+| [docs/strategies.md](docs/strategies.md) | 策略体系（MACD / LuMACD / LuMACDBull）与时序铁律 |
+| [docs/batch-and-sweep.md](docs/batch-and-sweep.md) | 批量回测横截面汇总 + 参数敏感性扫描（过拟合判断） |
+| [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) | 长期跟踪（行情仓库/波段/市场状态）+ 分批建仓模拟器 |
+| [docs/execution-bench.md](docs/execution-bench.md) | 日内下单方案测算方法论 + JCY/油气两池实测结论 |
+| [docs/lib-reference.md](docs/lib-reference.md) | `jcy/lib/` 与 `backtest/lib/` 全部模块速查表 |
