@@ -15,6 +15,10 @@
   Level-3  日线  ── 执行层，记录 phase（鞋底/脚面/小腿/腰部/头部）
                      仅在 Level-1 & Level-2 均已确认后发出 signal=1
 
+  时序约定 ── 周线/月线 K 线以该区间**最后一个交易日**为标签，信号只在
+              该日当天生效（当日收盘后可知），再由引擎 shift(1) 到 T+1
+              开盘成交。绝不允许周初就用上本周五、月初就用上本月末的数据。
+
   卖出（OR，任一满足即触发）：
     - phase 达到 sell_phase 阈值（默认"腰部"，即底部价格 +60%）
     - 周线死叉（DIF 下穿 DEA，与买入级别对称）
@@ -144,13 +148,18 @@ class LuMACDStrategy(BaseStrategy):
         return pd.DataFrame({"DIF": dif, "DEA": dea, "MACD": histogram},
                             index=close.index)
 
-    @staticmethod
-    def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
-        """将日线 df resample 到指定频率（'W-FRI' / 'MS'）。"""
+    def _resample_ohlcv(self, df: pd.DataFrame, rule: str) -> pd.DataFrame:
+        """
+        将日线 df resample 到指定频率（'W-FRI' / 'ME'）。
+
+        索引 = 该周/该月最后一个**真实交易日**（见 BaseStrategy._resample_period），
+        因此低频信号的日期天然落在日线索引上，"当天收盘后可知"，
+        既不会因为周五/月初是假日而丢失整根 K 线，也不会提前生效。
+        """
         agg: dict = {"close": "last"}
         if "volume" in df.columns:
             agg["volume"] = "sum"
-        return df.resample(rule).agg(agg).dropna()
+        return self._resample_period(df, rule, agg)
 
     def _golden_cross_below_zero(self, macd_df: pd.DataFrame) -> pd.Series:
         """
@@ -181,31 +190,10 @@ class LuMACDStrategy(BaseStrategy):
         rolling_mean = vol_series.shift(1).rolling(self.vol_window).mean()
         return vol_series > rolling_mean
 
-    @staticmethod
-    def _align_to_daily(signal_series: pd.Series,
-                        daily_index: pd.DatetimeIndex) -> pd.Series:
-        """
-        将低频（周/月）bool/int Series 向前填充对齐到日线索引。
-        低频信号在下一个交易日生效（shift(1) 后 ffill）。
-        """
-        # reindex 到日线，只保留低频信号发出后的日期
-        aligned = signal_series.reindex(daily_index).ffill()
-        return aligned.fillna(False).astype(bool)
-
-    def _calc_phase(self, close: pd.Series, bottom_price: float) -> pd.Series:
-        """
-        根据相对底部价格的涨幅，判断每根 K 线所处的身体部位。
-        """
-        pct = (close - bottom_price) / bottom_price
-        thresholds = sorted(self.phase_thresholds.items(), key=lambda x: x[1])
-
-        def _map(p: float) -> str:
-            for label, upper in thresholds:
-                if p <= upper:
-                    return label
-            return list(thresholds)[-1][0]
-
-        return pct.map(_map)
+    def _align_bool_to_daily(self, series: pd.Series,
+                             daily_index: pd.DatetimeIndex) -> pd.Series:
+        """低频 bool 序列 → 日线 bool（缺失视为 False）。"""
+        return self._align_to_daily(series, daily_index).fillna(False).astype(bool)
 
     # ── 核心接口 ─────────────────────────────────────────────────────────────
 
@@ -250,20 +238,21 @@ class LuMACDStrategy(BaseStrategy):
         for col, src in [("DIF_W", macd_weekly["DIF"]),
                          ("DEA_W", macd_weekly["DEA"]),
                          ("MACD_W", macd_weekly["MACD"])]:
-            df[col] = src.reindex(df.index).ffill()
+            df[col] = self._align_to_daily(src, df.index)
 
-        df["vol_expanding"]    = self._align_to_daily(vol_exp_weekly,  df.index)
+        df["vol_expanding"]    = self._align_bool_to_daily(vol_exp_weekly, df.index)
         df["weekly_confirmed"] = False   # 后面逐步标记
 
         # ── 3. 月线 MACD ─────────────────────────────────────────────────────
-        monthly_raw   = self._resample_ohlcv(df, "MS")
+        monthly_raw   = self._resample_ohlcv(df, "ME")
         macd_monthly  = self._calc_macd(monthly_raw["close"])
         monthly_cross = self._golden_cross_below_zero(macd_monthly)
+        monthly_death = self._death_cross(macd_monthly)
 
         for col, src in [("DIF_M", macd_monthly["DIF"]),
                          ("DEA_M", macd_monthly["DEA"]),
                          ("MACD_M", macd_monthly["MACD"])]:
-            df[col] = src.reindex(df.index).ffill()
+            df[col] = self._align_to_daily(src, df.index)
 
         df["monthly_confirmed"] = False  # 后面逐步标记
 
@@ -292,47 +281,38 @@ class LuMACDStrategy(BaseStrategy):
         sell_phase_rank = phase_order.index(self.sell_phase) \
             if self.sell_phase in phase_order else 3
 
-        # 建立日期→信号的快查字典
-        monthly_cross_dates = set(
-            monthly_cross[monthly_cross].index.normalize()
-        )
-        monthly_death_dates = set(
-            self._death_cross(macd_monthly)[
-                self._death_cross(macd_monthly)
-            ].index.normalize()
-        )
-        weekly_signal_dates = set(
-            weekly_signal[weekly_signal].index.normalize()
-        )
-        weekly_death_dates  = set(
-            weekly_death[weekly_death].index.normalize()
-        )
+        # 低频事件 → 日线事件。
+        #
+        # 关键：_resample_ohlcv 已把周/月线的索引设成该区间**最后一个交易日**，
+        # 所以这里直接用日线日期做成员判断即可，事件恰好落在"信息首次可用"的
+        # 那一天。旧实现用 `d + 距本周五的天数` 反查，等于周一就用上了周五收盘
+        # 才能算出的周线金叉，提前 4 天；月线更是提前整整一个月。
+        monthly_cross_dates = set(monthly_cross[monthly_cross].index)
+        monthly_death_dates = set(monthly_death[monthly_death].index)
+        weekly_signal_dates = set(weekly_signal[weekly_signal].index)
+        weekly_death_dates  = set(weekly_death[weekly_death].index)
 
         for date, row in df.iterrows():
             d = date.normalize() if hasattr(date, "normalize") else pd.Timestamp(date)
 
-            # ── 月线状态更新 ────────────────────────────────────────────────
-            month_start = d.to_period("M").to_timestamp()
-            if month_start in monthly_cross_dates:
+            # ── 月线状态更新（仅在月末交易日当天触发）──────────────────────
+            if d in monthly_cross_dates:
                 if not monthly_on:
                     monthly_on = True
                     bottom_px  = row["close"]
-            if month_start in monthly_death_dates:
+            if d in monthly_death_dates:
                 monthly_on = False
                 weekly_on  = False
                 bottom_px  = None
 
-            # ── 周线状态更新 ────────────────────────────────────────────────
-            days_to_fri = (4 - d.weekday()) % 7
-            week_fri    = d + pd.Timedelta(days=days_to_fri)
-
-            if monthly_on and week_fri in weekly_signal_dates:
+            # ── 周线状态更新（仅在周末交易日当天触发）──────────────────────
+            if monthly_on and d in weekly_signal_dates:
                 if not weekly_on:
                     weekly_on = True
                     df.at[date, "signal"] = 1
 
             # 周线死叉判断
-            is_weekly_death = week_fri in weekly_death_dates
+            is_weekly_death = d in weekly_death_dates
             if is_weekly_death:
                 weekly_on = False
             df.at[date, "weekly_death"] = is_weekly_death
@@ -352,8 +332,8 @@ class LuMACDStrategy(BaseStrategy):
             df.at[date, "phase"] = current_phase
 
             # ── 卖出条件（OR）───────────────────────────────────────────────
-            # 条件1：周线死叉
-            sell_weekly = is_weekly_death and weekly_on is False
+            # 条件1：周线死叉（上面已把 weekly_on 置 False，此处无需再判断）
+            sell_weekly = is_weekly_death
 
             # 条件2：phase 首次达到 sell_phase 阈值
             current_rank = phase_order.index(current_phase) \

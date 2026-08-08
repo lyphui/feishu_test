@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **完整流水线：**
 1. **数据采集**：从飞书多维表格读取（JCY）股市分析文章
 2. **AI 分析**：用 Perplexity sonar-reasoning-pro 生成投资建议（面向小白）
-3. **结构化提取**：用 Azure OpenAI GPT 提取公司/代码/评级等结构化信息
+3. **结构化提取**：用 LLM（默认 DashScope，可回退 Custom/Azure/Coze）提取公司/代码/评级等结构化信息
 4. **量化回测**：对推荐股票执行 MACD 策略回测，验证实际收益
 
 ---
@@ -44,7 +44,7 @@ feishu_test/
 │   ├── store.py                   # 单一真值源读写、复合键索引、Step 跳过判断、advice 路径解析
 │   ├── feishu.py                  # Step 1：飞书采集（_feishu_get 统一 GET + 分页 + 增量缓存）
 │   ├── advice.py                  # Step 2：Perplexity 投资建议（先落文件后写 record 原子性）
-│   ├── extract.py                 # Step 3：LLM 结构化提取（DashScope/Azure/Coze 回退）
+│   ├── extract.py                 # Step 3：LLM 结构化提取（DashScope/Azure/Coze/Custom 回退）
 │   ├── pipeline.py                # main 编排（--strict / --log-file）
 │   ├── migrate_compound_key.py    # 运维：存量数据复合键迁移（零 API 调用）
 │   ├── prompts/                   # jcy 自包含的 system prompt（被 config.read_prompt 读取）
@@ -140,7 +140,7 @@ wiki_token → bitable app_token
 - 超时保护：连续超时 `MAX_CONSECUTIVE_TIMEOUTS` 次时终止，不写入无效响应
 
 **Step 3 — 结构化信息提取（LLM，按 provider 回退）：**
-- 默认启用 **DashScope**（`S3_PROVIDERS` 中 Azure / Coze 默认注释关闭，可按需开启）
+- `S3_PROVIDERS` 回退顺序：**DashScope**（默认启用）→ Azure OpenAI（默认注释关闭）→ Coze（默认注释关闭）→ **Custom**（OpenAI 兼容端点，设置 `CUSTOM_API_KEY` 即自动启用，未注释）
 - 原文 + 建议文档 → `response_format=json_object` → 结构化 JSON
 - system prompt 外置于 `jcy/prompts/step3_extract_system.md`
 - 输出 schema：
@@ -166,6 +166,7 @@ wiki_token → bitable app_token
 - `DASHSCOPE_API_KEY` — DashScope API 密钥（Step 3 默认 provider）
 - `DASHSCOPE_BASE_URL` — DashScope 端点（默认 compatible-mode/v1）
 - `DASHSCOPE_MODEL` — DashScope 模型名
+- `CUSTOM_API_KEY` / `CUSTOM_BASE_URL` / `CUSTOM_MODEL` — 自定义 OpenAI 兼容 provider（Step 3 回退候选，`CUSTOM_API_KEY` 非空即启用）
 - `AZURE_OPENAI_*` / `COZE_*` — 可选 provider，默认在 `S3_PROVIDERS` 中注释关闭
 
 ---
@@ -262,7 +263,7 @@ data/jcy/jcy_docs.yaml          （原始文档正文）
     ├─ prepare_jcy_data.py（Step 2，Perplexity sonar）
     │                    ──────────► data/jcy/advice/YYYY-MM-DD.md
     │
-    └─ prepare_jcy_data.py（Step 3，Azure GPT）
+    └─ prepare_jcy_data.py（Step 3，DashScope/Custom LLM）
                          ──────────► data/jcy/jcy_insights.json
                                          {companies, rating, markets, key_advice}
                                                  │
@@ -317,6 +318,11 @@ JCY_VIEW_ID=...
 DASHSCOPE_API_KEY=...
 DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 DASHSCOPE_MODEL=deepseek-v4-pro
+
+# Step 3 回退 provider：Custom（OpenAI 兼容端点，非空即启用，未注释）
+CUSTOM_API_KEY=...
+CUSTOM_BASE_URL=...
+CUSTOM_MODEL=...
 
 # 可选 provider（默认在 S3_PROVIDERS 中注释关闭）
 AZURE_OPENAI_KEY=...
