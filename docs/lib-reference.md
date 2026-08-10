@@ -21,11 +21,12 @@
 
 | 模块 | 核心内容 |
 |------|----------|
-| `market_data.py` | `fetch_stock_data()` + `fetch_index_data()` — 个股/指数行情，akshare → baostock → yfinance 三源（含限流重试）；`ADJUST` 统一三源复权口径，回测默认 **hfq 后复权**（qfq 会随分红回溯改写历史价，结果不可复现） |
+| `market_data.py` | `fetch_stock_data()` + `fetch_index_data()` + `fetch_hk_data()` — 个股/指数行情，akshare → baostock → yfinance 三源（含限流重试）；`ADJUST` 统一三源复权口径，回测默认 **hfq 后复权**（qfq 会随分红回溯改写历史价，结果不可复现）。港股（`fetch_hk_data`）只有 yfinance 一条源，口径是**前复权**，故须以 `adjust="qfq"` 入库；yfinance 的 `end` 是开区间，内部已多要一天以免丢掉当天 K 线 |
 | `price_store.py` | `load_daily()` / `update_daily()` / `load_dividends()` — 本地行情仓库（`data/market/`）。首次全量、之后只补增量；只有 hfq 能安全追加（qfq 强制整表重建），每次增量重叠 `OVERLAP_DAYS` 天对账收盘价，不一致即重建；`*.meta.json` 记**请求过的区间**而非数据首尾日 |
 | `swings.py` | `zigzag()` / `swing_table()` / `drawdown_episodes()` / `drawdown_profile()` — 波段分解与独立回撤事件（按"创新高→再创新高"切分，不逐日比对阈值） |
 | `regime.py` | `classify()` / `regime_stats()` / `regime_episodes()` — 市场状态分类（趋势上行/宽幅震荡/趋势下行），严格只用当日及以前数据，带 `confirm_days` 滞回 |
 | `ladder.py` | `simulate_buy_hold/dca/ladder/grid/adaptive()` + `PLAYBOOK` — 分批建仓模拟器，成本与 T+1 口径对齐 `engine.py`，闲置现金计息，额外报 `avg_exposure` / `deployed_return` |
+| `trend_stop.py` | `simulate()` / `buy_hold()` / `sweep()` / `hk_trade_cost()` / `month_end_flags()` / `next_decision_date()` — 月频均线 + 移动止损（港股口径）。月末信号**次日**执行，止损锚在入场后最高收盘价、触发当日离场，止损后须等下个月末才重入。**净值用 `position.shift(1)`**——`pos[i]` 是按第 i 天收盘价成交才拿到的，不滞后就等于让止损躲掉触发当天那根阴线（踩过，年化虚增一倍）。内置港股成本模型（佣金 0.25% **最低 HK$100**、ETF 免印花税）——策略走月频正是被这个最低佣金逼出来的，两者耦合故同放一个模块 |
 | `plotting.py` | `COLORS` 字典（GitHub Dark 配色）、`setup_matplotlib()`、`style_ax(ax)` |
 | `bull_backtest.py` | `BullStrategyAdapter`（牛市策略通用适配器；绘图/CSV 在 `backtest/bull_report.py`） |
 | `oil_price.py` | `fetch_oil_price()` / `update_oil()` / `load_oil()`（Brent/WTI/SC，新浪源，整表覆盖）、`transmission_table()`（油价→股价领先滞后相关系数，纯描述性） |

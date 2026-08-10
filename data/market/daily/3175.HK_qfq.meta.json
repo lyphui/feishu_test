@@ -1,0 +1,11 @@
+{
+  "symbol": "3175.HK",
+  "adjust": "qfq",
+  "kind": "hk",
+  "requested_start": "20160101",
+  "requested_end": "20260810",
+  "data_start": "20160428",
+  "data_end": "20260810",
+  "rows": 2532,
+  "updated_at": "2026-08-10 16:02:34"
+}

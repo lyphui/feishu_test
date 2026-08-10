@@ -36,7 +36,8 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 
-from lib.market_data import DEFAULT_ADJUST, fetch_index_data, fetch_stock_data
+from lib.market_data import (DEFAULT_ADJUST, fetch_hk_data, fetch_index_data,
+                             fetch_stock_data)
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 STORE_DIR = os.path.join(_BASE_DIR, "data", "market")
@@ -136,6 +137,8 @@ def _fetch(symbol: str, start: str, end: str, kind: str, adjust: str,
            proxy: str = "") -> pd.DataFrame:
     if kind == "index":
         df = fetch_index_data(symbol, start, end)
+    elif kind == "hk":
+        df = fetch_hk_data(symbol, start, end)
     else:
         df = fetch_stock_data(symbol, start, end, proxy=proxy, adjust=adjust)
     if df.empty:

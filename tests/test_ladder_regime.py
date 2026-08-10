@@ -101,6 +101,38 @@ def test_grid_sells_exactly_the_shares_it_bought():
     assert sum(t["shares"] for t in sells) < sum(t["shares"] for t in buys)
 
 
+def test_grid_never_arms_on_a_stock_that_only_goes_up():
+    """锚价钉死在首根收盘时，一路上涨的标的会让网格一次都装不上膛。
+
+    这不是实现缺陷而是默认行为，但它会让参数扫描出现整片一模一样的结果
+    （600938 上 36 组参数全是 1 笔交易）。判断网格好不好用之前先看 n_trades。
+    """
+    df = make_df(ramp(10, 25, 300))
+    r = simulate_grid(df, 100_000, base_position=0.5, n_grids=5, grid_step=0.07)
+    assert r.stats["n_trades"] == 1
+
+
+def test_grid_ratchet_re_arms_after_a_rally():
+    """ratchet=True 时锚随新高上移，涨完再回调才有格子可买。"""
+    closes = ramp(10, 25, 300) + ramp(25, 18, 60) + ramp(18, 24, 60)
+    df = make_df(closes)
+    plain = simulate_grid(df, 100_000, base_position=0.5, n_grids=5, grid_step=0.07)
+    rat = simulate_grid(df, 100_000, base_position=0.5, n_grids=5, grid_step=0.07,
+                        ratchet=True)
+    assert plain.stats["n_trades"] == 1
+    assert rat.stats["n_trades"] > 3
+
+
+def test_grid_ratchet_does_not_move_the_anchor_while_holding_grid_lots():
+    """持有网格仓位时抬锚会让卖出触发价对不上买入格，必须只在 level==0 时上移。"""
+    # 先跌破一格建仓，再小幅反弹但不到卖出线，锚若被抬高就会提前/错价卖出
+    closes = ramp(10, 8.5, 40) + ramp(8.5, 8.9, 40)
+    r = simulate_grid(make_df(closes), 100_000, base_position=0.5,
+                      n_grids=5, grid_step=0.07, ratchet=True)
+    sells = [t for t in r.trades if t["action"] == "sell"]
+    assert sells == []
+
+
 def test_dca_spreads_purchases():
     df = make_df(ramp(10, 12, 300))
     r = simulate_dca(df, 100_000, n_tranches=10, every_days=21)

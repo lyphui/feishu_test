@@ -241,6 +241,40 @@ def fetch_stock_data(
 
 # ── 大盘指数日线数据 ─────────────────────────────────────────────────────────
 
+def fetch_hk_data(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame:
+    """
+    获取港股 / 港股 ETF 日线（yfinance 单源，akshare 与 baostock 都不覆盖港股 ETF）。
+
+    symbol     : 港交所代码，带不带 .HK 后缀都行，如 "3175" / "3175.HK"
+    start_date : "YYYYMMDD"
+    end_date   : "YYYYMMDD"
+
+    口径警告：yfinance 的 auto_adjust=True 是**前复权**，历史价会随未来分红回算。
+    因此港股必须以 `adjust="qfq"` 存进 price_store —— 那边对 qfq 强制整表重建，
+    不做增量追加，否则会把两种口径的价格缝在一起。
+    """
+    ticker = symbol if symbol.upper().endswith(".HK") else f"{symbol}.HK"
+    # yfinance 的 end 是**开区间**，直接传当天会把当天的 K 线丢掉 —— 实盘信号
+    # 就差这最后一根，所以往后多要一天
+    end_exclusive = (pd.Timestamp(end_date) + pd.Timedelta(days=1)).strftime("%Y%m%d")
+    raw = _yfinance_download(
+        ticker,
+        _date_yyyymmdd_to_dash(start_date),
+        _date_yyyymmdd_to_dash(end_exclusive),
+    )
+    # yfinance 有时返回带时区的索引，price_store 按 naive 日期对账，这里统一剥掉
+    raw.index = pd.to_datetime(raw.index)
+    if raw.index.tz is not None:
+        raw.index = raw.index.tz_localize(None)
+    cols = [c for c in ["open", "high", "low", "close", "volume"]
+            if c in raw.columns]
+    return raw[cols]
+
+
 def fetch_index_data(
     symbol: str,
     start_date: str,

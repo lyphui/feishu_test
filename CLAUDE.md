@@ -69,7 +69,9 @@ feishu_test/
 │   ├── jcy_macd_bull_batch.py     # Step 4: 批量 MACD 牛市策略回测（读 jcy_insights.json）
 │   ├── jcy_intraday_timing.py     # 日线信号 + 分时择时（多周期共振）
 │   ├── exec_bench.py              # 日内下单方案实测台：买/卖两侧，按股票池分别出数
+│   ├── fatfinger_bench.py         # 「乌龙指捕捉」实测：50/50 两侧挂远距离限价单等错价
 │   ├── oil_track.py               # 油气双雄长期跟踪：增量更新 + 当前状态与打法 + 连续全样本回测
+│   ├── hk_oil_etf_signal.py       # 港股原油 ETF（3175.HK）月频信号台：均线+移动止损，出「今天该做什么」
 │   ├── macd_analysis.py           # 薄入口：re-export engine + MACDStrategy CLI
 │   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
 │   ├── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
@@ -88,7 +90,9 @@ feishu_test/
 │       ├── plotting.py            # 绘图样式（GitHub Dark 配色 + matplotlib 配置）
 │       ├── bull_backtest.py       # 牛市策略通用适配器 BullStrategyAdapter
 │       ├── oil_price.py           # Brent/WTI/SC 原油价格（新浪源）+ 油价→股价传导相关性分析
-│       └── execution.py           # 日内下单方案测算（VWAP 基准，买卖双向，与标的/策略无关的度量层）
+│       ├── execution.py           # 日内下单方案测算（VWAP 基准，买卖双向，与标的/策略无关的度量层）
+│       ├── fatfinger.py           # 乌龙指捕捉模拟器：日内触价撮合 + 涨跌停拒单 + 成交质量 edge
+│       └── trend_stop.py          # 月频均线+移动止损（港股口径）：含最低佣金成本模型 hk_trade_cost
 │
 ├── ── 策略包 ──────────────────────────────────
 ├── strategies/
@@ -144,7 +148,8 @@ feishu_test/
 | 3 | 策略体系 | `strategies/`：MACDStrategy / LuMACDStrategy / LuMACDBullStrategy，BaseStrategy 共享方法与时序铁律 | [docs/strategies.md](docs/strategies.md) |
 | 4, 4b | 批量回测 + 参数扫描 | `jcy_macd_bull_batch.py` 批量跑（看多池 + `--control` 看空对照组）+ `batch_report.py` 横截面汇总（选股/择时两个 alpha 分开报、在场比例）；`param_sweep.py` 网格扫描判断过拟合，含样本外验证 | [docs/batch-and-sweep.md](docs/batch-and-sweep.md) |
 | 4c | 长期跟踪 + 分批建仓 | `oil_track.py` + `lib/price_store\|swings\|regime\|ladder`：本地行情仓库、市场状态分类、分批建仓模拟器 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) |
-| 4d | 日内下单测算 | `lib/execution.py` + `exec_bench.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表 | [docs/execution-bench.md](docs/execution-bench.md) |
+| 4d | 日内下单测算 | `lib/execution.py` + `exec_bench.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表；末节含远距离限价单（`lib/fatfinger.py` + `fatfinger_bench.py`）实测 | [docs/execution-bench.md](docs/execution-bench.md) |
+| 4e | 港股原油 ETF 择时 | `lib/trend_stop.py` + `hk_oil_etf_signal.py`：月末均线 + 移动止损，含港股最低佣金成本模型；留档两个否定结论（展期收益不可择时、港股油气股不是油价工具） | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) |
 | 5 | 包内工具层参考表 | `jcy/lib/` 与 `backtest/lib/` 全部模块的速查表 | [docs/lib-reference.md](docs/lib-reference.md) |
 
 ---
@@ -252,6 +257,10 @@ python backtest/exec_bench.py --universe jcy --side both --limit 45
 python backtest/exec_bench.py --universe oil --side sell
 python backtest/exec_bench.py --universe oil --offline   # 不联网，只读分时缓存
 
+# 「乌龙指捕捉」实测（50/50 两侧挂远距离限价单等人敲错价，六档 k 与同敞口基准对比）
+python backtest/fatfinger_bench.py --offline
+python backtest/fatfinger_bench.py --k 0.02 0.05 0.08 --fast
+
 # 独立单股回测
 python backtest/macd_analysis.py --config jxty_jcy_260104.ini
 python backtest/lu_macd_analysis.py
@@ -261,6 +270,12 @@ python backtest/lu_macd_bull_analysis.py
 python backtest/oil_track.py                      # 增量更新 + 跟踪报告
 python backtest/oil_track.py --offline            # 不联网，只读本地缓存
 python backtest/oil_track.py --backtest --chart   # 连续全样本回测 + 出图
+
+# 港股原油 ETF 月频信号（每月最后一个交易日收盘后跑一次）
+python backtest/hk_oil_etf_signal.py              # 更新行情 + 当前信号 + 回测
+python backtest/hk_oil_etf_signal.py --offline    # 不联网，只读本地缓存
+python backtest/hk_oil_etf_signal.py --sweep      # 附参数敏感性网格
+python backtest/hk_oil_etf_signal.py --symbol 3097.HK --capital 50000
 
 # 参数敏感性（判断是否过拟合，建议先 --limit 试跑）
 python backtest/param_sweep.py --limit 20
@@ -283,4 +298,5 @@ pytest
 | [docs/batch-and-sweep.md](docs/batch-and-sweep.md) | 批量回测横截面汇总 + 参数敏感性扫描（过拟合判断） |
 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) | 长期跟踪（行情仓库/波段/市场状态）+ 分批建仓模拟器 |
 | [docs/execution-bench.md](docs/execution-bench.md) | 日内下单方案测算方法论 + JCY/油气两池实测结论 |
+| [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) | 港股原油 ETF 月频均线+移动止损：规则、参数扫描、港股成本模型、局限清单 |
 | [docs/lib-reference.md](docs/lib-reference.md) | `jcy/lib/` 与 `backtest/lib/` 全部模块速查表 |

@@ -294,6 +294,7 @@ def simulate_grid(
     base_position: float = 0.5,
     grid_step: float = 0.07,
     n_grids: int = 5,
+    ratchet: bool = False,
     name: str = None,
     **kw,
 ) -> LadderResult:
@@ -301,6 +302,16 @@ def simulate_grid(
     底仓 + 网格：跌一格买一份、涨一格卖一份，底仓始终不动。
 
     底仓保证长期上涨吃得到，网格部分赚波动的钱。适合"看好但认为要震荡很久"。
+
+    ratchet
+        锚价是否随新高上移（**只在 level==0、即手上没有网格仓位时**才移；
+        持有网格仓位时上移锚价会让卖出触发价对不上当初的买入格）。
+
+        默认 False 保持原行为：锚价钉在首根 K 线的收盘价，一辈子不动。
+        这在长期上涨的标的上会让网格**从未装上膛**——600938 自 2022-04-21
+        上市起从没跌破首日锚 1.2% 以上，36 组参数全都只有 1 笔交易，
+        策略实际退化成"买 base_position 然后躺平"，参数怎么调都没区别。
+        判断网格好不好用之前，先看 `n_trades` 是不是 1。
     """
     grid_cash = capital * (1 - base_position)
     per = grid_cash / n_grids
@@ -325,6 +336,9 @@ def simulate_grid(
             st["anchor"] = close
             return [("buy", capital * base_position)]
 
+        if ratchet and st["level"] == 0:
+            st["anchor"] = max(st["anchor"], close)
+
         lvl_price = st["anchor"] * (1 - grid_step * st["level"])
         if close <= lvl_price * (1 - grid_step) and st["level"] < n_grids \
                 and ctx["cash"] >= per:
@@ -336,7 +350,8 @@ def simulate_grid(
             return [("sell_shares", st["stack"].pop())]
         return []
 
-    label = name or f"底仓{base_position:.0%}+网格{n_grids}×{grid_step:.0%}"
+    label = name or (f"底仓{base_position:.0%}+网格{n_grids}×{grid_step:.0%}"
+                     + ("·锚随高点" if ratchet else ""))
     return _run(df, capital, decide, label, **kw)
 
 
