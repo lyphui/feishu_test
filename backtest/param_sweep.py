@@ -55,13 +55,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from engine import run_backtest
+from config import index_history_start
 from strategies import LuMACDBullStrategy
 from lib.plotting import (
     C_BG, C_FG, C_MUTED, setup_matplotlib, style_ax,
 )
 from lib.market_data import fetch_stock_data, fetch_index_data
 from lib.bull_backtest import BullStrategyAdapter
-from jcy.lib.common import JSON_PATH, load_candidates
+from jcy.lib.common import (JSON_PATH, LONG_RATINGS, load_candidates,
+                            parse_ratings)
 
 setup_matplotlib()
 
@@ -82,9 +84,17 @@ AXES = {
 }
 
 # evaluate_combo 在有样本时产出的全部聚合指标，也是 --metric 的合法取值。
+#
+# 主指标是**日均超额 bp**，不是总超额%：各股统计窗口从几十到几百个交易日不等
+# （batch_report.py 的 docstring 论证过这一点），把持有两年的 +40% 和持有两个月的
+# +40% 放进同一个中位数，比的是"谁的窗口更长"。用一个自己判定为不可比的指标
+# 去选参数，选出来的就是"哪组参数恰好被长窗口标的占了多数"。
 METRICS = [
-    "超额中位数%", "超额均值%", "跑赢基准比例",
-    "收益中位数%", "正收益比例", "平均最大回撤%", "平均交易次数",
+    "日均超额中位bp", "日均超额均值bp", "跑赢基准比例",
+    "日均收益中位bp", "正收益比例", "平均最大回撤%", "平均交易次数",
+    "平均在场比例%",
+    # 保留总超额仅供对照，不建议用来选参数（窗口长度不可比）
+    "超额中位数%",
 ]
 
 # 必须与 backtest/jcy_macd_bull_batch.py 的 CLI 默认值保持一致，
@@ -125,6 +135,7 @@ def evaluate_combo(combo: dict, candidates: list[dict], index_df,
     engine_kw = {k: v for k, v in params.items() if AXES[k]["target"] == "engine"}
 
     excess, total, drawdown, trades = [], [], [], []
+    daily_excess, daily_total, exposure = [], [], []
     failures = 0
 
     for c in candidates:
@@ -148,26 +159,39 @@ def evaluate_combo(combo: dict, candidates: list[dict], index_df,
             failures += 1
             continue
 
-        excess.append(r["total_return"] - r["benchmark_return"])
+        exc = r["total_return"] - r["benchmark_return"]
+        excess.append(exc)
         total.append(r["total_return"])
         drawdown.append(r["max_drawdown"])
         trades.append(r["total_trades"])
+
+        # 按统计窗口长度线性归一（与 batch_report 的「日均超额bp」同口径）
+        n_days = len(r["equity_curve"])
+        if n_days:
+            daily_excess.append(exc * 100 / n_days)
+            daily_total.append(r["total_return"] * 100 / n_days)
+        if r.get("exposure_pct") is not None:
+            exposure.append(r["exposure_pct"])
 
     if not excess:
         return {**params, "样本数": 0}
 
     excess_arr = np.array(excess)
+    d_exc = np.array(daily_excess) if daily_excess else np.array([np.nan])
     return {
         **params,
         "样本数":        len(excess),
         "失败数":        failures,
-        "超额中位数%":   round(float(np.median(excess_arr)), 2),
-        "超额均值%":     round(float(excess_arr.mean()), 2),
+        "日均超额中位bp": round(float(np.median(d_exc)), 2),
+        "日均超额均值bp": round(float(np.mean(d_exc)), 2),
         "跑赢基准比例":  round(float((excess_arr > 0).mean()), 3),
-        "收益中位数%":   round(float(np.median(total)), 2),
+        "日均收益中位bp": round(float(np.median(daily_total)), 2) if daily_total else None,
         "正收益比例":    round(float((np.array(total) > 0).mean()), 3),
         "平均最大回撤%": round(float(np.mean(drawdown)), 2),
         "平均交易次数":  round(float(np.mean(trades)), 1),
+        "平均在场比例%": round(float(np.mean(exposure)), 1) if exposure else None,
+        # 仅供对照：窗口长度不可比，不要用它选参数
+        "超额中位数%":   round(float(np.median(excess_arr)), 2),
     }
 
 
@@ -280,8 +304,11 @@ def parse_args():
                    metavar=("X", "Y"),
                    help=f"扫描的两个参数轴，可选：{list(AXES)}")
     # 用 choices 卡死：跑完整个网格才因为拼错指标名 KeyError，代价是几十分钟。
-    p.add_argument("--metric", default="超额中位数%", choices=METRICS,
-                   help="热力图展示的指标，默认 超额中位数%%")
+    p.add_argument("--metric", default="日均超额中位bp", choices=METRICS,
+                   help="热力图展示的指标，默认 日均超额中位bp"
+                        "（对窗口长度归一，跨标的可比）")
+    p.add_argument("--ratings", type=parse_ratings, default=LONG_RATINGS,
+                   help=f"进入扫描的评级，逗号分隔，默认 {','.join(LONG_RATINGS)}")
     p.add_argument("--limit", type=int, default=0,
                    help="只取前 N 只候选股（快速试跑），0=全部")
     p.add_argument("--oos-frac", type=float, default=0.0, metavar="FRAC",
@@ -304,7 +331,7 @@ def main():
     if not os.path.exists(JSON_PATH):
         print(f"  ❌ 找不到 JSON 文件：{JSON_PATH}")
         sys.exit(1)
-    candidates = load_candidates(JSON_PATH)
+    candidates = load_candidates(JSON_PATH, ratings=args.ratings)
     if args.limit:
         candidates = candidates[:args.limit]
     if not candidates:
@@ -319,9 +346,8 @@ def main():
               "样本外集合，本次退化为纯样本内扫描")
 
     end_date = _date.today().strftime("%Y%m%d")
-    earliest = min(c["date"] for c in candidates)
-    index_start = (_date(int(earliest[:4]), int(earliest[4:6]), int(earliest[6:]))
-                   - timedelta(days=600)).strftime("%Y%m%d")
+    # 指数起点为绝对日期，不随候选池变化（月线 MACD 预热，见 config.py）
+    index_start = index_history_start()
 
     grid = list(itertools.product(AXES[axis_x]["values"], AXES[axis_y]["values"]))
     print("\n" + "─" * 66)
@@ -350,9 +376,10 @@ def main():
         rows.append(row)
         if row.get("样本数"):
             cells[(vx, vy)] = row[args.metric]
-            print(f"      超额中位数 {row['超额中位数%']:+.2f}%  "
+            print(f"      日均超额中位 {row['日均超额中位bp']:+.2f}bp  "
                   f"跑赢基准 {row['跑赢基准比例']:.1%}  "
-                  f"平均回撤 {row['平均最大回撤%']:.2f}%")
+                  f"平均回撤 {row['平均最大回撤%']:.2f}%  "
+                  f"在场 {row['平均在场比例%'] or 0:.0f}%")
 
     df = pd.DataFrame(rows)
     csv_path = os.path.join(args.output, "sweep_results.csv")

@@ -19,6 +19,33 @@ from datetime import date as _date
 _PRESETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets")
 
 
+# ── 大盘指数取数起点 ──────────────────────────────────────────────────────────
+#
+# 牛市过滤器算的是大盘**月线** MACD，EMA(26) 要几十根月线才收敛。旧实现把指数
+# 起点定为「最早推荐日 − 600 自然日」≈ 20 根月线，seed 权重还剩 ~12%，DIF 被
+# 系统性拉向初始值。实测沪深300：把起点从全历史截到 2023-01，bull 判定仍有 1 个
+# 月翻转；截到 2021-01 有 7 个月翻转。
+#
+# 更糟的是那个起点**依赖候选池**：往 jcy_insights.json 里加一篇更早的文章，
+# 全部个股的 bull_market 历史都会改写，回测数值随之变化——这与仓库坚持 hfq
+# 的理由（结果必须可复现）是同一件事。
+#
+# 因此指数一律从这个**绝对起点**取起，与候选池无关。个股行情不受影响：日线
+# EMA(26) 几十根就稳，仍按各自推荐日往前预热。
+INDEX_HISTORY_START = "20150101"
+
+
+def index_history_start(requested_start: str | None = None) -> str:
+    """指数取数起点：不晚于 INDEX_HISTORY_START。
+
+    requested_start 更早时以它为准（回测区间本来就更长），否则一律补到
+    INDEX_HISTORY_START，保证月线 MACD 的预热长度不随候选池变化。
+    """
+    if not requested_start:
+        return INDEX_HISTORY_START
+    return min(requested_start, INDEX_HISTORY_START)
+
+
 @dataclass
 class BacktestConfig:
     symbol: str

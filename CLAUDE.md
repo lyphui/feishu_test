@@ -62,7 +62,7 @@ feishu_test/
 ├── ── 回测脚本 ─────────────────────────────────
 ├── backtest/                      # 脚本模式（非包），以 python backtest/x.py 运行，同级裸导入
 │   ├── engine.py                  # 核心回测引擎：run_backtest / plot_backtest（无 CLI，含 A 股成交约束）
-│   ├── config.py                  # 共享配置层：BacktestConfig / load_backtest_config / execution_kwargs / OutputPaths
+│   ├── config.py                  # 共享配置层：BacktestConfig / load_backtest_config / execution_kwargs / OutputPaths / INDEX_HISTORY_START
 │   ├── bull_report.py             # 牛市策略报告：plot_bull_backtest / export_bull_daily_status
 │   ├── batch_report.py            # 批量回测横截面汇总：summary.csv / 等权组合净值 vs 指数
 │   ├── param_sweep.py             # 参数敏感性网格扫描（判断是否过拟合）
@@ -142,7 +142,7 @@ feishu_test/
 | 0-1 | 飞书授权 + JCY 数据流水线 | `authorize/` 换取 token；`jcy/` 完成 Step1-3（采集→AI建议→结构化提取），含全部 provider 与环境变量 | [docs/jcy-pipeline.md](docs/jcy-pipeline.md) |
 | 2 | MACD 回测引擎 | `backtest/engine.py` 核心 `run_backtest`：A股成交约束、T+1、成本口径、`eval_start` 窗口；`backtest/config.py` 共享配置层；预设 `.ini` 格式 | [docs/backtest-engine.md](docs/backtest-engine.md) |
 | 3 | 策略体系 | `strategies/`：MACDStrategy / LuMACDStrategy / LuMACDBullStrategy，BaseStrategy 共享方法与时序铁律 | [docs/strategies.md](docs/strategies.md) |
-| 4, 4b | 批量回测 + 参数扫描 | `jcy_macd_bull_batch.py` 批量跑 + `batch_report.py` 横截面汇总；`param_sweep.py` 网格扫描判断过拟合，含样本外验证 | [docs/batch-and-sweep.md](docs/batch-and-sweep.md) |
+| 4, 4b | 批量回测 + 参数扫描 | `jcy_macd_bull_batch.py` 批量跑（看多池 + `--control` 看空对照组）+ `batch_report.py` 横截面汇总（选股/择时两个 alpha 分开报、在场比例）；`param_sweep.py` 网格扫描判断过拟合，含样本外验证 | [docs/batch-and-sweep.md](docs/batch-and-sweep.md) |
 | 4c | 长期跟踪 + 分批建仓 | `oil_track.py` + `lib/price_store\|swings\|regime\|ladder`：本地行情仓库、市场状态分类、分批建仓模拟器 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) |
 | 4d | 日内下单测算 | `lib/execution.py` + `exec_bench.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表 | [docs/execution-bench.md](docs/execution-bench.md) |
 | 5 | 包内工具层参考表 | `jcy/lib/` 与 `backtest/lib/` 全部模块的速查表 | [docs/lib-reference.md](docs/lib-reference.md) |
@@ -239,7 +239,8 @@ COZE_URL=...
 ```bash
 # 完整流水线（按序执行）
 python prepare_jcy_data.py                  # Step 1-3：拉取数据 → AI建议 → 结构化提取
-python backtest/jcy_macd_bull_batch.py      # Step 4：批量量化回测
+python backtest/jcy_macd_bull_batch.py      # Step 4：批量量化回测（默认池 = 买入+增持）
+python backtest/jcy_macd_bull_batch.py --control 减持,回避   # 带看空对照组，判断评级有没有区分度
 
 # 分时择时（日线信号 + 分时 MACD 共振）
 python backtest/jcy_intraday_timing.py                  # 全部候选股

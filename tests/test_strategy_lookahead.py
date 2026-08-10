@@ -41,6 +41,26 @@ def _make_daily(n: int = 900, seed: int = 0, start: str = "2019-01-02") -> pd.Da
     )
 
 
+def _gap_down_daily(n: int = 200) -> pd.DataFrame:
+    """
+    构造"红柱一路拉长 → 一根巨阴直接砸穿 0 轴"的日线。
+
+    上涨段用二次曲线（加速上行）才能让 MACD 柱**持续**拉长到最后一根；
+    线性上涨末端已在减速，柱子会先缩短，正好避开要测的那个场景。
+    """
+    rng = pd.bdate_range("2020-01-01", periods=n)
+    close = np.empty(n)
+    close[:40] = 10.0
+    close[40:100] = 10.0 + 0.004 * np.arange(60) ** 2
+    close[100:] = close[99] * 0.80          # −20% 巨阴后横盘
+    s = pd.Series(close, index=rng)
+    return pd.DataFrame({
+        "open": s.shift(1).fillna(s.iloc[0]),
+        "high": s * 1.001, "low": s * 0.999, "close": s,
+        "volume": 1e6,
+    }, index=rng)
+
+
 def _assert_no_lookahead(strategy_factory, df: pd.DataFrame,
                          probe_days: int = 45, col: str = "signal"):
     """
@@ -262,3 +282,70 @@ def test_bull_without_index_warns_and_disables_filter():
     with pytest.warns(UserWarning, match="牛市过滤器已禁用"):
         out = s.prepare(df)
     assert out["bull_market"].all()
+
+
+# ── 动能消失必须出场（shrink_exit 的零轴缺口） ────────────────────────────────
+
+def test_bull_exits_when_histogram_is_not_positive():
+    """
+    旧实现的 sell_condition 只有 hist_shrinking，而它自带 hist>0 前提：
+    柱子从正值**直接跌破 0** 的那根不算缩短，之后整段负柱也永远不算，
+    于是没有任何离场信号，只能等固定止损或月线转熊。
+
+    现在持有条件是"红柱且在拉长"，柱子 ≤ 0 的每一根都必须是卖出信号。
+    """
+    df = _make_daily(900)
+    index_df = _make_daily(900, seed=42)
+    out = LuMACDBullStrategy(shrink_exit=True, index_df=index_df).prepare(df)
+
+    non_positive = out["MACD"] <= 0
+    assert non_positive.sum() > 0, "测试数据没有负柱，用例失效"
+    assert (out.loc[non_positive, "signal"] == -1).all(), (
+        "MACD 柱 ≤ 0 时必须发出卖出信号"
+    )
+
+
+def test_bull_exits_on_a_bar_that_gaps_straight_through_zero():
+    """
+    最要命的那一种：红柱一路拉长，下一根直接一个巨阴把柱子砸到 0 轴以下。
+    这根既不是"缩短"（hist ≤ 0），前一根也没发过缩短信号——旧实现在这里
+    完全没有离场信号，之后整段负柱也不会有，只能等 10% 固定止损。
+    """
+    df = _gap_down_daily()
+    index_df = _make_daily(len(df), seed=42, start="2020-01-01")
+    out = LuMACDBullStrategy(shrink_exit=True, index_df=index_df).prepare(df)
+
+    hist = out["MACD"]
+    gap_down = ((hist <= 0) & (hist.shift(1) > 0)
+                & out["hist_expanding"].shift(1).fillna(False).astype(bool))
+    assert gap_down.sum() > 0, "构造数据里没有'直接跌破0'的情形，用例失效"
+    assert (out.loc[gap_down, "signal"] == -1).all(), (
+        "柱子直接跌破 0 的那根必须离场，否则只剩固定止损兜底"
+    )
+    # 而且不是只有那一根：之后的负柱期间每天都保持卖出状态
+    after = out.loc[out.index > out.index[gap_down][0]]
+    assert (after.loc[after["MACD"] <= 0, "signal"] == -1).all()
+
+
+def test_bull_still_holds_while_the_red_bar_expands():
+    """补上零轴出场后，陡坡本身不能被误伤：红柱拉长期间不得出现卖出信号。"""
+    df = _make_daily(900)
+    index_df = _make_daily(900, seed=42)
+    out = LuMACDBullStrategy(shrink_exit=True, index_df=index_df).prepare(df)
+
+    expanding_bull = out["hist_expanding"] & out["bull_market"]
+    assert expanding_bull.sum() > 0
+    assert (out.loc[expanding_bull, "signal"] != -1).all()
+
+
+def test_bull_death_cross_mode_is_unchanged():
+    """shrink_exit=False 仍是纯死叉离场，不受零轴出场影响。"""
+    df = _make_daily(600)
+    index_df = _make_daily(600, seed=42)
+    out = LuMACDBullStrategy(shrink_exit=False, index_df=index_df).prepare(df)
+
+    dif, dea = out["DIF"], out["DEA"]
+    death = (dif < dea) & (dif.shift(1) >= dea.shift(1))
+    # 卖出信号只可能来自死叉或熊市强平，不会因为"柱子是负的"而每天都发
+    sells = out["signal"] == -1
+    assert (sells & ~(death | ~out["bull_market"])).sum() == 0

@@ -300,7 +300,11 @@ def run_backtest(
                 _sell(date, exit_price, exit_action)
 
         # ── 步骤 3：收盘估值 ──
-        equity.append({"date": date, "equity": cash + shares * price, "close": price})
+        # 记下当日收盘时的持股数：汇总层要靠它算**在场比例**。空仓日的权益不动，
+        # 回撤和夏普都天然好看，不知道在场比例就没法判断那是"控制住了风险"
+        # 还是"根本没参与"。
+        equity.append({"date": date, "equity": cash + shares * price,
+                       "close": price, "shares": shares})
 
     # 如果结束时仍持仓，按最后收盘价清算
     if shares > 0:
@@ -362,6 +366,16 @@ def run_backtest(
     total_slippage   = _cost_sum("slippage_cost")
     total_cost       = total_commission + total_stamp_duty + total_slippage
 
+    # ── 暴露度：窗口内有多少比例的交易日真的持有仓位 ──
+    # 空仓日既不赚也不亏，回撤与夏普都被"没参与"美化过。不给出在场比例，
+    # 就没法判断一个 -6% 的最大回撤是控制住了风险，还是全程躺在现金里。
+    n_buys       = (0 if win_trades.empty
+                    else int((win_trades["action"] == "买入").sum()))
+    in_market    = eq_df["shares"] > 0
+    exposure_pct = float(in_market.mean()) * 100
+    # 平均持仓天数：在场天数 ÷ 建仓次数。跨窗口边界的持仓会让它略偏大。
+    avg_holding_days = (float(in_market.sum()) / n_buys) if n_buys else None
+
     # 基准（买入持有）：与策略同口径 —— 同一个统计窗口、同样开盘买入收盘估值
     bench_base   = px["open"].iloc[0]
     bench_return = (px["close"].iloc[-1] / bench_base - 1) * 100
@@ -378,8 +392,9 @@ def run_backtest(
         "benchmark_base": bench_base,
         "max_drawdown": max_drawdown,
         "sharpe_ratio": sharpe,
-        "total_trades": (0 if win_trades.empty
-                         else int((win_trades["action"] == "买入").sum())),
+        "total_trades": n_buys,
+        "exposure_pct": exposure_pct,           # 在场交易日占比（%）
+        "avg_holding_days": avg_holding_days,   # 平均持仓交易日数（无成交时 None）
         "win_rate": win_rate,
         "avg_win": avg_win,
         "avg_loss": avg_loss,
@@ -478,6 +493,10 @@ def _print_summary(r: dict):
     shp = r['sharpe_ratio']
     print(f"  夏普比率      : {'  N/A(样本不足)' if shp is None else f'{shp:>8.2f}'}")
     print(f"  交易次数      : {r['total_trades']:>8}  次")
+    hold = r.get("avg_holding_days")
+    print(f"  在场比例      : {r['exposure_pct']:>8.1f}%  "
+          f"（平均持仓 {'N/A' if hold is None else f'{hold:.1f}'} 个交易日）"
+          f"  ← 回撤/夏普未按暴露度调整")
     if c.get("total_cost") is not None:
         print(f"  交易成本合计  : ¥{c['total_cost']:>12,.2f}  "
               f"（占起点资金 {c['cost_drag_pct']:.2f}%）")

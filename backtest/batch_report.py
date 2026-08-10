@@ -30,6 +30,25 @@ N 只票同时满仓在现实中不可能，所以这条曲线**不是**可投�
 跨标的可比。不用年化是因为 (1+r)^(252/n) 在 n 很小时会几何放大，
 短窗口标的会被放大到失去意义（引擎的 annual_return 在 n<252 时直接返回
 None 就是这个原因）。
+
+两个 alpha 要分开看
+-------------------
+这张表回答的是**两个不同的问题**，混在一起看会把功劳算错人头：
+
+  选股alpha% = 基准收益% − 指数收益%   ← 研报**推荐**本身值不值钱
+                                          （买入持有这只票 vs 同期买指数）
+  超额收益%  = 策略收益% − 基准收益%   ← MACD **择时**加不加分
+                                          （策略进出 vs 一直拿着这只票）
+
+项目宣称的目标是"验证推荐的实际收益"，那问的是第一个；而回测引擎默认给的
+`benchmark_return` 是第二个。只看超额收益，会把"推荐了一批好票、择时反而
+拖后腿"读成策略失败，也会把"推荐的票很烂、但择时少亏了点"读成策略成功。
+
+在场比例
+--------
+`shrink_exit=True` 的策略大部分时间空仓，空仓日既不赚也不亏，最大回撤和
+夏普都被"没参与"美化过。**表里的回撤/夏普一律未按暴露度调整**，必须对着
+在场比例读：在场 15% 的时间做出 -6% 的回撤，和满仓做出 -6% 完全是两回事。
 """
 
 import os
@@ -44,8 +63,10 @@ from lib.plotting import (
 
 
 SUMMARY_COLUMNS = [
-    "代码", "名称", "推荐日", "统计交易日数",
-    "策略收益%", "基准收益%", "超额收益%", "日均超额bp",
+    "代码", "名称", "评级", "推荐日", "统计交易日数",
+    "策略收益%", "基准收益%", "指数收益%",
+    "超额收益%", "日均超额bp", "选股alpha%",
+    "在场比例%", "平均持仓天数",
     "最大回撤%", "夏普", "交易次数", "胜率%", "盈亏比",
     "成本占比%", "受阻次数",
 ]
@@ -61,22 +82,61 @@ WINDOW_BUCKETS = [
 
 # ── 单股结果 → 一行 ───────────────────────────────────────────────────────────
 
-def result_to_row(candidate: dict, result: dict) -> dict:
+def index_window_return(index_df: pd.DataFrame | None,
+                        window_index: pd.DatetimeIndex) -> float | None:
+    """
+    指数在该股统计窗口内的涨跌幅（%）。index_df 缺失或对不上时返回 None。
+
+    用并集 ffill 再收敛回窗口索引，而不是直接 reindex：指数与个股的交易日
+    不完全一致（个股停牌、指数休市），直接 reindex 会在边界上取到 NaN，
+    把一整只票的选股 alpha 变成空值。
+    """
+    if index_df is None or index_df.empty or "close" not in index_df.columns:
+        return None
+    if len(window_index) < 2:
+        return None
+    s = index_df["close"]
+    s = s.reindex(s.index.union(window_index)).ffill().reindex(window_index).dropna()
+    if len(s) < 2 or s.iloc[0] == 0:
+        return None
+    return float(s.iloc[-1] / s.iloc[0] - 1) * 100
+
+
+def result_to_row(candidate: dict, result: dict,
+                  index_df: pd.DataFrame | None = None) -> dict:
+    """
+    单股回测结果 → 汇总表一行。
+
+    index_df : 大盘指数日线。传了才算得出「指数收益%」与「选股alpha%」
+               ——即研报推荐本身相对大盘的超额，与择时无关（见模块 docstring）。
+    """
     blocked = result.get("blocked_trades")
     sharpe = result["sharpe_ratio"]
-    n_days = len(result["equity_curve"])
+    eq = result["equity_curve"]
+    n_days = len(eq)
     excess = result["total_return"] - result["benchmark_return"]
+    index_return = index_window_return(index_df, eq.index)
     costs = result.get("costs") or {}
+    hold = result.get("avg_holding_days")
     return {
         "代码":         candidate["code"],
         "名称":         candidate["name"],
+        "评级":         candidate.get("rating"),
         "推荐日":       candidate["date"],
         "统计交易日数": n_days,
         "策略收益%":    round(result["total_return"], 2),
         "基准收益%":    round(result["benchmark_return"], 2),
+        "指数收益%":    None if index_return is None else round(index_return, 2),
+        # 择时 alpha：策略进出 vs 一直拿着这只票
         "超额收益%":    round(excess, 2),
         # 对窗口长度线性归一，跨标的唯一可比的收益口径
         "日均超额bp":   round(excess * 100 / n_days, 2) if n_days else None,
+        # 选股 alpha：推荐这只票 vs 同期买指数，与策略择时无关
+        "选股alpha%":   (None if index_return is None
+                         else round(result["benchmark_return"] - index_return, 2)),
+        "在场比例%":    (None if result.get("exposure_pct") is None
+                         else round(result["exposure_pct"], 1)),
+        "平均持仓天数": None if hold is None else round(hold, 1),
         "最大回撤%":    round(result["max_drawdown"], 2),
         "夏普":         None if sharpe is None else round(sharpe, 2),
         "交易次数":     result["total_trades"],
@@ -109,7 +169,8 @@ def build_summary(rows: list[dict]) -> pd.DataFrame:
     return df.sort_values("日均超额bp", ascending=False).reset_index(drop=True)
 
 
-def print_summary_table(df: pd.DataFrame, top_n: int = 5) -> None:
+def print_summary_table(df: pd.DataFrame, top_n: int = 5,
+                        label: str = "") -> None:
     if df.empty:
         print("\n  无可汇总的回测结果")
         return
@@ -120,7 +181,7 @@ def print_summary_table(df: pd.DataFrame, top_n: int = 5) -> None:
     days = df["统计交易日数"]
 
     print("\n" + "═" * 78)
-    print(f"  横截面汇总（{n} 只）")
+    print(f"  横截面汇总（{n} 只{'  |  ' + label if label else ''}）")
     print("═" * 78)
     print(f"  跑赢买入持有 : {beat}/{n}  ({beat / n:.1%})")
     print(f"  绝对正收益   : {positive}/{n}  ({positive / n:.1%})")
@@ -131,11 +192,18 @@ def print_summary_table(df: pd.DataFrame, top_n: int = 5) -> None:
     print(f"  策略收益     : 均值 {df['策略收益%'].mean():+.2f}%   "
           f"中位数 {df['策略收益%'].median():+.2f}%")
     print(f"  超额收益     : 均值 {df['超额收益%'].mean():+.2f}%   "
-          f"中位数 {df['超额收益%'].median():+.2f}%")
+          f"中位数 {df['超额收益%'].median():+.2f}%   ← 择时 alpha（vs 持有该股）")
+    _print_pick_alpha(df, n)
     print(f"  最大回撤     : 均值 {df['最大回撤%'].mean():.2f}%   "
           f"最深 {df['最大回撤%'].min():.2f}%")
     if df["夏普"].notna().any():
         print(f"  夏普         : 中位数 {df['夏普'].median():.2f}")
+    if df["在场比例%"].notna().any():
+        hold_txt = (f"   平均持仓 {df['平均持仓天数'].median():.1f} 个交易日"
+                    if df["平均持仓天数"].notna().any() else "")
+        print(f"  在场比例     : 中位数 {df['在场比例%'].median():.1f}%{hold_txt}")
+        print(f"                 ↑ 上面的回撤与夏普**未按暴露度调整**，"
+              f"空仓日不承担风险也不产生收益")
     print(f"  平均交易次数 : {df['交易次数'].mean():.1f}")
     if df["成本占比%"].notna().any():
         print(f"  交易成本     : 中位 {df['成本占比%'].median():.2f}%   "
@@ -168,6 +236,22 @@ def print_summary_table(df: pd.DataFrame, top_n: int = 5) -> None:
     _block(f"日均超额 Top {top_n}", df.head(top_n))
     _block(f"日均超额 Bottom {top_n}", df.tail(top_n).iloc[::-1])
     print("═" * 78)
+
+
+def _print_pick_alpha(df: pd.DataFrame, n: int) -> None:
+    """
+    选股 alpha：买入持有推荐票 vs 同期买指数。这才是"研报推荐值不值钱"的口径，
+    与 MACD 择时无关。没有 index_df 时整列为空，跳过。
+    """
+    if "选股alpha%" not in df.columns or not df["选股alpha%"].notna().any():
+        print("  选股alpha    : N/A（未提供大盘指数，无法评估推荐本身的超额）")
+        return
+    a = df["选股alpha%"].dropna()
+    beat_idx = int((a > 0).sum())
+    print(f"  选股alpha    : 均值 {a.mean():+.2f}%   中位数 {a.median():+.2f}%   "
+          f"← 推荐 alpha（vs 指数）")
+    print(f"                 跑赢指数 {beat_idx}/{len(a)}  ({beat_idx / len(a):.1%})"
+          f"（买入持有口径，与择时无关）")
 
 
 def _print_window_buckets(df: pd.DataFrame) -> None:
@@ -218,7 +302,8 @@ def build_portfolio_curve(curves: dict[str, pd.Series]) -> pd.DataFrame:
 def plot_portfolio(portfolio: pd.DataFrame,
                    index_df: pd.DataFrame | None,
                    save_path: str,
-                   index_name: str = "沪深300") -> None:
+                   index_name: str = "沪深300",
+                   label: str = "") -> None:
     if portfolio.empty:
         print("  组合曲线为空，跳过绘图")
         return
@@ -245,7 +330,7 @@ def plot_portfolio(portfolio: pd.DataFrame,
     ax1.axhline(100, color=C_MUTED, lw=0.6, linestyle=":")
     final = port.iloc[-1] * 100
     ax1.set_title(
-        f"JCY 增持股 —— 平均单股净值  |  期末 {final:.1f}（起点=100）  "
+        f"JCY {label or '推荐股'} —— 平均单股净值  |  期末 {final:.1f}（起点=100）  "
         f"|  {len(portfolio)} 个交易日  |  最多 {int(portfolio['n_active'].max())} 只在场\n"
         f"口径：每只票各自满仓独立回测后按日历取算术平均，"
         f"不是一个固定资金池的真实组合收益",
@@ -275,18 +360,24 @@ def write_batch_report(rows: list[dict],
                        curves: dict[str, pd.Series],
                        output_dir: str,
                        index_df: pd.DataFrame | None = None,
-                       index_name: str = "沪深300") -> pd.DataFrame:
-    """写出 summary.csv + 组合净值图，并在控制台打印汇总表。返回汇总 DataFrame。"""
+                       index_name: str = "沪深300",
+                       label: str = "") -> pd.DataFrame:
+    """写出 summary.csv + 组合净值图，并在控制台打印汇总表。返回汇总 DataFrame。
+
+    label : 池子名称（如 "看多池 买入/增持"），用于控制台标题与组合图标题；
+            正向池与对照池分别写在各自的 output_dir 下。
+    """
     summary = build_summary(rows)
     if summary.empty:
         print("\n  没有成功的回测，跳过汇总")
         return summary
 
+    os.makedirs(output_dir, exist_ok=True)
     csv_path = os.path.join(output_dir, "summary.csv")
     summary.to_csv(csv_path, index=False, encoding="utf-8-sig")
     print(f"\n  横截面汇总已保存至：{csv_path}")
 
-    print_summary_table(summary)
+    print_summary_table(summary, label=label)
 
     portfolio = build_portfolio_curve(curves)
     if not portfolio.empty:
@@ -295,6 +386,92 @@ def write_batch_report(rows: list[dict],
         print(f"  组合净值序列已保存至：{portfolio_csv}")
         plot_portfolio(portfolio, index_df,
                        os.path.join(output_dir, "summary_portfolio.png"),
-                       index_name=index_name)
+                       index_name=index_name, label=label)
 
     return summary
+
+
+# ── 评级对照（正向池 vs 看空池） ──────────────────────────────────────────────
+
+# 只比这几个指标：跨池比较的意义在于「评级有没有区分度」，收益/回撤这类
+# 受窗口长度影响的绝对值不适合直接对着看。
+COMPARE_METRICS = [
+    ("选股alpha%",  "median", "选股alpha中位%",  "推荐本身 vs 指数"),
+    ("选股alpha%",  "winpct", "跑赢指数比例%",   "买入持有口径"),
+    ("基准收益%",   "median", "买入持有中位%",   "不做择时直接拿着"),
+    ("日均超额bp",  "median", "日均超额中位bp",  "择时 alpha"),
+    ("策略收益%",   "median", "策略收益中位%",   "含择时"),
+    ("在场比例%",   "median", "在场比例中位%",   "暴露度"),
+]
+
+
+def _pool_stat(df: pd.DataFrame, col: str, how: str) -> float | None:
+    """一个池子在某列上的聚合值。列缺失 / 全空 → None（表里显示 N/A）。
+
+    how="median" 取中位数（右偏分布的重心）；"winpct" 取该列 > 0 的占比（%）。
+    """
+    if col not in df.columns:
+        return None
+    s = df[col].dropna()
+    if s.empty:
+        return None
+    return float((s > 0).mean() * 100) if how == "winpct" else float(s.median())
+
+
+def _fmt_cell(v) -> str:
+    return "   N/A" if v is None or pd.isna(v) else f"{v:>+10.2f}"
+
+
+def compare_rating_pools(long_df: pd.DataFrame, control_df: pd.DataFrame,
+                         output_dir: str,
+                         long_label: str = "看多池",
+                         control_label: str = "对照池") -> pd.DataFrame:
+    """
+    正向池与看空对照池同口径对比，回答「这套评级有没有区分度」。
+
+    单跑看多池只能说明这批票在这段行情里涨没涨——牛市里随便挑一篮子都涨。
+    只有看空池同期同策略跑一遍、且**明显更差**，"增持/买入"这个标签才带信息。
+    差值为正 = 评级方向正确。
+
+    重要边界：两个池子的推荐日分布不同、样本量差很多（看空评级本来就少），
+    这里给的是描述性对比，**不是显著性检验**。样本期只有几个月、且所有标的
+    共享同一段行情时，差几个点完全可能是噪声。
+    """
+    rows = []
+    for col, how, name, note in COMPARE_METRICS:
+        lv = _pool_stat(long_df, col, how)
+        cv = _pool_stat(control_df, col, how)
+        rows.append({
+            "指标":        name,
+            "口径":        note,
+            long_label:    None if lv is None else round(lv, 2),
+            control_label: None if cv is None else round(cv, 2),
+            "差值":        None if lv is None or cv is None else round(lv - cv, 2),
+        })
+
+    out = pd.DataFrame(rows)
+
+    print("\n" + "═" * 78)
+    print(f"  评级区分度：{long_label}（{len(long_df)} 只） "
+          f"vs {control_label}（{len(control_df)} 只）")
+    print("═" * 78)
+    print(f"    {'指标':<18}{long_label:>12}{control_label:>12}{'差值':>10}   口径")
+    for _, r in out.iterrows():
+        print(f"    {r['指标']:<18}{_fmt_cell(r[long_label]):>12}"
+              f"{_fmt_cell(r[control_label]):>12}"
+              f"{_fmt_cell(r['差值']):>10}   {r['口径']}")
+
+    pick = out[out["指标"] == "选股alpha中位%"]
+    if not pick.empty and pd.notna(pick.iloc[0]["差值"]):
+        d = pick.iloc[0]["差值"]
+        verdict = ("看多池选股 alpha 更高，评级方向正确" if d > 0
+                   else "看多池并不优于看空池 —— 这套评级在本样本上没有区分度")
+        print(f"\n  → 选股 alpha 差值 {d:+.2f}%：{verdict}")
+    print("  ⚠️ 这是描述性对比，不是显著性检验：两池样本量与推荐日分布都不同，"
+          "\n     且所有标的共享同一段行情，差几个点完全可能是噪声。")
+    print("═" * 78)
+
+    csv_path = os.path.join(output_dir, "summary_rating_compare.csv")
+    out.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    print(f"  评级对照表已保存至：{csv_path}")
+    return out

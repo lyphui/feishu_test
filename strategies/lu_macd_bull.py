@@ -15,8 +15,10 @@
                单看一根等于没有过滤（旧实现即如此，19 个金叉 19 个通过）。
                因此这里要求连续拉长，最早在金叉后第 1 根才可能触发。
 
-  卖出     ── 红柱开始缩短（MACD 柱本根 < 上根，且 MACD > 0）
-               即动能衰减，不等死叉，主动离场截取最陡段
+  卖出     ── 持有条件是「红柱且在拉长」，不满足即离场：
+               红柱缩短（MACD 柱本根 < 上根，且 MACD > 0）→ 动能衰减
+               或 MACD 柱 ≤ 0（含死叉后的整段负柱）    → 动能已经没了
+               不等死叉那一根事件，主动截取最陡段
 
   熊市保护 ── 牛市过滤器失效时，强制 signal=0，拒绝一切买入
 
@@ -65,7 +67,8 @@ class LuMACDBullStrategy(BaseStrategy):
     bull_signal : int
         大盘牛市判断用 DEA 信号线，默认 9
     shrink_exit : bool
-        True  = 红柱缩短即卖出（截陡坡，文中描述的高手做法）
+        True  = 只在「红柱且在拉长」时持有，红柱缩短或柱子 ≤ 0 即卖出
+                （截陡坡，文中描述的高手做法）
         False = 等待死叉再卖出（保守版，减少假信号）
     expand_bars : int
         买入要求红柱连续拉长的最少根数，默认 2。
@@ -267,7 +270,21 @@ class LuMACDBullStrategy(BaseStrategy):
 
         # 卖出
         if self.shrink_exit:
-            sell_condition = df["hist_shrinking"] & df["bull_market"]
+            # 「持有条件 = 红柱且在拉长」，其余一律离场。
+            #
+            # 旧实现只写 hist_shrinking，而它自带 hist > 0 前提：柱子若从正值
+            # **直接跌破 0**（跳空/急跌，当根 hist ≤ 0），当根不算缩短，之后
+            # 整段负柱期间也永远不算——于是没有任何离场信号，只能等 10% 固定
+            # 止损或月线转熊。实测 600938 有 10/45 次、601857 有 9/70 次零轴
+            # 下穿属于这种情形，其中数次负柱持续 20~37 个交易日、期间跌
+            # 11%~16%。文档说「止盈交给 shrink_exit」，实际尾部风险全压在
+            # 那个固定止损上。
+            #
+            # 用**状态**（hist ≤ 0）而不是**事件**（death_cross）：挂单因涨停
+            # 顺延、建仓时柱子已经翻负的情况，事件那一根早就过去了，只有状态
+            # 判断才兜得住。death_cross ≡ hist 下穿 0（hist=(DIF−DEA)×2），
+            # 所以它已被 hist ≤ 0 完全覆盖，不必再并进来。
+            sell_condition = df["hist_shrinking"] | (hist <= 0)
         else:
             sell_condition = death_cross
 
@@ -346,7 +363,10 @@ class LuMACDBullStrategy(BaseStrategy):
 
         # ── 买卖信号标注 ──────────────────────────────────────────────────────
         buy_dates  = df.index[df["signal"] == 1]
-        sell_dates = df.index[df["signal"] == -1]
+        # 卖出信号是**状态**（柱子 ≤ 0 / 熊市期间每天都成立），逐日打点会糊成
+        # 一片。只标每段连续卖出信号的第一根——那才是"该走了"的时点。
+        is_sell    = df["signal"] == -1
+        sell_dates = df.index[is_sell & ~is_sell.shift(1).fillna(False).astype(bool)]
         if len(buy_dates):
             ax.scatter(buy_dates, df.loc[buy_dates, "DIF"],
                        marker="^", color=c_green, s=70, zorder=5,

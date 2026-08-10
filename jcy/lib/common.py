@@ -59,13 +59,40 @@ def is_ashare_code(code) -> bool:
     return bool(code and re.fullmatch(r"\d{6}", str(code)))
 
 
-def load_candidates(json_path: str = JSON_PATH) -> list[dict]:
-    """
-    从 jcy_insights.json 筛选增持 A 股，去重后返回候选列表。
-    同一股票多次出现时，保留 rating=增持 的最早记录。
+# 正向池：看多评级。旧实现只收「增持」，把 51 只「买入」（Strong Buy，更强的
+# 信号）整个排除在回测之外——用中间档定义股票池而丢掉最强档，没有理由。
+LONG_RATINGS = ("买入", "增持")
 
-    返回格式：[{"code": ..., "name": ..., "date": "YYYYMMDD", "reason": ...}, ...]
+# 对照池：看空/回避评级。单跑正向池只能说明「这批票涨没涨」，回答不了
+# 「这个评级体系有没有区分度」——那需要看空池同口径跑一遍作对照。
+CONTROL_RATINGS = ("减持", "卖出", "回避")
+
+
+def parse_ratings(value: str) -> tuple[str, ...]:
+    """逗号分隔的评级列表 → tuple；空串 → 空 tuple（表示不启用）。
+
+    给 argparse 的 type= 用。放在这里而不是各入口脚本里各写一份：
+    两个脚本的 --ratings 必须同义，复制出来的解析函数迟早会漂移。
     """
+    return tuple(r.strip() for r in (value or "").split(",") if r.strip())
+
+
+def load_candidates(json_path: str = JSON_PATH,
+                    ratings: tuple[str, ...] | list[str] = LONG_RATINGS) -> list[dict]:
+    """
+    从 jcy_insights.json 按评级筛选 A 股，去重后返回候选列表。
+    同一股票多次出现时，保留**首次落入 ratings** 的最早记录。
+
+    ratings : 收录哪些评级，默认 LONG_RATINGS（买入 + 增持）。
+              传 CONTROL_RATINGS 可得到看空对照池。
+
+    返回格式：
+      [{"code":..., "name":..., "date": "YYYYMMDD", "rating":..., "reason":...}, ...]
+
+    已知边界：同一只票可能在正向池和对照池里各出现一次（先增持、后回避），
+    两个池子的日期不同，这是真实情况，不做特殊处理。
+    """
+    ratings = tuple(ratings)
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
@@ -82,13 +109,14 @@ def load_candidates(json_path: str = JSON_PATH) -> list[dict]:
         for company in article.get("companies") or []:
             code   = company.get("code")
             rating = company.get("rating", "")
-            if rating != "增持" or not is_ashare_code(code):
+            if rating not in ratings or not is_ashare_code(code):
                 continue
             if code not in seen:
                 seen[code] = {
                     "code":   code,
                     "name":   company.get("name", ""),
                     "date":   date,
+                    "rating": rating,
                     "reason": company.get("rating_reason", ""),
                 }
 

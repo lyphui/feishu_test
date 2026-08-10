@@ -29,8 +29,19 @@ params: dict               # 参数字典（展示用）
 
 **LuMACDBullStrategy 特殊设计：**
 - 构造函数接受 `index_df`（大盘数据），`prepare()` 参数中的 `index_df` 优先，否则 fallback 到构造函数传入的值
-- 牛市判断：大盘**已收盘**月线 DIF > 0 且 DIF > DEA
+- 牛市判断：大盘**已收盘**月线 DIF > 0 且 DIF > DEA。
+  **指数必须从 `config.INDEX_HISTORY_START` 起取**（走 `index_history_start()`）：
+  月线 EMA(26) 要几十根月线才收敛，只喂两年数据算出来的 `bull_market` 会失真，
+  且起点若跟着候选池走，加一篇更早的文章就会改写全部历史判定
 - 买入：近 `cross_window`(默认3) 根内出现金叉 **且** 红柱连续 `expand_bars`(默认2) 根拉长。
   单根"红柱拉长"在金叉当根恒为真（hist 由 ≤0 翻正），起不到过滤作用，故必须连续确认；
   `expand_bars=1, cross_window=1` 可复现旧口径
-- 卖出模式：`shrink_exit=True`（红柱缩短即走）或 `False`（等死叉）
+- 卖出模式：
+  - `shrink_exit=True`（默认）——**持有条件 = 红柱且在拉长**，
+    `sell = hist_shrinking | (hist <= 0)`。不能只写 `hist_shrinking`：它自带 `hist > 0` 前提，
+    柱子从正值**直接跌破 0**（跳空/急跌）的那根不算缩短，之后整段负柱也不算，
+    于是完全没有离场信号，只剩固定止损兜底（实测 600938 有 10/45 次、601857 有 9/70 次
+    零轴下穿属于此情形，最长负柱 37 个交易日 / −15.8%）。
+    用**状态** `hist <= 0` 而非**事件** `death_cross`：挂单顺延导致建仓时柱子已翻负的情况，
+    事件那一根早就过去了。二者本就等价（`hist = (DIF−DEA)×2`），状态版还多兜住了这一类
+  - `shrink_exit=False`——等死叉再走（保守版）

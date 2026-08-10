@@ -138,7 +138,9 @@ def test_every_metric_is_actually_produced_by_evaluate_combo(monkeypatch):
                         lambda *a, **kw: None)
     monkeypatch.setattr(param_sweep, "run_backtest",
                         lambda **kw: {"total_return": 12.0, "benchmark_return": 5.0,
-                                      "max_drawdown": -8.0, "total_trades": 3})
+                                      "max_drawdown": -8.0, "total_trades": 3,
+                                      "exposure_pct": 35.0,
+                                      "equity_curve": pd.DataFrame(index=range(70))})
 
     row = param_sweep.evaluate_combo({}, _cands(["20240101", "20240201"]),
                                      None, "20241231", 100_000.0)
@@ -146,6 +148,20 @@ def test_every_metric_is_actually_produced_by_evaluate_combo(monkeypatch):
     assert row["样本数"] == 2
     for m in METRICS:
         assert m in row, f"METRICS 收录了 evaluate_combo 并不产出的键：{m}"
+    # 日均口径必须真的按窗口长度归一：+7% 超额 / 70 个交易日 = 10bp/日
+    assert row["日均超额中位bp"] == pytest.approx(10.0)
+
+
+def test_daily_metric_is_the_default_not_total_excess():
+    """
+    选参数的默认指标必须是对窗口长度归一的那个。用总超额%选参，选出来的是
+    "哪组参数恰好被长窗口标的占了多数"——batch_report 已经论证过它不可比。
+    """
+    import sys
+    from unittest import mock
+
+    with mock.patch.object(sys, "argv", ["param_sweep.py"]):
+        assert parse_args().metric == "日均超额中位bp"
 
 
 def test_bad_metric_is_rejected_before_the_grid_runs(monkeypatch):

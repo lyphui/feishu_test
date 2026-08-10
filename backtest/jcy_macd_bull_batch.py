@@ -1,14 +1,28 @@
 """
-JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
+JCY 推荐股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 =======================================================
 从 data/jcy/jcy_insights.json 读取研报数据，筛选满足以下条件的股票：
-  - rating == "增持"
+  - rating 落在 --ratings（默认「买入,增持」）
   - code 为 6 位纯数字的 A 股代码
 
-同一股票多次出现时，保留 rating=增持 的最早记录。
+同一股票多次出现时，保留首次落入该评级集合的最早记录。
+
+为什么默认收「买入 + 增持」而不只收「增持」
+------------------------------------------
+数据里有 51 只 A 股是「买入」（Strong Buy）、239 只是「增持」。旧实现只收
+增持，等于用中间档定义股票池、把最强的那档整个丢在回测之外。
+
+对照池（--control）
+-------------------
+只跑看多池，最多能说明"这批票在这段行情里涨没涨"——牛市随便挑一篮子都涨，
+回答不了"这套评级有没有区分度"。传 --control 减持,回避 会把看空池用**完全
+相同的策略与参数**再跑一遍，并输出两池的同口径对照表。看多池明显更好，
+"买入/增持"这个标签才带信息。
 
 回测参数
 --------
+  --ratings     进入回测的评级，逗号分隔，默认 买入,增持
+  --control     看空对照池评级，逗号分隔，如 减持,回避；留空不跑对照
   --stop_loss   止损比例，默认 0.10；传 none 关闭
   --take_profit 止盈比例，默认关闭（none）；传数值则启用
   --capital     初始资金，默认 100000
@@ -27,23 +41,28 @@ JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 
 数据与买入逻辑
 --------------
-  - 数据起始 = JSON 推荐日期往前推 365 天（让 MACD 充分预热，避免初始失真）
+  - 个股数据起始 = JSON 推荐日期往前推 600 天（让日线 MACD 充分预热）
+  - 大盘指数从 config.INDEX_HISTORY_START 起取，与候选池无关（月线 MACD 预热）
   - JSON 推荐日期之前：所有买入和卖出信号全部清零，不发生任何操作
   - JSON 推荐日期当天及之后：买入、卖出、止损、止盈均正常执行
 
 输出目录结构
 ------------
   output/
-    summary.csv                    # 横截面汇总：每股一行，按超额收益排序
+    summary.csv                    # 横截面汇总：每股一行，按日均超额排序
     summary_portfolio.csv / .png   # 等权组合净值 vs 大盘
+    summary_rating_compare.csv     # 评级区分度对照表（仅 --control 时）
     jcy_{股票代码}_{股票名称}_{推荐日期}/
       lu_bull_{股票名称}_{股票代码}_{结束日期}.png
       lu_bull_{股票名称}_{股票代码}_{结束日期}.csv          # 交易记录
       lu_bull_{股票名称}_{股票代码}_{结束日期}_daily_status.csv
+    control/                       # 对照池（仅 --control 时），结构同上
 
 用法示例
 --------
     python jcy_macd_bull_batch.py
+    python jcy_macd_bull_batch.py --control 减持,回避       # 带看空对照组
+    python jcy_macd_bull_batch.py --ratings 买入            # 只跑最强评级
     python jcy_macd_bull_batch.py --stop_loss 0.15 --take_profit 0.12
 """
 
@@ -53,14 +72,16 @@ import sys
 from datetime import date as _date, timedelta
 
 from engine import run_backtest, fmt_sharpe
-from config import OutputPaths
+from config import OutputPaths, index_history_start
 from bull_report import export_bull_daily_status, plot_bull_backtest
-from batch_report import result_to_row, normalized_equity, write_batch_report
+from batch_report import (result_to_row, normalized_equity, write_batch_report,
+                          compare_rating_pools)
 from strategies import LuMACDBullStrategy
 from lib.plotting import setup_matplotlib
 from lib.market_data import fetch_index_data
 from lib.bull_backtest import BullStrategyAdapter
-from jcy.lib.common import JSON_PATH, load_candidates
+from jcy.lib.common import (JSON_PATH, LONG_RATINGS, CONTROL_RATINGS,
+                            load_candidates, parse_ratings)
 
 setup_matplotlib()
 
@@ -92,10 +113,12 @@ def backtest_one(candidate: dict, end_date: str, index_df,
     index_df : 大盘指数日线（由调用方统一取一次后复用，避免 N 次重复请求）
 
     warmup_days : int
-        在 JSON 推荐日期前额外取多少个**自然日**的历史数据，用于指标预热。
-        默认 600 天（约 400 个交易日）：日线 EMA-26 只需几十根就稳定，但
-        牛市过滤器要算大盘**月线** MACD，EMA-26 需要 26 根月线 ≈ 2 年数据，
-        取少了会让推荐日附近的 bull_market 判断失真。
+        在 JSON 推荐日期前额外取多少个**自然日**的个股历史数据，用于指标预热。
+        默认 600 天（约 400 个交易日），日线 EMA-26 几十根就稳定，足够有余。
+
+        只管个股。牛市过滤器用的大盘**月线** MACD 另有一套预热——指数一律从
+        `config.INDEX_HISTORY_START` 起取，与本参数、与候选池都无关（月线
+        EMA-26 要几十根月线才收敛，靠这 600 天远远不够）。
 
     预热期只喂数据不交易（BullStrategyAdapter 清零信号），且通过
     run_backtest(eval_start=...) 排除在收益/回撤/夏普/基准统计之外。
@@ -177,8 +200,14 @@ def backtest_one(candidate: dict, end_date: str, index_df,
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="JCY 增持股票批量回测（卢麒元 MACD 牛市动能截取策略）"
+        description="JCY 推荐股票批量回测（卢麒元 MACD 牛市动能截取策略）"
     )
+    parser.add_argument("--ratings",     type=parse_ratings,
+                        default=LONG_RATINGS,
+                        help=f"进入回测的评级，逗号分隔，默认 {','.join(LONG_RATINGS)}")
+    parser.add_argument("--control",     type=parse_ratings, default=(),
+                        help=f"看空对照池评级，逗号分隔（建议 "
+                             f"{','.join(CONTROL_RATINGS)}）；留空则不跑对照")
     parser.add_argument("--stop_loss",   type=_ratio_or_none, default=0.10,
                         help="止损比例，默认 0.10；传 none/空 关闭")
     parser.add_argument("--take_profit", type=_ratio_or_none, default=None,
@@ -195,50 +224,23 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
+WARMUP_DAYS = 600      # 个股行情在推荐日前多取的自然日数（指标预热）
 
-    end_date = _date.today().strftime("%Y%m%d")
 
+def run_pool(candidates: list[dict], label: str, output_dir: str,
+             end_date: str, index_df, args) -> "tuple[object, dict]":
+    """把一个候选池整体跑完，写出该池的汇总，返回 (summary_df, curves)。
+
+    正向池与对照池共用这个函数——策略、参数、成本、指数完全相同，
+    两池的差异才只来自评级本身。
+    """
     print("\n" + "─" * 60)
-    print("  JCY 增持股票批量回测 —— 卢麒元 MACD 牛市动能截取策略")
+    print(f"  {label}：{len(candidates)} 只  →  {output_dir}/")
     print("─" * 60)
-    print(f"  数据来源：{JSON_PATH}")
-    print(f"  止损：{_fmt_ratio(args.stop_loss)}  "
-          f"止盈：{_fmt_ratio(args.take_profit)}  "
-          f"资金：{args.capital:,.0f}  大盘：{args.index}")
-    print(f"  结束日期：{end_date}  输出目录：{args.output}/")
-    print("─" * 60)
-
-    # 加载候选股票
-    if not os.path.exists(JSON_PATH):
-        print(f"  ❌ 找不到 JSON 文件：{JSON_PATH}")
-        sys.exit(1)
-
-    candidates = load_candidates(JSON_PATH)
-    if not candidates:
-        print("  ❌ 未找到满足条件的增持 A 股，请检查 JSON 数据")
-        sys.exit(1)
-
-    print(f"\n  共找到 {len(candidates)} 只增持 A 股（已去重，保留 rating=增持 的最早记录）：")
     for c in candidates:
-        print(f"    {c['code']}  {c['name']:8s}  起始日期：{c['date'][:4]}-{c['date'][4:6]}-{c['date'][6:]}")
+        print(f"    {c['code']}  {c['name']:8s}  [{c.get('rating', '')}]  "
+              f"起始日期：{c['date'][:4]}-{c['date'][4:6]}-{c['date'][6:]}")
 
-    os.makedirs(args.output, exist_ok=True)
-
-    # 大盘指数只取一次：所有个股共用（区间取全体候选中最早的预热起点）
-    warmup_days = 600
-    earliest = min(c["date"] for c in candidates)
-    index_start = (_date(int(earliest[:4]), int(earliest[4:6]), int(earliest[6:]))
-                   - timedelta(days=warmup_days)).strftime("%Y%m%d")
-    print(f"\n  获取大盘指数 {args.index} 数据（{index_start} → {end_date}）...")
-    try:
-        index_df = fetch_index_data(args.index, index_start, end_date)
-    except Exception as e:
-        print(f"  ❌ 大盘指数获取失败：{e}")
-        sys.exit(1)
-
-    # 逐只回测
     rows: list[dict] = []
     curves: dict[str, "object"] = {}
     fail_count = 0
@@ -251,22 +253,92 @@ def main():
             stop_loss     = args.stop_loss,
             take_profit   = args.take_profit,
             shrink_exit   = args.shrink_exit,
-            base_output_dir = args.output,
-            warmup_days   = warmup_days,
+            base_output_dir = output_dir,
+            warmup_days   = WARMUP_DAYS,
         )
         if result is None:
             fail_count += 1
             continue
-        rows.append(result_to_row(candidate, result))
+        rows.append(result_to_row(candidate, result, index_df=index_df))
         curves[f"{candidate['code']} {candidate['name']}"] = normalized_equity(result)
 
     print("\n" + "─" * 60)
-    print(f"  批量回测完成：成功 {len(rows)} 只，失败 {fail_count} 只")
-    print(f"  结果已保存至：{os.path.abspath(args.output)}/")
+    print(f"  {label} 回测完成：成功 {len(rows)} 只，失败 {fail_count} 只")
+    if fail_count:
+        print(f"  ⚠️ 失败的 {fail_count} 只（多为退市/长期停牌/取数失败）不进汇总，"
+              "剩下的样本带幸存者偏差")
     print("─" * 60)
 
-    write_batch_report(rows, curves, args.output,
-                       index_df=index_df, index_name=args.index)
+    summary = write_batch_report(rows, curves, output_dir,
+                                 index_df=index_df, index_name=args.index,
+                                 label=label)
+    return summary, curves
+
+
+def main():
+    args = parse_args()
+
+    if not args.ratings:
+        print("  ❌ --ratings 不能为空")
+        sys.exit(1)
+
+    end_date = _date.today().strftime("%Y%m%d")
+    long_label    = f"看多池 {'/'.join(args.ratings)}"
+    control_label = f"对照池 {'/'.join(args.control)}" if args.control else ""
+
+    print("\n" + "─" * 60)
+    print("  JCY 推荐股票批量回测 —— 卢麒元 MACD 牛市动能截取策略")
+    print("─" * 60)
+    print(f"  数据来源：{JSON_PATH}")
+    print(f"  评级：{','.join(args.ratings)}"
+          f"{'   对照：' + ','.join(args.control) if args.control else ''}")
+    print(f"  止损：{_fmt_ratio(args.stop_loss)}  "
+          f"止盈：{_fmt_ratio(args.take_profit)}  "
+          f"资金：{args.capital:,.0f}  大盘：{args.index}")
+    print(f"  结束日期：{end_date}  输出目录：{args.output}/")
+    print("─" * 60)
+
+    # 加载候选股票
+    if not os.path.exists(JSON_PATH):
+        print(f"  ❌ 找不到 JSON 文件：{JSON_PATH}")
+        sys.exit(1)
+
+    candidates = load_candidates(JSON_PATH, ratings=args.ratings)
+    if not candidates:
+        print(f"  ❌ 未找到评级为 {','.join(args.ratings)} 的 A 股，请检查 JSON 数据")
+        sys.exit(1)
+
+    control_candidates = (load_candidates(JSON_PATH, ratings=args.control)
+                          if args.control else [])
+    if args.control and not control_candidates:
+        print(f"  ⚠️ 未找到评级为 {','.join(args.control)} 的 A 股，跳过对照池")
+
+    os.makedirs(args.output, exist_ok=True)
+
+    # 大盘指数只取一次：所有个股、两个池子共用。起点是**绝对日期**，不随候选池
+    # 变化——月线 EMA(26) 需要几十根月线才收敛，若按「最早推荐日 − 600 天」取，
+    # 加一篇更早的文章就会改写全部个股的 bull_market 历史（见 config.py）。
+    index_start = index_history_start()
+    print(f"\n  获取大盘指数 {args.index} 数据（{index_start} → {end_date}）...")
+    try:
+        index_df = fetch_index_data(args.index, index_start, end_date)
+    except Exception as e:
+        print(f"  ❌ 大盘指数获取失败：{e}")
+        sys.exit(1)
+
+    summary, _ = run_pool(candidates, long_label, args.output,
+                          end_date, index_df, args)
+
+    if control_candidates:
+        control_dir = os.path.join(args.output, "control")
+        control_summary, _ = run_pool(control_candidates, control_label,
+                                      control_dir, end_date, index_df, args)
+        if not summary.empty and not control_summary.empty:
+            compare_rating_pools(summary, control_summary, args.output,
+                                 long_label=long_label,
+                                 control_label=control_label)
+
+    print(f"\n  全部结果已保存至：{os.path.abspath(args.output)}/")
 
 
 if __name__ == "__main__":

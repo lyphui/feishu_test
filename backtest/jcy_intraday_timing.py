@@ -154,6 +154,7 @@ from matplotlib.gridspec import GridSpec
 warnings.filterwarnings("ignore")
 
 from strategies import LuMACDBullStrategy
+from config import index_history_start
 from lib.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED,
     setup_matplotlib, style_ax,
@@ -925,7 +926,9 @@ def _fetch_daily_signals(
         print(f"    日线数据不足，跳过")
         return None
 
-    index_df = fetch_index_data(index_symbol, data_start, today_str)
+    # 指数起点用绝对日期，不跟着个股的 data_start 走：否则每只票看到的月线
+    # MACD 预热长度都不一样，同一天的 bull_market 可能因股而异（见 config.py）
+    index_df = fetch_index_data(index_symbol, index_history_start(), today_str)
     if index_df.empty:
         print(f"    大盘数据为空，跳过")
         return None

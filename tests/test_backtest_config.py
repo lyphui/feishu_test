@@ -139,3 +139,36 @@ def test_execution_kwargs_feed_run_backtest():
     sig = inspect.signature(run_backtest).parameters
     for key in bt_config.execution_kwargs(cfg):
         assert key in sig, f"execution_kwargs 产出了 run_backtest 不接受的参数：{key}"
+
+
+# ── 指数取数起点（牛市过滤器可复现性） ────────────────────────────────────────
+
+def test_index_history_start_is_absolute_not_pool_dependent():
+    """
+    月线 EMA(26) 要几十根月线才收敛。旧实现按「最早推荐日 − 600 天」取指数，
+    往 jcy_insights.json 里加一篇更早的文章就会改写全部个股的 bull_market
+    历史 —— 回测数值随候选池变化，不可复现。起点必须是绝对日期。
+    """
+    from config import INDEX_HISTORY_START, index_history_start
+
+    # 与候选池无关：不传参数永远是同一个绝对起点
+    assert index_history_start() == INDEX_HISTORY_START
+    assert index_history_start() == index_history_start()
+
+    # 早于绝对起点的请求以请求为准（回测区间本来就更长）
+    assert index_history_start("20100101") == "20100101"
+    # 晚于绝对起点的一律补齐，不允许缩短月线预热
+    assert index_history_start("20240101") == INDEX_HISTORY_START
+    assert index_history_start("") == INDEX_HISTORY_START
+    assert index_history_start(None) == INDEX_HISTORY_START
+
+
+def test_index_history_start_leaves_room_for_monthly_macd():
+    """至少要够 EMA(26) 月线收敛（26 根远远不够，这里要求 ≥ 8 年）。"""
+    from datetime import date
+    from config import INDEX_HISTORY_START
+
+    start = date(int(INDEX_HISTORY_START[:4]), int(INDEX_HISTORY_START[4:6]),
+                 int(INDEX_HISTORY_START[6:]))
+    months = (date.today().year - start.year) * 12 + date.today().month - start.month
+    assert months >= 96, f"指数预热只有 {months} 个月，月线 MACD 无法收敛"

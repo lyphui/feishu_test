@@ -28,10 +28,18 @@
     **交易级统计（次数/胜率/成本）同样只看窗口内**；`trades` 本身仍返回完整记录供绘图
   - `df=` — 直接注入行情，跳过网络请求（测试与参数扫描复用）
   - 基准（买入持有）与策略同口径：窗口首日**开盘价**买入、末日收盘估值
+  - **暴露度**：`equity_curve` 带 `shares` 列，`result` 含 `exposure_pct`（在场交易日占比）
+    与 `avg_holding_days`。空仓日既不赚也不亏，**回撤与夏普都未按暴露度调整**——
+    在场 3% 的时间做出 −24% 的回撤，和满仓做出 −24% 完全是两回事，汇总层与
+    `print_summary` 都显式标注这一点
 - `plot_backtest(result, save_path)` — 标准 4 面板图（价格+信号、指标、权益、回撤）
 
 **共享配置层（`backtest/config.py`）：** 三个单股入口共用
 - `load_backtest_config(filename, *, defaults)` → `BacktestConfig`：统一解析 `backtest/presets/*.ini` 的 `[backtest]` 段（end_date 默认今日、止损止盈空值转 None、proxy 写环境变量、缺失时按 defaults 写出）；策略专属参数经 `cfg.get_int/get_bool/get_float` 从 `.extra` 读取
+- `INDEX_HISTORY_START` / `index_history_start(requested_start=None)`：大盘指数取数的
+  **绝对起点**，与候选池无关。牛市过滤器算月线 MACD，EMA(26) 要几十根月线才收敛；
+  起点若按「最早推荐日 − 600 天」算，加一篇更早的文章就会改写全部个股的 `bull_market`
+  历史（沪深300 实测：截到 2021-01 有 7 个月判定翻转），回测不可复现
 - `execution_kwargs(cfg)` → dict：从 `.ini` 读成本与交易约束（commission_rate / min_commission / stamp_duty / slippage / limit_move_check / max_pending_days），直接 `**` 展开给 `run_backtest`，保证三个入口的成本假设一致
 - `OutputPaths(save_dir, prefix, name, symbol, end_date)`：统一输出路径（`.chart/.csv/.status`），`OutputPaths.safe()` 清洗文件名
 

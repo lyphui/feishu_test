@@ -14,7 +14,8 @@ import sys
 
 # 复用回测引擎、共享配置层与报告输出
 from engine import run_backtest
-from config import load_backtest_config, execution_kwargs, OutputPaths
+from config import (load_backtest_config, execution_kwargs, OutputPaths,
+                    index_history_start)
 from bull_report import export_bull_daily_status, plot_bull_backtest
 from strategies import LuMACDBullStrategy
 from lib.plotting import setup_matplotlib
@@ -91,9 +92,11 @@ def main():
     print(f"  shrink_exit：{shrink_exit}（{'红柱缩短即离场' if shrink_exit else '等死叉再离场'}）")
 
     try:
-        # 获取大盘指数数据（用于月线牛市判断）
-        print(f"\n  正在获取大盘指数数据（{cfg.index_symbol}）...")
-        index_df = fetch_index_data(cfg.index_symbol, cfg.start_date, cfg.end_date)
+        # 获取大盘指数数据（用于月线牛市判断）。起点补到 INDEX_HISTORY_START：
+        # 月线 EMA(26) 用 .ini 里那段区间预热远远不够，会让 bull_market 失真。
+        index_start = index_history_start(cfg.start_date)
+        print(f"\n  正在获取大盘指数数据（{cfg.index_symbol}，{index_start} 起）...")
+        index_df = fetch_index_data(cfg.index_symbol, index_start, cfg.end_date)
         if index_df.empty:
             raise ValueError(f"大盘指数 {cfg.index_symbol} 数据为空，请检查代码")
         print(f"  大盘指数获取到 {len(index_df)} 个交易日数据")

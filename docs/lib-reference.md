@@ -11,7 +11,7 @@
 
 | 模块 | 核心内容 |
 |------|----------|
-| `common.py` | `title_to_date()`、`title_to_filename()`、`record_key()`、`safe_title()`、`load_docs()`、`load_candidates()`、`is_ashare_code()`、路径常量（`JSON_PATH/DOCS_FILE/ADVICE_DIR`） |
+| `common.py` | `title_to_date()`、`title_to_filename()`、`record_key()`、`safe_title()`、`load_docs()`、`load_candidates(json, ratings=)`、`is_ashare_code()`、评级常量 `LONG_RATINGS`（买入+增持）/ `CONTROL_RATINGS`（减持/卖出/回避）、路径常量（`JSON_PATH/DOCS_FILE/ADVICE_DIR`） |
 | `text.py` | `blocks_to_text()`（飞书 block → 文本）、`parse_json_loose()`（宽松 JSON 解析） |
 | `pplx.py` | `PerplexityAPI` 客户端（`chat()`、`sonar_deep_research()`） |
 
