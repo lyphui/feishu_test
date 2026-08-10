@@ -9,3 +9,5 @@ output/
 feishu_test.egg-info/
 # 分时行情缓存：47 只就 32MB，且随时可用 lib/intraday_store.py 从 baostock 重建
 data/market/intraday/
+.venv/
+.vscode/

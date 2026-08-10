@@ -160,7 +160,7 @@ def run_step3(docs):
         index = store.record_index(articles)
         rec   = articles[index[key]] if key in index else {}
         if store.step3_done(rec):
-            log.info(f"[跳过] {title}")
+            # log.info(f"[跳过] {title}")
             continue
 
         advice_text = _load_advice(filename)

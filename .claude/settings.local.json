@@ -59,7 +59,8 @@
       "Bash(python -m pytest -q)",
       "Bash(python -c \"import engine, bull_report, lu_macd_analysis, lu_macd_bull_analysis, macd_analysis, jcy_macd_bull_batch; print\\('all imports OK'\\)\")",
       "Bash(python -m pytest \"c:/Users/panhui9/PycharmProjects/feishu_test/tests\" -q)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "PowerShell(python -V; python -c \"import sys; print\\(sys.executable\\)\"; \\(Get-Command -All python\\).Source)"
     ]
   }
 }
