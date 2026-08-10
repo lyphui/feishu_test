@@ -14,12 +14,55 @@ import pandas as pd
 import pytest
 
 from param_sweep import (AXES, DEFAULTS, METRICS, build_matrix, fmt_value,
-                         parse_args, split_candidates)
+                         parse_args, resolve_universe, split_candidates)
 
 
 def _cands(dates):
     return [{"code": f"60000{i}", "name": f"S{i}", "date": d, "reason": ""}
             for i, d in enumerate(dates)]
+
+
+# ── 股票池注入（扫描机制与"票从哪来"之间的唯一接口）────────────────────────────
+
+def test_explicit_codes_bypass_the_jcy_json(monkeypatch):
+    """给了 --codes 就不该去碰 jcy_insights.json——这正是解绑的意义。"""
+    import param_sweep
+    monkeypatch.setattr(param_sweep, "load_candidates",
+                        lambda *a, **k: pytest.fail("显式池不该读 JCY JSON"))
+    monkeypatch.setattr(param_sweep, "JSON_PATH", "/nonexistent/nope.json")
+
+    args = parse_args_for(["--codes", "601857", "600938",
+                           "--codes-start", "20180101"])
+    cands, label = resolve_universe(args)
+    assert [c["code"] for c in cands] == ["601857", "600938"]
+    assert all(c["date"] == "20180101" for c in cands)
+    assert "显式" in label
+
+
+def test_jcy_pool_is_still_the_default(monkeypatch):
+    import param_sweep
+    monkeypatch.setattr(param_sweep, "load_candidates",
+                        lambda path, ratings: _cands(["20240101", "20240202"]))
+    monkeypatch.setattr(param_sweep.os.path, "exists", lambda p: True)
+    cands, label = resolve_universe(parse_args_for([]))
+    assert len(cands) == 2
+    assert "JCY" in label
+
+
+def test_universe_entries_carry_only_what_evaluate_combo_needs():
+    """下游只用 code / date 两个键；接口契约别悄悄变宽。"""
+    cands, _ = resolve_universe(parse_args_for(["--codes", "601857"]))
+    assert {"code", "date"} <= set(cands[0])
+
+
+def parse_args_for(argv):
+    import sys
+    old = sys.argv
+    sys.argv = ["param_sweep.py", *argv]
+    try:
+        return parse_args()
+    finally:
+        sys.argv = old
 
 
 # ── 样本内 / 样本外切分 ───────────────────────────────────────────────────────

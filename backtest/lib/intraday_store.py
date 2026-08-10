@@ -69,15 +69,34 @@ def _bs_code(symbol: str) -> str:
 
 # ── 抓取 ──────────────────────────────────────────────────────────────────────
 
+#: baostock 的 adjustflag 取值。**本仓库唯一的分时取数实现**就靠它区分口径：
+#: 下单测算要不复权（VWAP 由 amount/volume 算，那两个字段恒为原始值），
+#: 分时 MACD 要复权（不复权序列在除权日有假跳空，指标会被它带偏）。
+ADJUST_FLAGS = {"none": "3", "qfq": "2", "hfq": "1"}
+
+
 def fetch_intraday_raw(symbol: str, start: str, end: str,
-                       period: int = 30) -> pd.DataFrame:
+                       period: int = 30, adjust: str = "none") -> pd.DataFrame:
     """
-    从 baostock 拉**不复权**分时 K 线（`adjustflag="3"`），带 amount。
+    从 baostock 拉分时 K 线，带 amount。**全仓库只有这一处分时取数实现。**
 
     baostock 的 `time` 字段标的是这根 K 线的**结束时刻**（30min 下首根是 10:00），
     因此首根的 `open` 就是当日集合竞价成交价。
+
+    adjust
+        `none` 不复权（默认，本仓库入库的就是它）/ `qfq` 前复权 / `hfq` 后复权。
+
+        **非 none 的结果不要入库**：`qfq` 会随分红回溯改写历史价，增量追加会把两种
+        口径缝在一起（与 `price_store` 同一个坑）。`load_intraday` 因此只接受 none。
+
+        **非 none 时 `amount` 仍是原始成交额**，与被缩放过的价格不同尺度——拿它算
+        VWAP 会得到几百上千 bp 的系统性错位。`execution._check_same_basis()` 会拦，
+        但别指望它：复权价只用来算指标，不要用来做 VWAP 基准。
     """
     import baostock as bs
+
+    if adjust not in ADJUST_FLAGS:
+        raise ValueError(f"未知复权口径：{adjust}（可选 {list(ADJUST_FLAGS)}）")
 
     bs.login()
     try:
@@ -85,7 +104,7 @@ def fetch_intraday_raw(symbol: str, start: str, end: str,
             _bs_code(symbol),
             "date,time,open,high,low,close,volume,amount",
             start_date=_dash(start), end_date=_dash(end),
-            frequency=str(period), adjustflag="3",
+            frequency=str(period), adjustflag=ADJUST_FLAGS[adjust],
         )
         rows = []
         while rs.error_code == "0" and rs.next():
@@ -247,8 +266,18 @@ def slice_range(df: pd.DataFrame, start: str | None = None,
 
 def load_intraday(symbol: str, start: str = "20220101", end: str | None = None,
                   *, period: int = 30, auto_update: bool = True,
-                  verbose: bool = True) -> pd.DataFrame:
-    """取分时行情。`auto_update=False` 时纯离线读本地（跑批 / 无网时用）。"""
+                  verbose: bool = True, adjust: str = "none") -> pd.DataFrame:
+    """
+    取分时行情。`auto_update=False` 时纯离线读本地（跑批 / 无网时用）。
+
+    只支持 `adjust="none"`：仓库存的就是不复权，复权口径既不能安全增量追加，
+    缓存了也没用（每次都得整表重建）。要复权分时直接调 `fetch_intraday_raw`。
+    """
+    if adjust != "none":
+        raise ValueError(
+            f"仓库只存不复权分时，不接受 adjust={adjust!r}。"
+            f"复权价请直接用 fetch_intraday_raw(..., adjust={adjust!r})——"
+            f"它会随分红回溯改写历史，不能增量追加，缓存也没有意义")
     if auto_update:
         return update_intraday(symbol, start, end, period=period, verbose=verbose)
     local = read_intraday(symbol, period)

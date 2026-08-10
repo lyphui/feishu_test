@@ -15,6 +15,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import date as _date
 
+from lib import costs
+
 # 回测预设 .ini 内置于 backtest 包内（backtest/presets/），取本文件所在目录
 _PRESETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets")
 
@@ -146,10 +148,11 @@ def execution_kwargs(cfg: BacktestConfig) -> dict:
     回测会得出不同收益，却看不出差在哪。缺省值即引擎默认值（A 股常见水平）。
     """
     return {
-        "commission_rate":  cfg.get_float("commission_rate", 0.0003),
-        "min_commission":   cfg.get_float("min_commission", 5.0),
-        "stamp_duty":       cfg.get_float("stamp_duty", 0.001),
-        "slippage":         cfg.get_float("slippage", 0.001),
+        # 缺省值一律取 lib/costs.py，不在这里另抄一遍字面量
+        "commission_rate":  cfg.get_float("commission_rate", costs.COMMISSION_RATE),
+        "min_commission":   cfg.get_float("min_commission", costs.MIN_COMMISSION),
+        "stamp_duty":       cfg.get_float("stamp_duty", costs.STAMP_DUTY),
+        "slippage":         cfg.get_float("slippage", costs.SLIPPAGE),
         "limit_move_check": cfg.get_bool("limit_move_check", True),
         "max_pending_days": cfg.get_int("max_pending_days", 3),
     }

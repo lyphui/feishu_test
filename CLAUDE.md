@@ -61,7 +61,8 @@ feishu_test/
 │
 ├── ── 回测脚本 ─────────────────────────────────
 ├── backtest/                      # 脚本模式（非包），以 python backtest/x.py 运行，同级裸导入
-│   ├── engine.py                  # 核心回测引擎：run_backtest / plot_backtest（无 CLI，含 A 股成交约束）
+│   ├── engine.py                  # 核心回测引擎：run_backtest（无 CLI、**不含绘图**，含 A 股成交约束）
+│   ├── report.py                  # 单股回测图表层：plot_backtest（4 面板），从 engine 拆出
 │   ├── config.py                  # 共享配置层：BacktestConfig / load_backtest_config / execution_kwargs / OutputPaths / INDEX_HISTORY_START
 │   ├── bull_report.py             # 牛市策略报告：plot_bull_backtest / export_bull_daily_status
 │   ├── batch_report.py            # 批量回测横截面汇总：summary.csv / 等权组合净值 vs 指数
@@ -89,6 +90,7 @@ feishu_test/
 │       ├── ladder.py              # 分批建仓模拟器：梯度加仓/定投/网格/按状态自适应切换
 │       ├── plotting.py            # 绘图样式（GitHub Dark 配色 + matplotlib 配置）
 │       ├── console.py             # use_utf8()：入口脚本 main() 首行必调，防重定向时 GBK 报错
+│       ├── costs.py               # A 股成本与交易约束的**唯一真值源**（engine 与 ladder 共用）
 │       ├── bull_backtest.py       # 牛市策略通用适配器 BullStrategyAdapter
 │       ├── oil_price.py           # Brent/WTI/SC 原油价格（新浪源）+ 油价→股价传导相关性分析
 │       ├── execution.py           # 日内下单方案测算（VWAP 基准，买卖双向，与标的/策略无关的度量层）
@@ -145,7 +147,7 @@ feishu_test/
 | # | 模块 | 一句话 | 详细文档 |
 |---|------|--------|----------|
 | 0-1 | 飞书授权 + JCY 数据流水线 | `authorize/` 换取 token；`jcy/` 完成 Step1-3（采集→AI建议→结构化提取），含全部 provider 与环境变量 | [docs/jcy-pipeline.md](docs/jcy-pipeline.md) |
-| 2 | MACD 回测引擎 | `backtest/engine.py` 核心 `run_backtest`：A股成交约束、T+1、成本口径、`eval_start` 窗口；`backtest/config.py` 共享配置层；预设 `.ini` 格式 | [docs/backtest-engine.md](docs/backtest-engine.md) |
+| 2 | MACD 回测引擎 | `backtest/engine.py` 核心 `run_backtest`（纯计算，图表在 `report.py`）：A股成交约束、T+1、成本口径（来自 `lib/costs.py`）、`eval_start` 窗口；`backtest/config.py` 共享配置层；预设 `.ini` 格式 | [docs/backtest-engine.md](docs/backtest-engine.md) |
 | 3 | 策略体系 | `strategies/`：MACDStrategy / LuMACDStrategy / LuMACDBullStrategy，BaseStrategy 共享方法与时序铁律 | [docs/strategies.md](docs/strategies.md) |
 | 4, 4b | 批量回测 + 参数扫描 | `jcy_macd_bull_batch.py` 批量跑（看多池 + `--control` 看空对照组）+ `batch_report.py` 横截面汇总（选股/择时两个 alpha 分开报、在场比例）；`param_sweep.py` 网格扫描判断过拟合，含样本外验证 | [docs/batch-and-sweep.md](docs/batch-and-sweep.md) |
 | 4c | 长期跟踪 + 分批建仓 | `oil_track.py` + `lib/price_store\|swings\|regime\|ladder`：本地行情仓库、市场状态分类、分批建仓模拟器 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) |
@@ -282,6 +284,7 @@ python backtest/hk_oil_etf_signal.py --symbol 3097.HK --capital 50000
 python backtest/param_sweep.py --limit 20
 python backtest/param_sweep.py --axis stop_loss take_profit
 python backtest/param_sweep.py --oos-frac 0.3          # 留最近 30% 推荐做样本外验证
+python backtest/param_sweep.py --codes 601857 600938 --codes-start 20180101  # 扫非 JCY 池
 
 # 测试（离线，不联网、不读真实 data/）
 pytest

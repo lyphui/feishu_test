@@ -167,6 +167,8 @@ from lib.plotting import (
 from lib.market_data import fetch_stock_data, fetch_index_data
 from lib.bull_backtest import BullStrategyAdapter
 from lib.console import use_utf8
+# 全仓库唯一的分时取数实现，本模块以 adjust="qfq" 复用它（见 fetch_intraday）
+from lib.intraday_store import fetch_intraday_raw
 from jcy.lib.common import JSON_PATH, load_candidates
 
 setup_matplotlib()
@@ -545,77 +547,44 @@ def _fetch_intraday_akshare(symbol: str, start_date: str, end_date: str,
     return None
 
 
-def _fetch_intraday_baostock(symbol: str, start_date: str, end_date: str,
-                             period: int) -> pd.DataFrame | None:
-    """baostock 分时数据获取。成功返回 DataFrame，失败返回 None。"""
-    try:
-        import baostock as bs
-    except ImportError:
-        return None
-
-    prefix = "sh" if symbol.startswith("6") or symbol.startswith("9") else "sz"
-    bs_code = f"{prefix}.{symbol}"
-    start_dash = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
-    end_dash = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
-
-    print(f"    正在从 baostock 获取 {bs_code} 分时({period}min)数据...")
-    try:
-        lg = bs.login()
-        rs = bs.query_history_k_data_plus(
-            bs_code,
-            "time,open,high,low,close,volume",
-            start_date=start_dash, end_date=end_dash,
-            frequency=str(period), adjustflag="2",
-        )
-        rows = []
-        while (rs.error_code == "0") and rs.next():
-            rows.append(rs.get_row_data())
-        bs.logout()
-
-        if not rows:
-            print(f"    baostock 分时返回空数据")
-            return None
-
-        df = pd.DataFrame(rows, columns=rs.fields)
-        # baostock time 格式：20260305093000000 → datetime
-        df["datetime"] = pd.to_datetime(df["time"], format="%Y%m%d%H%M%S%f")
-        df = df.drop(columns=["time"])
-        for col in ["open", "high", "low", "close", "volume"]:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df.set_index("datetime").sort_index()
-        # 过滤掉全零行（baostock 偶尔返回空行）
-        df = df[(df["close"] > 0) & (df["volume"] > 0)]
-        if df.empty:
-            return None
-        return df[["open", "high", "low", "close", "volume"]]
-    except Exception as e:
-        print(f"    ⚠ baostock 分时获取失败：{e}")
-        try:
-            bs.logout()
-        except Exception:
-            pass
-        return None
-
-
 def fetch_intraday(symbol: str, start_date: str, end_date: str,
                    period: int = 5) -> pd.DataFrame:
     """
-    获取分时 K 线（前复权），akshare → baostock 双源。
+    获取分时 K 线（**前复权**），akshare → baostock 双源。
     start_date / end_date: YYYYMMDD 格式
     period: 分钟数，5 / 15 / 30 / 60
+
+    baostock 那条路直接用 `lib.intraday_store.fetch_intraday_raw`——全仓库唯一的
+    分时取数实现。这里曾经有一份独立的 `_fetch_intraday_baostock`，与仓库那份
+    **口径还不一样**（这里 qfq、那边 none），靠人看着两处代码维持一致。
+
+    为什么这里要前复权、`intraday_store` 存不复权：本模块拿分时算 **MACD**，
+    而 MACD 走连续跨日序列，不复权在除权日有假跳空会带偏指标；下单测算要的是
+    **VWAP 基准**，它由 `amount/volume` 算出，那两个字段恒为原始值，必须配不复权价
+    （混用是几百上千 bp 的系统性错位，`execution._check_same_basis()` 专门拦这个）。
+    两个口径都对，各服务各自的用途——所以是同一个函数的两种参数，不是两份实现。
+
+    也因此**这条路不入库**：qfq 会随分红回溯改写历史，增量追加会把两种口径缝在
+    一起；每次都要整表重建，缓存也就没有意义（`load_intraday` 只收 none）。
     """
-    # 优先 akshare
+    # 优先 akshare（qfq）。本机 eastmoney 域名常被阻断，失败则落 baostock
     result = _fetch_intraday_akshare(symbol, start_date, end_date, period)
     if result is not None and not result.empty:
         return result
 
-    # baostock 备用
     print(f"    尝试 baostock 备用...")
-    result = _fetch_intraday_baostock(symbol, start_date, end_date, period)
-    if result is not None and not result.empty:
-        return result
-
-    return pd.DataFrame()
+    try:
+        flat = fetch_intraday_raw(symbol, start_date, end_date,
+                                  period=period, adjust="qfq")
+    except Exception as e:                      # 缺 baostock / 网络问题都在此兜住
+        print(f"    ⚠ baostock 分时获取失败：{e}")
+        return pd.DataFrame()
+    if flat.empty:
+        print(f"    baostock 分时返回空数据")
+        return pd.DataFrame()
+    # 仓库返回扁平表（dt/date 列 + amount）；本模块按 datetime 索引消费，不用 amount
+    return (flat.set_index("dt")[["open", "high", "low", "close", "volume"]]
+                .rename_axis("datetime"))
 
 
 # ── 分时 MACD 计算 ────────────────────────────────────────────────────────────

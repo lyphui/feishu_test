@@ -57,7 +57,14 @@
 
 ## 参数敏感性扫描 (`backtest/param_sweep.py`)
 
-**职责：** 在推荐股票池上网格遍历两个参数轴，判断当前参数是"策略有效"还是"恰好挑中幸运点"。
+**职责：** 在一个股票池上网格遍历两个参数轴，判断当前参数是"策略有效"还是"恰好挑中幸运点"。
+
+**股票池是可注入的**：扫描机制（网格、横截面聚合、样本外切分、热力图）与"票从哪来"之间
+只有 `resolve_universe()` 一个接口，它把任何来源归一成 `[{"code", "date"}]`（`date` = 该票的
+回测起点，JCY 池里就是推荐日）。默认走 JCY 推荐池，`--codes 601857 600938 --codes-start 20180101`
+即可给油气池做同样的过拟合检验。以前 `main()` 直接读 `jcy_insights.json`，这个通用工具因此
+只能扫一个池子。注意 `--codes` 池所有票共用同一起点，按推荐日的时序留出无从谈起，
+`--oos-frac` 会自动退化为纯样本内并给出提示。
 
 - 可扫轴见 `AXES`：`expand_bars` / `cross_window` / `fast` / `slow` / `signal_period` / `shrink_exit` / `stop_loss` / `take_profit`。
   `stop_loss` / `take_profit` 的候选值含 `None`（=不启用），`None` 正是 `take_profit` 的默认值
@@ -81,4 +88,4 @@
 选完参数后自动把 IS 最优格与默认格拿到 OOS 上重跑并给出判读：
 IS 最优在 OOS 转负 = 选中的是噪声；默认格在 OOS 反而更好 = 最优格是拟合出来的。
 
-**CLI：** `python backtest/param_sweep.py [--axis stop_loss take_profit] [--limit 20] [--oos-frac 0.3]`
+**CLI：** `python backtest/param_sweep.py [--axis stop_loss take_profit] [--limit 20] [--oos-frac 0.3] [--codes CODE...] [--codes-start YYYYMMDD]`

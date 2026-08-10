@@ -1,53 +1,35 @@
 """
-回测引擎（核心，无 CLI）
-========================
-被所有回测入口脚本复用：run_backtest 执行回测，plot_backtest 绘制标准 4 面板图。
+回测引擎（核心，无 CLI，**不含绘图**）
+======================================
+被所有回测入口脚本复用：`run_backtest` 执行回测并返回结果 dict，
+`print_summary` 打印文本汇总。
 
-直接调用：
-    from engine import run_backtest, plot_backtest
+    from engine import run_backtest
     result = run_backtest("600519", "20200101", "20241231")
+
+图表在 `report.py`（`from report import plot_backtest`）——引擎保持纯计算，
+批量回测/参数扫描/pytest 这些不出图的场景就不必拖进 matplotlib。
 """
 
 import warnings
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from matplotlib.gridspec import GridSpec
 
-from lib.plotting import (
-    C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, COLORS,
-    setup_matplotlib, style_ax,
-)
 from lib.market_data import fetch_stock_data   # noqa: F401 — re-export for backward compat
+# 成本假设与 `lib/ladder.py` 共用同一份定义，不在这里另写字面量——两套撮合骨架的
+# 数字一旦漂开，二元引擎与分批建仓模拟器的结果就不可横向比较。
+# `_commission` / `infer_limit_pct` 保留旧名 re-export，历史导入不受影响。
+from lib.costs import (COMMISSION_RATE, LOT, MIN_COMMISSION, SLIPPAGE,
+                       STAMP_DUTY, infer_limit_pct)   # noqa: F401
+from lib.costs import commission as _commission
 
 warnings.filterwarnings("ignore")
-setup_matplotlib()
 
 
 # ─────────────────────────────────────────
 # A 股交易规则
 # ─────────────────────────────────────────
-
-def infer_limit_pct(symbol: str) -> float:
-    """
-    按代码前缀推断涨跌停幅度。
-
-    688/689 科创板、300/301 创业板 → 20%
-    4xx/8xx 北交所                 → 30%
-    其余主板                        → 10%
-
-    注意：ST / *ST 为 5%，但从代码看不出来，也不随时间回溯，这里按主板 10%
-    处理，对 ST 股会**低估**涨跌停的封单概率（结果偏乐观），需要时显式传
-    limit_pct=0.05。
-    """
-    if symbol.startswith(("688", "689", "300", "301")):
-        return 0.20
-    if symbol.startswith(("4", "8")):
-        return 0.30
-    return 0.10
-
 
 def _tradability(row, prev_close: float, limit_pct: float) -> tuple[bool, bool]:
     """
@@ -74,9 +56,6 @@ def _tradability(row, prev_close: float, limit_pct: float) -> tuple[bool, bool]:
     return bool(can_buy), bool(can_sell)
 
 
-def _commission(amount: float, rate: float, minimum: float) -> float:
-    """券商佣金：按成交额比例收取，但不低于单笔最低佣金（A 股普遍 5 元）。"""
-    return max(amount * rate, minimum)
 
 
 # ─────────────────────────────────────────
@@ -89,10 +68,11 @@ def run_backtest(
     end_date: str,
     strategy=None,                      # BaseStrategy 实例，默认使用 MACDStrategy
     initial_capital: float = 100_000.0,
-    commission_rate: float = 0.0003,    # 佣金：万三
-    min_commission: float = 5.0,        # 单笔最低佣金（元），A 股券商普遍 5 元
-    stamp_duty: float = 0.001,          # 印花税：千一（仅卖出收取）
-    slippage: float = 0.001,            # 单边滑点，千一；买价上浮、卖价下压
+    # 四个成本默认值来自 lib/costs.py（与 lib/ladder.py 同源），可被 .ini 逐项覆盖
+    commission_rate: float = COMMISSION_RATE,
+    min_commission: float = MIN_COMMISSION,
+    stamp_duty: float = STAMP_DUTY,
+    slippage: float = SLIPPAGE,
     position_size: float = 1.0,         # 每次建仓比例（1.0 = 全仓）
     stop_loss: float = None,            # 止损比例，如 0.08 = 8%，None = 不止损
     take_profit: float = None,          # 止盈比例，如 0.20 = 20%，None = 不止盈
@@ -237,16 +217,16 @@ def run_backtest(
             if can_buy:
                 exec_price = open_ * (1 + slippage)
                 budget     = cash * position_size
-                lots       = int(budget / exec_price / 100)   # A股最小单位100股
+                lots       = int(budget / exec_price / LOT)
                 # 佣金可能让总支出超出可用现金，逐手回退直到付得起
                 while lots >= 1:
-                    cost = lots * 100 * exec_price
+                    cost = lots * LOT * exec_price
                     fee  = _commission(cost, commission_rate, min_commission)
                     if cost + fee <= cash:
                         break
                     lots -= 1
                 if lots >= 1:
-                    shares = lots * 100
+                    shares = lots * LOT
                     cost   = shares * exec_price
                     fee    = _commission(cost, commission_rate, min_commission)
                     cash  -= (cost + fee)
@@ -512,102 +492,3 @@ def _print_summary(r: dict):
     if blocked is not None and not blocked.empty:
         print(f"  受阻未成交    : {len(blocked):>8}  次（涨跌停/停牌）")
     print(f"  ──────────────────────────────────────────")
-
-
-# ─────────────────────────────────────────
-# 可视化
-# ─────────────────────────────────────────
-
-def plot_backtest(result: dict, save_path: str = None):
-    df       = result["df"]
-    eq_df    = result["equity_curve"]
-    trades   = result["trades"]
-    symbol   = result["symbol"]
-    strategy = result["strategy"]
-
-    fig = plt.figure(figsize=(16, 12), facecolor=C_BG)
-    gs  = GridSpec(4, 1, figure=fig, hspace=0.08,
-                   height_ratios=[3, 1.5, 1.5, 1.5])
-
-    ax_kwargs = dict(facecolor=C_BG)
-
-    # ── 子图1：K线 + 买卖点 ──
-    ax1 = fig.add_subplot(gs[0], **ax_kwargs)
-    ax1.plot(df.index, df["close"], color=C_BLUE, lw=1.2, label="收盘价")
-
-    if not trades.empty:
-        buys  = trades[trades["action"] == "买入"]
-        sells = trades[trades["action"].isin(["卖出", "止损卖出", "止盈卖出", "期末清仓"])]
-        ax1.scatter(buys["date"],  buys["price"],  marker="^", color=C_GREEN,
-                    s=80, zorder=5, label="买入")
-        ax1.scatter(sells["date"], sells["price"], marker="v", color=C_RED,
-                    s=80, zorder=5, label="卖出")
-
-    ax1.set_title(f"A股策略回测 [{strategy.name}]  |  {symbol}  |  "
-                  f"总收益 {result['total_return']:+.2f}%  "
-                  f"基准 {result['benchmark_return']:+.2f}%  "
-                  f"夏普 {fmt_sharpe(result['sharpe_ratio'])}",
-                  color=C_FG, fontsize=12, pad=10)
-    ax1.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=9)
-    style_ax(ax1)
-
-    # ── 子图2：策略指标（由策略对象自行绘制） ──
-    ax2 = fig.add_subplot(gs[1], sharex=ax1, **ax_kwargs)
-    strategy.plot_indicators(ax2, df, COLORS)
-    style_ax(ax2)
-
-    # ── 子图3：资产曲线 vs 基准 ──
-    ax3 = fig.add_subplot(gs[2], sharex=ax1, **ax_kwargs)
-    # 基准以统计窗口首日**开盘价**为基数，与策略的建仓口径一致
-    norm_eq    = eq_df["equity"] / result["equity_base"] * 100
-    norm_bench = eq_df["close"]  / result["benchmark_base"]  * 100
-    ax3.plot(eq_df.index, norm_eq,    color=C_GREEN, lw=1.5, label="策略净值")
-    ax3.plot(eq_df.index, norm_bench, color=C_MUTED, lw=1,   label="基准(买入持有)", linestyle="--")
-    ax3.axhline(100, color=C_MUTED, lw=0.5, linestyle=":")
-    ax3.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=8)
-    ax3.set_ylabel("净值（基准=100）", color=C_FG, fontsize=9)
-    style_ax(ax3)
-
-    # ── 子图4：回撤 ──
-    ax4 = fig.add_subplot(gs[3], sharex=ax1, **ax_kwargs)
-    ax4.fill_between(eq_df.index, eq_df["drawdown"] * 100, 0,
-                     color=C_RED, alpha=0.4, label="策略回撤")
-    ax4.set_ylabel("回撤 (%)", color=C_FG, fontsize=9)
-    ax4.legend(facecolor=C_BG, labelcolor=C_FG, edgecolor=C_MUTED, fontsize=8)
-    style_ax(ax4)
-
-    # ── 关键日期：每笔交易日期画垂直虚线并在价格图顶部标注日期 ──
-    if not trades.empty:
-        price_max = df["close"].max()
-        price_min = df["close"].min()
-        label_y   = price_max + (price_max - price_min) * 0.01
-        for _, trade in trades.iterrows():
-            t_date   = trade["date"]
-            t_action = trade["action"]
-            t_color  = C_GREEN if t_action == "买入" else C_RED
-            for ax in [ax1, ax2, ax3, ax4]:
-                ax.axvline(x=t_date, color=t_color, lw=0.7, alpha=0.45, linestyle=":")
-            ax1.text(
-                t_date, label_y,
-                t_date.strftime("%Y-%m-%d"),
-                color=t_color, fontsize=6, rotation=90,
-                va="bottom", ha="center",
-            )
-
-    # 隐藏x轴刻度（除最后一张）
-    for ax in [ax1, ax2, ax3]:
-        plt.setp(ax.get_xticklabels(), visible=False)
-
-    ax4.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
-    ax4.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
-    plt.setp(ax4.get_xticklabels(), rotation=30, ha="right", color=C_FG, fontsize=8)
-
-    plt.tight_layout()
-
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor=C_BG)
-        print(f"\n  图表已保存至：{save_path}")
-    else:
-        plt.show()
-
-    return fig

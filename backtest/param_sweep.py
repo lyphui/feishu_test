@@ -1,8 +1,20 @@
 """
 参数敏感性扫描
 ==============
-在 JCY 推荐股票池上网格遍历策略参数，回答一个问题：
+在一个股票池上网格遍历策略参数，回答一个问题：
 **当前这组参数的表现，是策略本身有效，还是恰好挑中的一个幸运点？**
+
+股票池是可注入的
+----------------
+扫描机制（网格、横截面聚合、样本外切分、热力图）与"票从哪来"无关。二者之间
+只有 `resolve_universe()` 一个接口，它把任何来源归一成
+`[{"code", "date"}, ...]`——`date` 是该票的**回测起点**（JCY 池里就是推荐日）。
+
+    python backtest/param_sweep.py                        # 默认 JCY 推荐池
+    python backtest/param_sweep.py --codes 601857 600938 --codes-start 20180101
+
+以前 `main()` 直接读 `jcy_insights.json`，于是这个通用工具只能扫 JCY 池，
+想给油气池做同样的过拟合检验就得改代码。
 
 判读方式（重点看稳健性，不是看最大值）
 --------------------------------------
@@ -34,11 +46,12 @@
 
 用法
 ----
-    python backtest/param_sweep.py                       # 默认网格
+    python backtest/param_sweep.py                       # 默认网格（JCY 池）
     python backtest/param_sweep.py --limit 20            # 只跑前 20 只，快速试
     python backtest/param_sweep.py --axis expand_bars cross_window
     python backtest/param_sweep.py --axis stop_loss take_profit
     python backtest/param_sweep.py --oos-frac 0.3        # 留最近 30% 做样本外
+    python backtest/param_sweep.py --codes 601857 600938 --codes-start 20180101
 
 注意：网格大小 = 轴1 × 轴2 × 股票数，每格都要跑一次完整回测。
 行情数据在进程内缓存，但首次拉取仍然耗时，建议先用 --limit 试跑。
@@ -304,6 +317,32 @@ def split_candidates(candidates: list[dict],
     return is_cands, oos_cands
 
 
+def resolve_universe(args) -> tuple[list[dict], str]:
+    """
+    **扫描机制与"票从哪来"之间唯一的接口。**
+
+    返回 `(候选列表, 池子描述)`，候选列表元素只需两个键：
+
+      code : 股票代码
+      date : 该票的回测起点 "YYYYMMDD"（JCY 池里是推荐日；显式池里是统一起点）
+
+    下游 `evaluate_combo()` 也只用这两个键——想接入新的池子（自选股清单、
+    行业成分、另一个信息源），在这里加一个分支就够了，不必碰扫描逻辑。
+    """
+    if args.codes:
+        # 显式池：所有票共用同一个起点，`--ratings` 在这条路径上无意义
+        cands = [{"code": c, "name": c, "date": args.codes_start}
+                 for c in args.codes]
+        return cands, f"显式指定 {len(cands)} 只（起点 {args.codes_start}）"
+
+    if not os.path.exists(JSON_PATH):
+        print(f"  ❌ 找不到 JSON 文件：{JSON_PATH}")
+        print(f"     若要扫描非 JCY 池，用 --codes 显式给代码")
+        sys.exit(1)
+    cands = load_candidates(JSON_PATH, ratings=args.ratings)
+    return cands, f"JCY 推荐池·评级 {','.join(args.ratings)}"
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="策略参数敏感性扫描")
     p.add_argument("--axis", nargs=2, default=["expand_bars", "cross_window"],
@@ -314,7 +353,12 @@ def parse_args():
                    help="热力图展示的指标，默认 日均超额中位bp"
                         "（对窗口长度归一，跨标的可比）")
     p.add_argument("--ratings", type=parse_ratings, default=LONG_RATINGS,
-                   help=f"进入扫描的评级，逗号分隔，默认 {','.join(LONG_RATINGS)}")
+                   help=f"进入扫描的评级，逗号分隔，默认 {','.join(LONG_RATINGS)}"
+                        "（仅 JCY 池有效）")
+    p.add_argument("--codes", nargs="+", default=None, metavar="CODE",
+                   help="改扫指定股票池而非 JCY 推荐池，如 --codes 601857 600938")
+    p.add_argument("--codes-start", default="20180101", metavar="YYYYMMDD",
+                   help="--codes 池的统一回测起点，默认 20180101")
     p.add_argument("--limit", type=int, default=0,
                    help="只取前 N 只候选股（快速试跑），0=全部")
     p.add_argument("--oos-frac", type=float, default=0.0, metavar="FRAC",
@@ -335,10 +379,7 @@ def main():
             print(f"  ❌ 未知参数轴：{a}，可选 {list(AXES)}")
             sys.exit(1)
 
-    if not os.path.exists(JSON_PATH):
-        print(f"  ❌ 找不到 JSON 文件：{JSON_PATH}")
-        sys.exit(1)
-    candidates = load_candidates(JSON_PATH, ratings=args.ratings)
+    candidates, universe_label = resolve_universe(args)
     if args.limit:
         candidates = candidates[:args.limit]
     if not candidates:
@@ -349,8 +390,13 @@ def main():
     candidates = sorted(candidates, key=lambda c: c["date"])
     is_cands, oos_cands = split_candidates(candidates, args.oos_frac)
     if args.oos_frac > 0 and not oos_cands:
-        print(f"  ⚠️ 候选股仅 {len(candidates)} 只，按 {args.oos_frac:.0%} 切不出"
-              "样本外集合，本次退化为纯样本内扫描")
+        # 两种切不出来的情形：票太少，或所有票共用同一个起点（--codes 池即如此，
+        # 时序留出本身就无从谈起——它靠的是"较晚被推荐的票"这个维度）
+        same_day = len({c["date"] for c in candidates}) == 1
+        why = ("所有票共用同一个起点，按推荐日的时序留出无从谈起"
+               if same_day else f"候选股仅 {len(candidates)} 只，按 "
+                                f"{args.oos_frac:.0%} 切不出样本外集合")
+        print(f"  ⚠️ {why}，本次退化为纯样本内扫描")
 
     end_date = _date.today().strftime("%Y%m%d")
     # 指数起点为绝对日期，不随候选池变化（月线 MACD 预热，见 config.py）
@@ -359,6 +405,7 @@ def main():
     grid = list(itertools.product(AXES[axis_x]["values"], AXES[axis_y]["values"]))
     print("\n" + "─" * 66)
     print(f"  参数敏感性扫描：{axis_x} × {axis_y}")
+    print(f"  股票池：{universe_label}")
     if oos_cands:
         print(f"  样本内 {len(is_cands)} 只（推荐日 ≤ {is_cands[-1]['date']}）"
               f"  |  样本外 {len(oos_cands)} 只（≥ {oos_cands[0]['date']}）")

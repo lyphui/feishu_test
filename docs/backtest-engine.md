@@ -2,7 +2,10 @@
 
 > 从 [CLAUDE.md](../CLAUDE.md) 拆出。
 
-**职责：** 核心回测引擎（纯函数，无 CLI），被所有回测入口脚本复用。`macd_analysis.py` 为薄入口，re-export `run_backtest`/`plot_backtest`/`fetch_stock_data` 以兼容历史 `from macd_analysis import ...` 导入。
+**职责：** 核心回测引擎（纯函数，无 CLI，**不含绘图**），被所有回测入口脚本复用。
+图表在 `backtest/report.py`——`import engine` 不会拖进 matplotlib，批量回测/参数扫描/pytest 因此不必付这个代价（`tests/test_engine_no_matplotlib.py` 守住）。
+成本假设来自 `lib/costs.py`，与 `lib/ladder.py` 同源（`tests/test_costs.py` 守住）——两套撮合骨架的费率一旦漂开，敞口对齐口径就失效。
+`macd_analysis.py` 为薄入口，re-export `run_backtest`/`plot_backtest`/`fetch_stock_data` 以兼容历史 `from macd_analysis import ...` 导入。
 
 **关键函数：**
 - `fetch_stock_data(symbol, start, end)` — 从 `lib.market_data` 再导出（canonical 位置在 `backtest/lib/market_data.py`）
@@ -32,7 +35,7 @@
     与 `avg_holding_days`。空仓日既不赚也不亏，**回撤与夏普都未按暴露度调整**——
     在场 3% 的时间做出 −24% 的回撤，和满仓做出 −24% 完全是两回事，汇总层与
     `print_summary` 都显式标注这一点
-- `plot_backtest(result, save_path)` — 标准 4 面板图（价格+信号、指标、权益、回撤）
+- `plot_backtest(result, save_path)` — 标准 4 面板图（价格+信号、指标、权益、回撤）。**在 `backtest/report.py`**，不在 engine 里
 
 **共享配置层（`backtest/config.py`）：** 三个单股入口共用
 - `load_backtest_config(filename, *, defaults)` → `BacktestConfig`：统一解析 `backtest/presets/*.ini` 的 `[backtest]` 段（end_date 默认今日、止损止盈空值转 None、proxy 写环境变量、缺失时按 defaults 写出）；策略专属参数经 `cfg.get_int/get_bool/get_float` 从 `.extra` 读取

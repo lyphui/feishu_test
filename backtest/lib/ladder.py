@@ -23,20 +23,15 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-LOT = 100
+# 成本假设与 `engine.py` 共用同一份定义（`lib/costs.py`），不在这里另写字面量——
+# 两套撮合骨架的数字一旦漂开，梯度/网格与满仓持有的横向比较就失去意义。
+# 这里 re-export 是为了让 `lib/fatfinger.py` 继续 `from lib.ladder import ...`。
+from lib.costs import (COMMISSION_RATE, LIMIT_PCT_MAIN, LOT,  # noqa: F401
+                       MIN_COMMISSION, SLIPPAGE, STAMP_DUTY)
+from lib.costs import commission as _commission
 
-# 与 engine.py 相同的默认成本假设
-COMMISSION_RATE = 0.0003
-MIN_COMMISSION = 5.0
-STAMP_DUTY = 0.001
-SLIPPAGE = 0.001
 
-
-# ── 成本与成交约束 ────────────────────────────────────────────────────────────
-
-def _commission(amount: float) -> float:
-    return max(amount * COMMISSION_RATE, MIN_COMMISSION)
-
+# ── 成交约束 ──────────────────────────────────────────────────────────────────
 
 def _tradable(row, prev_close: float, limit_pct: float) -> tuple[bool, bool]:
     """(能买, 能卖)：停牌不成交；开盘一字涨停买不进、跌停卖不掉。"""
@@ -94,7 +89,8 @@ def _summarize(name, equity, exposure, trades, capital) -> LadderResult:
 # ── 通用回测骨架 ──────────────────────────────────────────────────────────────
 
 def _run(df: pd.DataFrame, capital: float, decide, name: str,
-         cash_rate: float = 0.015, limit_pct: float = 0.10) -> LadderResult:
+         cash_rate: float = 0.015,
+         limit_pct: float = LIMIT_PCT_MAIN) -> LadderResult:
     """
     `decide(ctx) -> list[order]`：在 T 日收盘调用，返回 T+1 开盘要执行的指令。
     order = ("buy", 金额) / ("sell", 持仓比例) / ("sell_shares", 股数)

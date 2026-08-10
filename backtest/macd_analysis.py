@@ -21,7 +21,8 @@ for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要�
         sys.path.insert(0, _p)
 
 # 向后兼容 re-export：历史代码 from macd_analysis import run_backtest / fetch_stock_data
-from engine import run_backtest, plot_backtest, fetch_stock_data  # noqa: F401
+from engine import run_backtest, fetch_stock_data  # noqa: F401
+from report import plot_backtest  # noqa: F401 — 绘图已拆到 report.py，此处续接旧导入路径
 
 from config import load_backtest_config, execution_kwargs, OutputPaths
 from lib.console import use_utf8
