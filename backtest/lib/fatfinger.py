@@ -33,6 +33,11 @@
 每笔成交记 `edge = 成交价 / 再平衡回补价 − 1`（买单反向）。乌龙指假说成立的话
 它应该显著为正——尖峰被打回，你卖在高处、按正常价买回来。若它围绕 0 甚至为负，
 说明成交是被趋势带过去的，不是被人敲错送过来的。
+
+**edge 是「毛」价差**：回补价取的是不含滑点的裸价，佣金印花税也不在里面。
+这是故意的——摩擦成本已经完整体现在净值曲线里，再扣一遍就成了双重计费。
+代价是它天然偏乐观，所以**判断"捡没捡到"不能拿 edge > 0 当门槛，要跟单边
+摩擦成本比**（本模块口径下约 26bp，`ROUND_TRIP_BP` 给出估算）。
 """
 
 from dataclasses import dataclass, field
@@ -41,11 +46,16 @@ import numpy as np
 import pandas as pd
 
 # 成本模型与统计口径与分批建仓模拟器共用，否则两边数字没法横向比
-from lib.ladder import (LOT, SLIPPAGE, STAMP_DUTY, LadderResult, _commission,
-                        _summarize)
+from lib.ladder import (COMMISSION_RATE, LOT, SLIPPAGE, STAMP_DUTY,
+                        LadderResult, _commission, _summarize)
 
 #: 判定"挂单价是否落在涨跌停带内"的浮点容差（纯数值误差，不是报价最小变动单位）
 _EPS = 1e-9
+
+#: 一个来回（限价单成交 + 主动回补）的单边摩擦估算，bp。
+#: 回补腿吃滑点千一 + 双边佣金万三 + 卖出印花税千一，摊到单边约 26bp。
+#: `edge` 是毛价差，必须跨过这条线才谈得上"捡到"。
+ROUND_TRIP_BP = (SLIPPAGE + COMMISSION_RATE * 2 + STAMP_DUTY) * 1e4 / 2
 
 
 class _Book:
@@ -152,7 +162,10 @@ def simulate_fatfinger(
     """
     book = _Book(capital)
     anchor = None
-    pending_rebalance = False              # 等 T+1 开盘做的再平衡
+    # 欠着一笔 T+1 开盘再平衡的那条成交记录（None = 没有欠账）。
+    # 存记录本身而不是布尔量，是为了在**真正执行**的那一天把回补价写回去——
+    # 若改成事后按"成交次日开盘"去猜，碰上次日停牌就会记一个没发生过的价。
+    pending_fill = None
     equity_s, exposure_s, fills = [], [], []
     daily_cash_rate = cash_rate / 252
     n_rejected_sell = n_rejected_buy = n_both_sides = 0
@@ -180,12 +193,13 @@ def simulate_fatfinger(
             continue
 
         # ── ② 昨日成交后欠的再平衡，今日开盘补上 ──
-        if pending_rebalance and not halted:
+        if pending_fill is not None and not halted:
             anchor = book.rebalance_to(target, o, date)
-            pending_rebalance = False
+            pending_fill["rebalance"] = o
+            pending_fill = None
 
         # ── ③ 挂单与撮合 ──
-        if not halted and not pending_rebalance:
+        if not halted and pending_fill is None:
             up_limit = prev_close * (1 + limit_pct)
             dn_limit = prev_close * (1 - limit_pct)
             sell_px = anchor * (1 + k_up)
@@ -213,17 +227,17 @@ def simulate_fatfinger(
                 book.sell(sell_fill, book.shares, date, "limit")
                 fills.append({"date": date, "side": "sell", "anchor": anchor,
                               "fill": sell_fill, "i": i})
-                pending_rebalance = True
+                pending_fill = fills[-1]
                 if fast_sell_rebalance:
                     # 卖出资金当日可用，收盘立刻买回；锚价随之重置
                     anchor = book.rebalance_to(target, c, date)
-                    pending_rebalance = False
-                    fills[-1]["rebalance"] = c
+                    pending_fill["rebalance"] = c
+                    pending_fill = None
             elif buy_fill is not None:
                 book.buy(buy_fill, book.cash, date, "limit")
                 fills.append({"date": date, "side": "buy", "anchor": anchor,
                               "fill": buy_fill, "i": i})
-                pending_rebalance = True   # 当日买入不可卖出，必须等 T+1
+                pending_fill = fills[-1]   # 当日买入不可卖出，必须等 T+1
 
         eq = book.equity(c)
         equity_s.append(eq)
@@ -236,14 +250,10 @@ def simulate_fatfinger(
 
     f = pd.DataFrame(fills)
     if not f.empty:
-        # 每笔成交对应的回补价：fast 模式当日收盘已就地记下，其余取次日开盘
-        opens = df["open"].to_numpy()
+        # 回补价在真正执行的那一天就地写入了。样本末尾那笔可能还没回补 → NaN，
+        # `fill_edge` 会把它 dropna 掉，不去猜一个没发生的价。
         if "rebalance" not in f.columns:
             f["rebalance"] = np.nan
-        f["rebalance"] = [
-            px if not pd.isna(px) else (opens[i + 1] if i + 1 < len(opens) else np.nan)
-            for px, i in zip(f["rebalance"], f["i"])
-        ]
         f = _attach_forward(f, df)
 
     years = max(len(df) / 252, 1e-9)
@@ -274,15 +284,22 @@ def _attach_forward(f: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
 
 
 def fill_edge(f: pd.DataFrame) -> pd.DataFrame:
-    """按方向汇总成交质量。edge 显著为正才说明「捡乌龙指」这件事真实存在。"""
+    """
+    按方向汇总成交质量。**edge 要显著超过 `ROUND_TRIP_BP`（≈26bp）**，
+    「捡乌龙指」这件事才算真实存在——它是毛价差，不含滑点与佣金（见模块 docstring）。
+
+    `n` 只计入回补价已知的成交：样本末尾那笔可能还欠着再平衡，算不出 edge。
+    """
     if f.empty:
         return pd.DataFrame()
     rows = []
     for side, sub in f.groupby("side"):
         e = sub["edge"].dropna()
+        if e.empty:
+            continue
         t = (e.mean() / (e.std() / np.sqrt(len(e)))) if len(e) > 1 and e.std() > 0 else np.nan
         rows.append({
-            "side": side, "n": len(sub),
+            "side": side, "n": len(e),
             "edge_mean_bp": e.mean() * 1e4, "edge_median_bp": e.median() * 1e4,
             "t": t, "win_rate": float((e > 0).mean()),
             "fwd1": sub["fwd1"].mean(), "fwd5": sub["fwd5"].mean(),

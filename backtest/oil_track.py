@@ -49,6 +49,7 @@ from lib.price_store import (load_daily, load_dividends, read_meta,
                              update_daily, update_dividends)
 from lib.regime import BEAR, CHOP, TREND_UP, classify, regime_episodes, regime_stats
 from lib.swings import drawdown_profile, swing_table
+from lib.console import use_utf8
 
 DEFAULT_SYMBOLS = ["601857", "600938"]
 NAMES = {"601857": "中国石油", "600938": "中国海油", "600028": "中国石化",
@@ -396,6 +397,7 @@ def plot_symbol(symbol: str, data: dict, info: dict, results, save_dir: str) -> 
 # ── 入口 ──────────────────────────────────────────────────────────────────────
 
 def main():
+    use_utf8()
     ap = argparse.ArgumentParser(description="油气双雄长期跟踪")
     ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     ap.add_argument("--capital", type=float, default=100_000, help="计划投入本金")

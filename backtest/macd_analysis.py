@@ -12,12 +12,19 @@ A股 MACD 策略回测工具（CLI 入口）
     result = run_backtest("600519", "20200101", "20241231")
 """
 
+import os
 import sys
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # 向后兼容 re-export：历史代码 from macd_analysis import run_backtest / fetch_stock_data
 from engine import run_backtest, plot_backtest, fetch_stock_data  # noqa: F401
 
 from config import load_backtest_config, execution_kwargs, OutputPaths
+from lib.console import use_utf8
 
 
 _DEFAULT_INI = """\
@@ -65,6 +72,7 @@ max_pending_days =
 
 
 def main():
+    use_utf8()
     import argparse
     from strategies import MACDStrategy
 

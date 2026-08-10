@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 环境要求
 
 - Python **≥ 3.11**
-- **纯源码运行，无需安装本项目**：所有命令从仓库根目录执行，`jcy/`、`strategies/` 等包直接被 Python 解析（仓库根已在 `sys.path`），`backtest/` 脚本以 `python backtest/x.py` 运行（脚本目录自动入 path）。
+- **纯源码运行，无需安装本项目**：所有命令从仓库根目录执行。`python prepare_jcy_data.py` 这类**从仓库根启动的脚本**，其所在目录（= 仓库根）自动入 `sys.path`，`jcy/`、`strategies/` 直接可导。`backtest/x.py` 则只有 `backtest/` 自动入 path（Python **不会**把 cwd 加进去），所以每个入口脚本都在 import 之前内联一段 bootstrap 把仓库根也补上——新增入口脚本时**照抄 `exec_bench.py` 顶部那 4 行**，否则 `from strategies import` 会 `ModuleNotFoundError`。
 - 仅需安装第三方依赖：
   ```bash
   pip install pandas numpy matplotlib requests openai python-dotenv pyyaml akshare yfinance pytest
@@ -88,6 +88,7 @@ feishu_test/
 │       ├── regime.py              # 市场状态分类（趋势上行/宽幅震荡/趋势下行，严格只用历史数据）
 │       ├── ladder.py              # 分批建仓模拟器：梯度加仓/定投/网格/按状态自适应切换
 │       ├── plotting.py            # 绘图样式（GitHub Dark 配色 + matplotlib 配置）
+│       ├── console.py             # use_utf8()：入口脚本 main() 首行必调，防重定向时 GBK 报错
 │       ├── bull_backtest.py       # 牛市策略通用适配器 BullStrategyAdapter
 │       ├── oil_price.py           # Brent/WTI/SC 原油价格（新浪源）+ 油价→股价传导相关性分析
 │       ├── execution.py           # 日内下单方案测算（VWAP 基准，买卖双向，与标的/策略无关的度量层）
@@ -232,7 +233,7 @@ COZE_URL=...
 
 项目不打包、不依赖 `pip install -e .`。**所有命令从仓库根目录执行**：
 
-- `jcy/`、`strategies/` 等包直接被 Python 解析（仓库根已在 `sys.path`），如 `python prepare_jcy_data.py`、`pytest`。
+- `jcy/`、`strategies/` 等包直接被 Python 解析，如 `python prepare_jcy_data.py`（脚本在仓库根，其目录自动入 path）、`pytest`（`tests/conftest.py` 补 path）。
 - `backtest/` 为脚本模式（无 `__init__.py`），以 `python backtest/x.py` 运行，脚本目录自动入 `sys.path[0]`；测试经 `tests/conftest.py` 把 `backtest/` 加入 path。
 
 只需安装第三方依赖（见「环境要求」），无本项目安装步骤。

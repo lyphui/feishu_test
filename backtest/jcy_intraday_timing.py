@@ -153,6 +153,11 @@ from matplotlib.gridspec import GridSpec
 
 warnings.filterwarnings("ignore")
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from strategies import LuMACDBullStrategy
 from config import index_history_start
 from lib.plotting import (
@@ -161,6 +166,7 @@ from lib.plotting import (
 )
 from lib.market_data import fetch_stock_data, fetch_index_data
 from lib.bull_backtest import BullStrategyAdapter
+from lib.console import use_utf8
 from jcy.lib.common import JSON_PATH, load_candidates
 
 setup_matplotlib()
@@ -1241,6 +1247,7 @@ def parse_args():
 
 
 def main():
+    use_utf8()
     args = parse_args()
 
     print("\n" + "─" * 65)

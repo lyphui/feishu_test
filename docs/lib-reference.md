@@ -28,6 +28,7 @@
 | `ladder.py` | `simulate_buy_hold/dca/ladder/grid/adaptive()` + `PLAYBOOK` — 分批建仓模拟器，成本与 T+1 口径对齐 `engine.py`，闲置现金计息，额外报 `avg_exposure` / `deployed_return` |
 | `trend_stop.py` | `simulate()` / `buy_hold()` / `sweep()` / `hk_trade_cost()` / `month_end_flags()` / `next_decision_date()` — 月频均线 + 移动止损（港股口径）。月末信号**次日**执行，止损锚在入场后最高收盘价、触发当日离场，止损后须等下个月末才重入。**净值用 `position.shift(1)`**——`pos[i]` 是按第 i 天收盘价成交才拿到的，不滞后就等于让止损躲掉触发当天那根阴线（踩过，年化虚增一倍）。内置港股成本模型（佣金 0.25% **最低 HK$100**、ETF 免印花税）——策略走月频正是被这个最低佣金逼出来的，两者耦合故同放一个模块 |
 | `plotting.py` | `COLORS` 字典（GitHub Dark 配色）、`setup_matplotlib()`、`style_ax(ax)` |
+| `console.py` | `use_utf8()` — 把 stdout/stderr 强制成 UTF-8。**每个入口脚本 `main()` 第一行都要调**：报表里的 `▶ ★ ✗ ⚠ −` GBK 编码不出来，而 Windows 只在**输出不是控制台时**（`> log.txt`、`\| more`、CI）才退回 GBK，于是"终端跑得好好的，一存日志就 `UnicodeEncodeError`" |
 | `bull_backtest.py` | `BullStrategyAdapter`（牛市策略通用适配器；绘图/CSV 在 `backtest/bull_report.py`） |
 | `oil_price.py` | `fetch_oil_price()` / `update_oil()` / `load_oil()`（Brent/WTI/SC，新浪源，整表覆盖）、`transmission_table()`（油价→股价领先滞后相关系数，纯描述性） |
 | `execution.py` | `intraday_macd()` / `daily_panel(side=)` / `add_limit_plan(side=)` / `benchmark(side=)` / `wait_value()` / `split_by_go()` — 日内下单方案的成交价测算，基准为当日 VWAP，单位 bp，**买卖双向**（原始 bp 中性，`优势bp` 才分侧）。**与标的、与策略无关**：两条工作流共用同一套度量，各自跑各自的数 |

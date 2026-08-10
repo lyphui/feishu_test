@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib.price_store import load_daily
 from lib.trend_stop import (buy_hold, hk_fee_rate, hk_trade_cost,
                             next_decision_date, simulate, sweep)
+from lib.console import use_utf8
 
 DEFAULT_SYMBOL = "3175.HK"
 HISTORY_START = "20160101"
@@ -140,6 +141,7 @@ def print_sweep(df, fee_rate) -> None:
 
 
 def main():
+    use_utf8()
     ap = argparse.ArgumentParser(description="港股原油 ETF 月频均线+移动止损信号")
     ap.add_argument("--symbol", default=DEFAULT_SYMBOL, help="港交所代码，如 3175.HK")
     ap.add_argument("--ma", type=int, default=150, help="均线长度（交易日）")

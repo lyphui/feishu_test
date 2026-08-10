@@ -28,9 +28,11 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib.fatfinger import fill_edge, simulate_fatfinger, simulate_static_mix
+from lib.fatfinger import (ROUND_TRIP_BP, fill_edge, simulate_fatfinger,
+                           simulate_static_mix)
 from lib.ladder import simulate_buy_hold, simulate_grid
 from lib.price_store import load_daily
+from lib.console import use_utf8
 
 DEFAULT_SYMBOLS = ["601857", "600938"]
 DEFAULT_KS = [0.02, 0.03, 0.05, 0.08, 0.095, 0.30]
@@ -103,7 +105,8 @@ def run_symbol(symbol: str, df: pd.DataFrame, ks, capital: float, fast: bool) ->
         f"±{r.diag['k_up']:.1%}: {r.stats['total_return'] - ref:+.1%}" for r in runs))
 
     print("\n▶ 成交质量：捡到的是乌龙指还是趋势？")
-    print("  edge = 成交价相对回补价的价差（bp），>0 才叫「捡到」；")
+    print(f"  edge = 成交价相对回补价的**毛**价差（bp，不含滑点佣金）；")
+    print(f"  门槛不是 0 而是单边摩擦 {ROUND_TRIP_BP:.0f}bp —— 跨不过去就等于没捡到；")
     print("  fwdN = 成交后 N 日股价平均涨跌（卖单成交后仍上涨 = 卖飞了）")
     for r in runs:
         d = r.diag
@@ -129,6 +132,7 @@ def run_symbol(symbol: str, df: pd.DataFrame, ks, capital: float, fast: bool) ->
 
 
 def main():
+    use_utf8()
     ap = argparse.ArgumentParser(description="乌龙指捕捉策略实测")
     ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     ap.add_argument("--k", nargs="+", type=float, default=DEFAULT_KS,

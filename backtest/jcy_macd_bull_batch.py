@@ -76,10 +76,16 @@ from config import OutputPaths, index_history_start
 from bull_report import export_bull_daily_status, plot_bull_backtest
 from batch_report import (result_to_row, normalized_equity, write_batch_report,
                           compare_rating_pools)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from strategies import LuMACDBullStrategy
 from lib.plotting import setup_matplotlib
 from lib.market_data import fetch_index_data
 from lib.bull_backtest import BullStrategyAdapter
+from lib.console import use_utf8
 from jcy.lib.common import (JSON_PATH, LONG_RATINGS, CONTROL_RATINGS,
                             load_candidates, parse_ratings)
 
@@ -276,6 +282,7 @@ def run_pool(candidates: list[dict], label: str, output_dir: str,
 
 
 def main():
+    use_utf8()
     args = parse_args()
 
     if not args.ratings:

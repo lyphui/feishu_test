@@ -10,6 +10,7 @@
 
 | 日期 | 条目 | 主题 | 含行为变更 |
 |------|------|------|:----------:|
+| 2026-08-10 | [输出编码 + 成交质量口径](2026-08-10-console-utf8-and-fill-edge-cleanup.md) | 新增 `lib/console.py` 的 `use_utf8()`（10 个入口脚本调用），修掉「重定向输出就 `UnicodeEncodeError`」；补上 6 个入口脚本缺失的仓库根 `sys.path` bootstrap（按文档跑本来就 `ModuleNotFoundError`）；`fill_edge` 回补价改为执行当天就地记录、不再猜次日开盘；新增 `ROUND_TRIP_BP` 点明 edge 是毛价差 | 否（数字逐个复核未变） |
 | 2026-08-10 | [港股原油 ETF 月频信号](2026-08-10-hk-oil-etf-trend-stop.md) | 新增 `lib/trend_stop.py` + `hk_oil_etf_signal.py`（月末均线 + 移动止损，含港股最低佣金成本模型）；`price_store` 接入港股行情（`kind="hk"`）；发布前修掉净值仓位差一天的未来函数（年化 9.5%→4.9%，「止损提升收益」结论作废）；留档两个否定结论：展期收益不可择时、港股油气股不是油价工具 | 否（全为新增模块） |
 | 2026-08-10 | [乌龙指与网格双双证伪](2026-08-10-limit-order-and-grid-bench.md) | 新增 `lib/fatfinger.py` + `fatfinger_bench.py`（50/50 两侧挂远距离限价单等错价）与 `simulate_grid(ratchet=)`；确立**敞口对齐**评价口径，六档 k + 54 组网格参数实测均无稳定超额，有效的是按状态调仓位 | 否（新增模块 + 新参数默认关闭） |
 | 2026-08-10 | [评级池与归因](2026-08-10-rating-pool-and-attribution.md) | 候选池纳入「买入」、`--control` 看空对照组、选股/择时两个 alpha 分开报、在场比例、扫描改用日均超额选参 | **是**（池子 239→248 只，summary 列变化，最优参数格可能不同） |

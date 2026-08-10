@@ -40,6 +40,7 @@ for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要�
 from lib.execution import (add_limit_plan, benchmark, daily_panel, intraday_macd,
                            split_by_go, wait_value)
 from lib.intraday_store import load_intraday
+from lib.console import use_utf8
 from jcy.lib.common import is_ashare_code, load_candidates
 
 # JCY 池抽样的固定种子——换了种子就是换了样本，文档里的数字会对不上
@@ -144,6 +145,7 @@ def _fmt(df: pd.DataFrame) -> str:
 
 
 def main():
+    use_utf8()
     ap = argparse.ArgumentParser(description="日内下单方案实测（按池分别出数）")
     ap.add_argument("--universe", choices=["jcy", "oil"], default="oil")
     ap.add_argument("--side", choices=["buy", "sell", "both"], default="both")
