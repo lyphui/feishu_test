@@ -21,7 +21,7 @@
 
 | 模块 | 核心内容 |
 |------|----------|
-| `market_data.py` | `fetch_stock_data()` + `fetch_index_data()` + `fetch_hk_data()` — 个股/指数行情，akshare → baostock → yfinance 三源（含限流重试）；`ADJUST` 统一三源复权口径，回测默认 **hfq 后复权**（qfq 会随分红回溯改写历史价，结果不可复现）。港股（`fetch_hk_data`）只有 yfinance 一条源，口径是**前复权**，故须以 `adjust="qfq"` 入库；yfinance 的 `end` 是开区间，内部已多要一天以免丢掉当天 K 线 |
+| `market_data.py` | `fetch_stock_data()` + `fetch_index_data()` + `fetch_hk_data()` + `fetch_etf_data()` — 个股/指数/场内基金行情，akshare → baostock → yfinance 三源（含限流重试）；场内基金（`fetch_etf_data`，`price_store` 里 `kind="etf"`）只能走 akshare `fund_etf_hist_em` 或 yfinance：个股接口不含 ETF，baostock 对 `sh.510300` 直接返回空表。`_to_yfinance_ticker(is_fund=True)` 按**基金号段**判沪深（沪 5 开头 / 深 1 开头），用个股规则会把 `510300` 错判成深市；`ADJUST` 统一三源复权口径，回测默认 **hfq 后复权**（qfq 会随分红回溯改写历史价，结果不可复现）。港股（`fetch_hk_data`）只有 yfinance 一条源，口径是**前复权**，故须以 `adjust="qfq"` 入库；yfinance 的 `end` 是开区间，内部已多要一天以免丢掉当天 K 线 |
 | `price_store.py` | `load_daily()` / `update_daily()` / `load_dividends()` — 本地行情仓库（`data/market/`）。首次全量、之后只补增量；只有 hfq 能安全追加（qfq 强制整表重建），每次增量重叠 `OVERLAP_DAYS` 天对账收盘价，不一致即重建；`*.meta.json` 记**请求过的区间**而非数据首尾日 |
 | `swings.py` | `zigzag()` / `swing_table()` / `drawdown_episodes()` / `drawdown_profile()` — 波段分解与独立回撤事件（按"创新高→再创新高"切分，不逐日比对阈值） |
 | `regime.py` | `classify()` / `regime_stats()` / `regime_episodes()` — 市场状态分类（趋势上行/宽幅震荡/趋势下行），严格只用当日及以前数据，带 `confirm_days` 滞回 |

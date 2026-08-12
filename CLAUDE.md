@@ -73,6 +73,7 @@ feishu_test/
 │   ├── fatfinger_bench.py         # 「乌龙指捕捉」实测：50/50 两侧挂远距离限价单等错价
 │   ├── oil_track.py               # 油气双雄长期跟踪：增量更新 + 当前状态与打法 + 连续全样本回测
 │   ├── hk_oil_etf_signal.py       # 港股原油 ETF（3175.HK）月频信号台：均线+移动止损，出「今天该做什么」
+│   ├── ma_cross_bench.py          # MA5/8 金叉死叉分品类实测台（6 个品类桶 × 8 个变体，结论为证伪）
 │   ├── macd_analysis.py           # 薄入口：re-export engine + MACDStrategy CLI
 │   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
 │   ├── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
@@ -99,15 +100,16 @@ feishu_test/
 │
 ├── ── 策略包 ──────────────────────────────────
 ├── strategies/
-│   ├── __init__.py                # 导出三个策略类
+│   ├── __init__.py                # 导出四个策略类
 │   ├── base.py                    # BaseStrategy 抽象基类（含共享 _ema() 方法）
 │   ├── macd.py                    # MACDStrategy（金叉/死叉，教科书版）
 │   ├── lu_macd.py                 # LuMACDStrategy（三级底部确认，长线建仓）
-│   └── lu_macd_bull.py            # LuMACDBullStrategy（牛市截陡坡，高频战术）
+│   ├── lu_macd_bull.py            # LuMACDBullStrategy（牛市截陡坡，高频战术）
+│   └── ma_cross.py                # MACrossStrategy（快慢均线交叉，默认 MA5/8，量能只过滤进场）
 │
 ├── ── 数据目录 ─────────────────────────────────
 ├── data/market/                   # 本地行情仓库（price_store.py 维护，增量追加）
-│   ├── daily/{symbol}_{adjust}.csv       # 日线 OHLCV，hfq=回测口径 / none=盘面实际价
+│   ├── daily/{symbol}_{adjust}.csv       # 日线 OHLCV，hfq=回测口径 / none=盘面实际价 / qfq=港股与 ETF（源只给前复权）
 │   ├── daily/{symbol}_{adjust}.meta.json # 已覆盖的**请求区间** + 最后更新时间
 │   ├── dividend/{symbol}.csv             # 派息记录（baostock），算股息率用
 │   └── intraday/{symbol}_{p}m_none.csv   # 分时 K 线，**不复权**含 amount（.gitignore，可重建）
@@ -153,6 +155,7 @@ feishu_test/
 | 4c | 长期跟踪 + 分批建仓 | `oil_track.py` + `lib/price_store\|swings\|regime\|ladder`：本地行情仓库、市场状态分类、分批建仓模拟器 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) |
 | 4d | 日内下单测算 | `lib/execution.py` + `exec_bench.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表；末节含远距离限价单（`lib/fatfinger.py` + `fatfinger_bench.py`）实测 | [docs/execution-bench.md](docs/execution-bench.md) |
 | 4e | 港股原油 ETF 择时 | `lib/trend_stop.py` + `hk_oil_etf_signal.py`：月末均线 + 移动止损，含港股最低佣金成本模型；留档两个否定结论（展期收益不可择时、港股油气股不是油价工具） | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) |
+| 4f | MA5/8 分品类实测 | `strategies/ma_cross.py` + `ma_cross_bench.py`：6 个品类桶 × 8 个变体（含零成本对照与参数邻域）；**证伪留档**——MA5/8 在 30 个标的上 0 个跑赢买入持有，零成本下仍全负，回撤反而更深 | [docs/ma-cross-5-8.md](docs/ma-cross-5-8.md) |
 | 5 | 包内工具层参考表 | `jcy/lib/` 与 `backtest/lib/` 全部模块的速查表 | [docs/lib-reference.md](docs/lib-reference.md) |
 
 ---
@@ -274,6 +277,12 @@ python backtest/oil_track.py                      # 增量更新 + 跟踪报告
 python backtest/oil_track.py --offline            # 不联网，只读本地缓存
 python backtest/oil_track.py --backtest --chart   # 连续全样本回测 + 出图
 
+# MA5/8 金叉死叉分品类实测（结论为证伪，见 docs/ma-cross-5-8.md）
+python backtest/ma_cross_bench.py                 # 6 个品类桶 × 8 个变体
+python backtest/ma_cross_bench.py --quick         # 只跑核心 4 个变体
+python backtest/ma_cross_bench.py --offline       # 不联网，只读本地缓存
+python backtest/ma_cross_bench.py --buckets 宽基ETF 高波成长股
+
 # 港股原油 ETF 月频信号（每月最后一个交易日收盘后跑一次）
 python backtest/hk_oil_etf_signal.py              # 更新行情 + 当前信号 + 回测
 python backtest/hk_oil_etf_signal.py --offline    # 不联网，只读本地缓存
@@ -303,4 +312,5 @@ pytest
 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) | 长期跟踪（行情仓库/波段/市场状态）+ 分批建仓模拟器 |
 | [docs/execution-bench.md](docs/execution-bench.md) | 日内下单方案测算方法论 + JCY/油气两池实测结论 |
 | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) | 港股原油 ETF 月频均线+移动止损：规则、参数扫描、港股成本模型、局限清单 |
+| [docs/ma-cross-5-8.md](docs/ma-cross-5-8.md) | MA5/MA8 金叉死叉分品类实测：方法、六个品类桶的完整结果、证伪结论与局限 |
 | [docs/lib-reference.md](docs/lib-reference.md) | `jcy/lib/` 与 `backtest/lib/` 全部模块速查表 |

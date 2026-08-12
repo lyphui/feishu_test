@@ -2,10 +2,10 @@
   "symbol": "601088",
   "adjust": "hfq",
   "kind": "stock",
-  "requested_start": "20180101",
-  "requested_end": "20260810",
-  "data_start": "20180102",
-  "data_end": "20260807",
-  "rows": 2086,
-  "updated_at": "2026-08-10 14:12:29"
+  "requested_start": "20170616",
+  "requested_end": "20260811",
+  "data_start": "20170616",
+  "data_end": "20260810",
+  "rows": 2223,
+  "updated_at": "2026-08-11 11:08:08"
 }

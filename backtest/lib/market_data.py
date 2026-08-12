@@ -153,10 +153,18 @@ def _warn_yfinance_adjust(adjust: str) -> None:
         )
 
 
-def _to_yfinance_ticker(symbol: str, is_index: bool = False) -> str:
-    """A 股代码 → yfinance ticker（沪/深自动判断）。"""
+def _to_yfinance_ticker(symbol: str, is_index: bool = False,
+                        is_fund: bool = False) -> str:
+    """A 股代码 → yfinance ticker（沪/深自动判断）。
+
+    场内基金（is_fund）的号段与个股不同：沪市 ETF/LOF 是 5 开头（510300、
+    518880），深市是 1 开头（159915、161226）。按个股规则判断会把 510300
+    错判成深市，取回的要么是空数据要么是另一只标的。
+    """
     if is_index:
         suffix = ".SZ" if symbol.startswith("399") else ".SS"
+    elif is_fund:
+        suffix = ".SS" if symbol.startswith("5") else ".SZ"
     else:
         suffix = ".SS" if symbol.startswith("6") else ".SZ"
     return symbol + suffix
@@ -231,6 +239,65 @@ def fetch_stock_data(
     # ── yfinance 备用 ──
     _warn_yfinance_adjust(adjust)
     ticker = _to_yfinance_ticker(symbol, is_index=False)
+    raw = _yfinance_download(
+        ticker,
+        _date_yyyymmdd_to_dash(start_date),
+        _date_yyyymmdd_to_dash(end_date),
+    )
+    return raw[["open", "high", "low", "close", "volume"]]
+
+
+# ── 场内基金（ETF / LOF）日线数据 ────────────────────────────────────────────
+
+def fetch_etf_data(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    proxy: str = "",
+    adjust: str = DEFAULT_ADJUST,
+) -> pd.DataFrame:
+    """
+    获取 A 股场内基金（ETF / LOF）日线。
+
+    symbol : 基金代码，如 "510300"（沪深300ETF）、"159915"（创业板ETF）
+
+    为什么不能复用 `fetch_stock_data`
+    --------------------------------
+    东财的个股接口（`stock_zh_a_hist`）不含场内基金，baostock 干脆不覆盖
+    基金——`sh.510300` 返回空表。所以这里走 akshare 的 `fund_etf_hist_em`，
+    失败才退到 yfinance（口径退化为前复权，会告警，见 `_warn_yfinance_adjust`）。
+    """
+    if proxy:
+        os.environ["HTTP_PROXY"] = proxy
+        os.environ["HTTPS_PROXY"] = proxy
+
+    params = _adjust_params(adjust)
+
+    try:
+        import akshare as ak
+        print(f"  正在从 akshare 获取场内基金 {symbol} 数据（{adjust}）...")
+        df = ak.fund_etf_hist_em(
+            symbol=symbol, period="daily",
+            start_date=start_date, end_date=end_date, adjust=params["akshare"],
+        )
+        df = df.rename(columns={
+            "日期": "date", "开盘": "open", "收盘": "close",
+            "最高": "high", "最低": "low",
+            "成交量": "volume", "成交额": "amount",
+        })
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date").sort_index()
+            return df[["open", "high", "low", "close", "volume"]]
+        print("  akshare 基金接口返回空数据，尝试 yfinance 备用...")
+    except ImportError:
+        print("  未找到 akshare，尝试 yfinance 备用...")
+    except (ValueError, KeyError, OSError, RuntimeError) as e:
+        print(f"  akshare 基金获取失败：{e}，尝试 yfinance 备用...")
+
+    # ── yfinance 备用 ──
+    _warn_yfinance_adjust(adjust)
+    ticker = _to_yfinance_ticker(symbol, is_fund=True)
     raw = _yfinance_download(
         ticker,
         _date_yyyymmdd_to_dash(start_date),

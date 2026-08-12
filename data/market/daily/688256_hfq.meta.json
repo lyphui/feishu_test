@@ -1,0 +1,11 @@
+{
+  "symbol": "688256",
+  "adjust": "hfq",
+  "kind": "stock",
+  "requested_start": "20170616",
+  "requested_end": "20260811",
+  "data_start": "20200720",
+  "data_end": "20260810",
+  "rows": 1470,
+  "updated_at": "2026-08-11 11:06:22"
+}

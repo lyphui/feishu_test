@@ -10,6 +10,7 @@
 
 | 日期 | 条目 | 主题 | 含行为变更 |
 |------|------|------|:----------:|
+| 2026-08-11 | [MA5/8 金叉死叉证伪](2026-08-11-ma-cross-5-8-falsified.md) | 新增 `strategies/ma_cross.py`（含只过滤进场的量能条件）+ `ma_cross_bench.py` 分品类实测台（6 桶 × 8 变体）+ ETF 取数通道 `fetch_etf_data`/`kind="etf"`（并修 `_to_yfinance_ticker` 的基金号段误判）；实测结论：MA5/8 在 30 个标的上 0 个跑赢买入持有，零成本对照下仍全负，回撤反而更深 | 否（全为新增模块与新增取数分支） |
 | 2026-08-10 | [四处真耦合的解耦重构](2026-08-10-decouple-shared-layers.md) | 依赖图证明四条业务线已解耦、**不搬目录**；改修四处真耦合：分时取数两份实现（口径还不同）收成一份 `fetch_intraday_raw(adjust=)`、A 股成本两份字面量收进 `lib/costs.py`、`param_sweep` 用 `resolve_universe()` 解绑 JCY 池、`plot_backtest` 拆到 `report.py` 让引擎不再拖 matplotlib | 否（engine/fatfinger/oil_track 输出逐字一致） |
 | 2026-08-10 | [输出编码 + 成交质量口径](2026-08-10-console-utf8-and-fill-edge-cleanup.md) | 新增 `lib/console.py` 的 `use_utf8()`（10 个入口脚本调用），修掉「重定向输出就 `UnicodeEncodeError`」；补上 6 个入口脚本缺失的仓库根 `sys.path` bootstrap（按文档跑本来就 `ModuleNotFoundError`）；`fill_edge` 回补价改为执行当天就地记录、不再猜次日开盘；新增 `ROUND_TRIP_BP` 点明 edge 是毛价差 | 否（数字逐个复核未变） |
 | 2026-08-10 | [港股原油 ETF 月频信号](2026-08-10-hk-oil-etf-trend-stop.md) | 新增 `lib/trend_stop.py` + `hk_oil_etf_signal.py`（月末均线 + 移动止损，含港股最低佣金成本模型）；`price_store` 接入港股行情（`kind="hk"`）；发布前修掉净值仓位差一天的未来函数（年化 9.5%→4.9%，「止损提升收益」结论作废）；留档两个否定结论：展期收益不可择时、港股油气股不是油价工具 | 否（全为新增模块） |

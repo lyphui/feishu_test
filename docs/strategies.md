@@ -7,6 +7,7 @@
 | `MACDStrategy` | `macd.py` | 教科书金叉/死叉，无过滤 |
 | `LuMACDStrategy` | `lu_macd.py` | 三级底部确认（0 轴上，底背离，金叉），长线建仓 |
 | `LuMACDBullStrategy` | `lu_macd_bull.py` | 牛市过滤（大盘月线）+ 截取红柱最陡段，高频战术 |
+| `MACrossStrategy` | `ma_cross.py` | 快慢均线交叉（默认 MA5/MA8），可选量能过滤；**实测为负结论**，见 [ma-cross-5-8.md](ma-cross-5-8.md) |
 
 **BaseStrategy 接口（必须实现）：**
 ```python
@@ -45,3 +46,14 @@ params: dict               # 参数字典（展示用）
     用**状态** `hist <= 0` 而非**事件** `death_cross`：挂单顺延导致建仓时柱子已翻负的情况，
     事件那一根早就过去了。二者本就等价（`hist = (DIF−DEA)×2`），状态版还多兜住了这一类
   - `shrink_exit=False`——等死叉再走（保守版）
+
+**MACrossStrategy（`ma_cross.py`）：**
+- `fast/slow`（默认 5/8）、`ma_type`（`sma` / `ema`）：快线上穿慢线 → `signal=1`，
+  下穿 → `signal=-1`。均线预热期整行 `dropna`，首根有效 K 线不会凭空报信号
+- `vol_window/vol_ratio`（默认关闭）：**量能只过滤进场**——金叉当日量 ≥ N 日均量才买，
+  缩量金叉直接放弃、不顺延；**死叉照卖不看量能**。出场纪律一旦附加条件，
+  就会退化成「跌了还找理由拿着」，而止损恰恰是这类策略唯一真正的风控
+- 均量窗口含当日成交量（收盘后即可知），配合引擎 `shift(1)` 在 T+1 开盘成交，时序自洽
+- ⚠️ 这个策略是**为了证伪而写的**：2018-01 至今 30 个 A 股/ETF 标的上，MA5/8 无一跑赢
+  买入持有，零成本对照下仍全负。留在仓库里是为了「下次再有人问同一个规则时能直接重跑」，
+  不是推荐用法——完整数据见 [ma-cross-5-8.md](ma-cross-5-8.md)
