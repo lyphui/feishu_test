@@ -1,7 +1,99 @@
 {
-  "updated_at": "2026-08-10 10:32:54",
-  "total": 273,
+  "updated_at": "2026-08-13 10:43:55",
+  "total": 280,
   "articles": [
+    {
+      "date": "2026-08-12",
+      "title": "Vol.260812 反反复复为哪般",
+      "link": "https://feishu.cn/wiki/UvOywDZ2Wi1LWUk17qKcb1Krnog",
+      "advice_file": "2026-08-12__Vol.260812 反反复复为哪般.md",
+      "extracted_at": "2026-08-13 10:41:37",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "联特科技",
+          "code": "301205",
+          "exchange": "深交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看涨硬科技，医药放量滞涨需回避，右肩阶段为拉升做准备",
+      "key_advice": [
+        "硬科技关注放量滞涨信号，出现则减仓或离场",
+        "软科技适度配置，不宜重仓",
+        "医药板块已放量滞涨，避免追高",
+        "右肩阶段可能为后续拉升做准备，可关注强势股"
+      ]
+    },
+    {
+      "date": "2026-08-12",
+      "title": "Vol.260812 辩证法",
+      "link": "https://feishu.cn/wiki/ErbUwFKoEiL0IJk8aSocdx43nFe",
+      "advice_file": "2026-08-12__Vol.260812 辩证法.md",
+      "extracted_at": "2026-08-13 10:41:50",
+      "llm_provider": "DashScope",
+      "companies": [],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "震荡拉锯尾声阶段，需平衡风险与机会，注重仓位管理与分批布局，等待方向明确",
+      "key_advice": [
+        "控制仓位，永远保留至少30%的现金作为预备队，避免满仓追涨",
+        "采用分批买入的平摊法建仓，避免一次性重仓押注单一方向",
+        "关注潜在新主线和重要支线，待指数有效突破震荡区间或信号明确再提高仓位",
+        "在震荡市中可尝试小仓位涨卖跌买，降低持仓成本，防止情绪化操作"
+      ]
+    },
+    {
+      "date": "2026-08-11",
+      "title": "Vol.260811 既要又要也要还要",
+      "link": "https://feishu.cn/wiki/Mw02wgMs6iqxcUkRfRAcKZCmnmh",
+      "advice_file": "2026-08-11__Vol.260811 既要又要也要还要.md",
+      "extracted_at": "2026-08-13 10:42:02",
+      "llm_provider": "DashScope",
+      "companies": [],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "强调纪律与技术，普通投资者宜以宽基ETF为主，待主线明确后再用窄基ETF参与游戏、医药出海等方向",
+      "key_advice": [
+        "90%普通人不适合炒个股，应优先配置宽基ETF，用定投方式长期参与市场",
+        "学习并严格执行止损纪律，如跌破关键均线坚决离场，避免重蹈大调整亏损",
+        "对游戏、医药出海等潜在主线，只用少量资金通过行业ETF试水，切忌重仓追高个股",
+        "市场拉锯期需保持耐心，避免因短期波动盲目操作，做到“戒急用忍”"
+      ]
+    },
+    {
+      "date": "2026-08-11",
+      "title": "Vol.260811 老知识点",
+      "link": "https://feishu.cn/wiki/N7XhwA5o9iw71RkEEuNcRtFVnNf",
+      "advice_file": "2026-08-11__Vol.260811 老知识点.md",
+      "extracted_at": "2026-08-13 10:42:29",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "景旺电子",
+          "code": "603228",
+          "exchange": "上交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股",
+        "美股"
+      ],
+      "tendency": "资金从硬件科技向软科技、工业母机、有色等板块再平衡，谨慎分批布局，不追高",
+      "key_advice": [
+        "不追高，分批次买入以平摊成本",
+        "选择跌时抗跌、涨时领涨的ETF品种",
+        "设置-7%止损线，严格执行纪律",
+        "关注均线和箱体，底部放量后再介入",
+        "暂以宽基ETF（如双创50、中证2000）为主，保留半数仓位等待新主线"
+      ]
+    },
     {
       "date": "2026-08-10",
       "title": "Vol.260810 分歧期研究和主要板块扫描",
@@ -153,6 +245,118 @@
         "指数在3980-4000点受阻放量滞涨时，高抛或控制仓位至3-5成。",
         "专注自己擅长的板块，体感不佳时可先定投宽基指数。",
         "学习技术分析，利用箱体图形，等新主线确认后再参与。"
+      ]
+    },
+    {
+      "date": "2026-08-10",
+      "title": "Vol.260810 右肩",
+      "link": "https://feishu.cn/wiki/HkwowqA9hi7GBKk5ezBcki00nIe",
+      "advice_file": "2026-08-10__Vol.260810 右肩.md",
+      "extracted_at": "2026-08-13 10:43:55",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "药明康德",
+          "code": "603259",
+          "exchange": "上交所",
+          "rating": "回避",
+          "rating_reason": "利好不封板，资金兑现，短期走势弱"
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "谨慎看多软科技，等待右肩回调缩量阳线买入，回避追高",
+      "key_advice": [
+        "右肩回调阶段，勿追高，等待缩量阳线再分批买入（buy1）。",
+        "关注软科技（应用和云）作为潜在主线，仓位不宜激进，3成以内。",
+        "药明康德利好不封板，短期资金兑现，不宜追入。",
+        "普通投资者优先考虑宽基ETF，待主线明确后再切换。"
+      ]
+    },
+    {
+      "date": "2026-08-09",
+      "title": "Vol.260809 寒王业绩和国产线学术研究",
+      "link": "https://feishu.cn/wiki/U2XQwtt1Zikc79kr2WhcW0l0nme",
+      "advice_file": "2026-08-09__Vol.260809 寒王业绩和国产线学术研究.md",
+      "extracted_at": "2026-08-13 10:43:25",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "寒武纪",
+          "code": "688256",
+          "exchange": "上交所",
+          "rating": "买入",
+          "rating_reason": "国产AI芯片龙头，业绩高增现金流改善，商业模式跑通，长期看好"
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看好国产AI算力及芯片产业链，提示短期高估值波动，建议以定投ETF和长期视角参与",
+      "key_advice": [
+        "寒武纪长期逻辑清晰，但估值偏高，宜小仓位长期跟踪，跌破55日线可考虑止损",
+        "通过双创50、中证2000ETF等宽基指数定投，间接参与国产AI成长，降低选股难度",
+        "关注710、010等国产算力主题ETF，分散单一公司风险，把握产业链整体机会",
+        "学习均线、筹码峰等基础技术分析，警惕套牢区附近放量滞涨，避免追高",
+        "保持理性预期，不追求精准抄底逃顶，投资与生活平衡，长期积累更关键"
+      ]
+    },
+    {
+      "date": "2026-08-08",
+      "title": "Vol.260808 PCB的mSAP研究",
+      "link": "https://feishu.cn/wiki/YNCCw3Ms9iAUbqkKYbGcPolPnKb",
+      "advice_file": "2026-08-08__Vol.260808 PCB的mSAP研究.md",
+      "extracted_at": "2026-08-13 10:42:56",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "鹏鼎控股",
+          "code": "002938",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "深南电路",
+          "code": "002916",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "景旺电子",
+          "code": "603228",
+          "exchange": "上交所",
+          "rating": null
+        },
+        {
+          "name": "红板",
+          "code": null,
+          "exchange": null,
+          "rating": null
+        },
+        {
+          "name": "胜宏科技",
+          "code": "300476",
+          "exchange": "深交所",
+          "rating": null
+        },
+        {
+          "name": "沪电股份",
+          "code": "002463",
+          "exchange": "深交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "看好PCB产业升级，关注mSAP工艺受益公司，但提示避免追高题材炒作",
+      "key_advice": [
+        "先理解厚板与小板、mSAP工艺，再考虑是否参与，忌盲目买入",
+        "持续跟踪公司公告和业绩兑现，避免受短期涨停热度影响冲动交易",
+        "AI PCB板块波动大，建议等扩产明确、业绩改善后再分批小仓试水",
+        "非专业投资者宜通过AI硬件相关ETF分散风险，勿重仓单一概念股",
+        "将此类高波动股票控制在总资产少数比例内，看不懂时不动也是一种选择"
       ]
     },
     {
