@@ -10,6 +10,7 @@
 
 | 日期 | 条目 | 主题 | 含行为变更 |
 |------|------|------|:----------:|
+| 2026-08-13 | [单票打法对比台](2026-08-13-stock-playbook-bench.md) | 新增 `stock_playbook.py`：把 `engine`/`ladder`/`trend_stop` 三套模拟器的 14 种打法摆进同一张表（含科创板 ±20% 涨跌停与整手本金两处口径修正）；寒武纪实测留档——两个起点都显示择时打不赢「始终在场」、分批是唯一稳定改良、止盈止损在高波动票上是灾难 | 否（纯新增入口脚本） |
 | 2026-08-11 | [MA5/8 金叉死叉证伪](2026-08-11-ma-cross-5-8-falsified.md) | 新增 `strategies/ma_cross.py`（含只过滤进场的量能条件）+ `ma_cross_bench.py` 分品类实测台（6 桶 × 8 变体）+ ETF 取数通道 `fetch_etf_data`/`kind="etf"`（并修 `_to_yfinance_ticker` 的基金号段误判）；实测结论：MA5/8 在 30 个标的上 0 个跑赢买入持有，零成本对照下仍全负，回撤反而更深 | 否（全为新增模块与新增取数分支） |
 | 2026-08-10 | [四处真耦合的解耦重构](2026-08-10-decouple-shared-layers.md) | 依赖图证明四条业务线已解耦、**不搬目录**；改修四处真耦合：分时取数两份实现（口径还不同）收成一份 `fetch_intraday_raw(adjust=)`、A 股成本两份字面量收进 `lib/costs.py`、`param_sweep` 用 `resolve_universe()` 解绑 JCY 池、`plot_backtest` 拆到 `report.py` 让引擎不再拖 matplotlib | 否（engine/fatfinger/oil_track 输出逐字一致） |
 | 2026-08-10 | [输出编码 + 成交质量口径](2026-08-10-console-utf8-and-fill-edge-cleanup.md) | 新增 `lib/console.py` 的 `use_utf8()`（10 个入口脚本调用），修掉「重定向输出就 `UnicodeEncodeError`」；补上 6 个入口脚本缺失的仓库根 `sys.path` bootstrap（按文档跑本来就 `ModuleNotFoundError`）；`fill_edge` 回补价改为执行当天就地记录、不再猜次日开盘；新增 `ROUND_TRIP_BP` 点明 edge 是毛价差 | 否（数字逐个复核未变） |

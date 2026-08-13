@@ -270,6 +270,12 @@ def run_one(symbol: str, df: pd.DataFrame, variant: tuple, profile: str,
         "代码": symbol,
         "交易日": n_days,
         "本金": cap,
+        # 区间原值与年化值都留着：窗口短于一年时年化是**外推**出来的
+        # （半年 +10% 会被放大成年化 +21%），这时只有总收益/绝对次数可读。
+        "总收益%": r["total_return"],
+        "持有总收益%": r["benchmark_return"],
+        "超额%": r["total_return"] - r["benchmark_return"],
+        "成交次数": r["total_trades"],
         "年化%": ann,
         "持有年化%": bench_ann,
         "年化超额%": ann - bench_ann,
@@ -277,6 +283,7 @@ def run_one(symbol: str, df: pd.DataFrame, variant: tuple, profile: str,
         "持有回撤%": buy_hold_drawdown(df, start),
         "交易次数/年": r["total_trades"] / years if years else float("nan"),
         "成本%/年": cost_pct_yr,
+        "成本金额": r["costs"]["total_cost"],
         "胜率%": r["win_rate"],
         "在场%": r["exposure_pct"],
         "平均持仓日": r["avg_holding_days"],
@@ -340,21 +347,23 @@ def run_bucket(bucket: str, spec: dict, variants: list, *, start: str, end: str,
         base = next(r for r in rows[-len(variants):] if r["变体"] == variants[0][0])
         # 一次都没成交说明本金买不起一手（后复权价过高），指标全是假的，
         # 不能混进中位数——这里显式报出来而不是让它悄悄拉低桶内数字。
-        if base["交易次数/年"] == 0:
+        if base["成交次数"] == 0:
             print(f"    ⚠ {code} {name} 本金 ¥{base['本金']:,.0f} 未产生任何成交，"
                   f"已剔除（一手 ≈ ¥{df['close'].max() * costs.LOT:,.0f}）")
             del rows[-len(variants):]
             feats.pop()
             continue
+        # 逐股这行一律报**区间原值**：窗口短于一年时年化是外推的，混着看会误读
         print(f"    {code} {name:<6} {len(df):>5} 行  本金 ¥{base['本金']:>10,.0f}  "
-              f"{variants[0][0]} 年化超额 {base['年化超额%']:+7.2f}%  "
-              f"交易 {base['交易次数/年']:.1f} 次/年", flush=True)
+              f"{variants[0][0]} 区间超额 {base['超额%']:+7.2f}%  "
+              f"成交 {int(base['成交次数']):>3} 次", flush=True)
     return pd.DataFrame(rows), pd.DataFrame(feats)
 
 
 # ── 汇总与打印 ────────────────────────────────────────────────────────────────
 
-AGG_COLS = ["年化%", "持有年化%", "年化超额%", "最大回撤%", "持有回撤%",
+AGG_COLS = ["总收益%", "持有总收益%", "超额%", "成交次数",
+            "年化%", "持有年化%", "年化超额%", "最大回撤%", "持有回撤%",
             "交易次数/年", "成本%/年", "胜率%", "在场%", "平均持仓日"]
 
 
@@ -438,36 +447,53 @@ def main():
     feature = pd.concat(features, ignore_index=True)
     summary = summarize(detail)
 
+    # 窗口不足一年时，年化是把区间收益按 252/n 外推出来的（半年 +10% → 年化 +21%），
+    # 主表改报**区间原值**：短窗口本来就只能读原值，外推只会放大噪音。
+    short_window = int(detail["交易日"].max()) < TRADING_DAYS
+    if short_window:
+        exc_col, freq_col = "超额%", "成交次数"
+        exc_title = "② 区间超额%（策略 − 同窗口买入持有，桶内中位数）"
+        freq_title = "③ 区间成交次数（上）与 成本拖累%/年（下，仍为年化口径）"
+        print(f"\n  ⚠ 统计窗口仅 {int(detail['交易日'].max())} 个交易日（<1 年），"
+              f"年化为外推值、参考意义有限，下表主指标改用**区间原值**。")
+    else:
+        exc_col, freq_col = "年化超额%", "交易次数/年"
+        exc_title = "② 年化超额%（策略年化 − 同窗口买入持有年化，桶内中位数）"
+        freq_title = "③ 交易次数/年（上）与 成本拖累%/年（下）"
+
     # ① 品类特征：解释「为什么这类适合 / 不适合」的前提
     print("\n" + "═" * 78)
     print("  ① 品类特征（桶内中位数）")
     print("═" * 78)
     feat_agg = feature.groupby("品类", sort=False)[["年化波动%", "日收益ρ1"]].median()
     hold = summary[summary["变体"] == variants[0][0]].set_index("品类")
-    feat_agg["买入持有年化%"] = hold["持有年化%"]
+    if short_window:
+        feat_agg["买入持有区间%"] = hold["持有总收益%"]
+    else:
+        feat_agg["买入持有年化%"] = hold["持有年化%"]
     feat_agg["买入持有回撤%"] = hold["持有回撤%"]
     print(feat_agg.to_string(float_format=lambda v: f"{v:8.2f}"))
     print("\n  ρ1 = 日收益一阶自相关。趋势跟踪要靠正的自相关（涨了还涨）吃饭；"
           "\n  ρ1 ≤ 0 说明日线层面是均值回归的，短均线交叉天然逆风。")
 
-    # ② 主表：年化超额
+    # ② 主表：超额
     print("\n" + "═" * 78)
-    print("  ② 年化超额%（策略年化 − 同窗口买入持有年化，桶内中位数）")
+    print(f"  {exc_title}")
     print("═" * 78)
-    print_variant_table(summary, list(buckets), "年化超额%")
+    print_variant_table(summary, list(buckets), exc_col)
 
     # ③ 交易频率与成本
     print("\n" + "═" * 78)
-    print("  ③ 交易次数/年（上）与 成本拖累%/年（下）")
+    print(f"  {freq_title}")
     print("═" * 78)
-    print_variant_table(summary, list(buckets), "交易次数/年")
+    print_variant_table(summary, list(buckets), freq_col)
     print()
     print_variant_table(summary, list(buckets), "成本%/年")
 
     # ④ 成本 vs 信号：零成本对照
     base_lbl, zero_lbl = "MA5/8", "MA5/8 零成本"
     if {base_lbl, zero_lbl} <= set(summary["变体"].unique()):
-        piv = summary.pivot(index="品类", columns="变体", values="年化超额%")
+        piv = summary.pivot(index="品类", columns="变体", values=exc_col)
         cmp = pd.DataFrame({
             "实盘成本下超额%": piv[base_lbl],
             "零成本下超额%": piv[zero_lbl],

@@ -3,9 +3,9 @@
   "adjust": "hfq",
   "kind": "stock",
   "requested_start": "20170616",
-  "requested_end": "20260811",
+  "requested_end": "20260813",
   "data_start": "20200720",
-  "data_end": "20260810",
-  "rows": 1470,
-  "updated_at": "2026-08-11 11:06:22"
+  "data_end": "20260813",
+  "rows": 1473,
+  "updated_at": "2026-08-13 11:05:02"
 }

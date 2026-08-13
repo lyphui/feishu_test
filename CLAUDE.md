@@ -74,6 +74,7 @@ feishu_test/
 │   ├── oil_track.py               # 油气双雄长期跟踪：增量更新 + 当前状态与打法 + 连续全样本回测
 │   ├── hk_oil_etf_signal.py       # 港股原油 ETF（3175.HK）月频信号台：均线+移动止损，出「今天该做什么」
 │   ├── ma_cross_bench.py          # MA5/8 金叉死叉分品类实测台（6 个品类桶 × 8 个变体，结论为证伪）
+│   ├── stock_playbook.py          # 单票打法对比台：满仓/定投/梯度/网格/自适应/月频趋势/日频择时同表比
 │   ├── macd_analysis.py           # 薄入口：re-export engine + MACDStrategy CLI
 │   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
 │   ├── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
@@ -156,6 +157,7 @@ feishu_test/
 | 4d | 日内下单测算 | `lib/execution.py` + `exec_bench.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表；末节含远距离限价单（`lib/fatfinger.py` + `fatfinger_bench.py`）实测 | [docs/execution-bench.md](docs/execution-bench.md) |
 | 4e | 港股原油 ETF 择时 | `lib/trend_stop.py` + `hk_oil_etf_signal.py`：月末均线 + 移动止损，含港股最低佣金成本模型；留档两个否定结论（展期收益不可择时、港股油气股不是油价工具） | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) |
 | 4f | MA5/8 分品类实测 | `strategies/ma_cross.py` + `ma_cross_bench.py`：6 个品类桶 × 8 个变体（含零成本对照与参数邻域）；**证伪留档**——MA5/8 在 30 个标的上 0 个跑赢买入持有，零成本下仍全负，回撤反而更深 | [docs/ma-cross-5-8.md](docs/ma-cross-5-8.md) |
+| 4g | 单票打法对比 | `stock_playbook.py`：把 `engine`/`ladder`/`trend_stop` 的 14 种打法放进同一张表（满仓/定投/梯度/网格/自适应/月频趋势/日频择时），含标的画像与回撤修复剖面；寒武纪实测留档 | [docs/stock-playbook.md](docs/stock-playbook.md) |
 | 5 | 包内工具层参考表 | `jcy/lib/` 与 `backtest/lib/` 全部模块的速查表 | [docs/lib-reference.md](docs/lib-reference.md) |
 
 ---
@@ -277,6 +279,10 @@ python backtest/oil_track.py                      # 增量更新 + 跟踪报告
 python backtest/oil_track.py --offline            # 不联网，只读本地缓存
 python backtest/oil_track.py --backtest --chart   # 连续全样本回测 + 出图
 
+# 单票打法对比（满仓/定投/梯度/网格/自适应/月频趋势/日频择时，同表比）
+python backtest/stock_playbook.py --code 688256 --name 寒武纪 --start 20200101
+python backtest/stock_playbook.py --code 601899 --offline
+
 # MA5/8 金叉死叉分品类实测（结论为证伪，见 docs/ma-cross-5-8.md）
 python backtest/ma_cross_bench.py                 # 6 个品类桶 × 8 个变体
 python backtest/ma_cross_bench.py --quick         # 只跑核心 4 个变体
@@ -313,4 +319,5 @@ pytest
 | [docs/execution-bench.md](docs/execution-bench.md) | 日内下单方案测算方法论 + JCY/油气两池实测结论 |
 | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) | 港股原油 ETF 月频均线+移动止损：规则、参数扫描、港股成本模型、局限清单 |
 | [docs/ma-cross-5-8.md](docs/ma-cross-5-8.md) | MA5/MA8 金叉死叉分品类实测：方法、六个品类桶的完整结果、证伪结论与局限 |
+| [docs/stock-playbook.md](docs/stock-playbook.md) | 单票打法对比台：14 种打法的口径与读表方法，寒武纪两个起点的完整实测 |
 | [docs/lib-reference.md](docs/lib-reference.md) | `jcy/lib/` 与 `backtest/lib/` 全部模块速查表 |
