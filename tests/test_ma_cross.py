@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategies import MACrossStrategy
+from backtest.strategies import MACrossStrategy
 
 
 def _frame(close: list[float], volume=None) -> pd.DataFrame:

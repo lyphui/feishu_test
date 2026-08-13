@@ -5,28 +5,23 @@
 使用专属绘图函数展示：日线价格、MACD指标（含牛市背景）、资产曲线、回撤。
 
 使用方法：
-    python lu_macd_bull_analysis.py
+    python -m backtest.scripts.backtest_lu_macd_bull
 
 配置文件：backtest/presets/lu_macd_bull_config.ini
 """
 
-import os
 import sys
 
 # 复用回测引擎、共享配置层与报告输出
-from engine import run_backtest
-from config import (load_backtest_config, execution_kwargs, OutputPaths,
+from backtest.engine import run_backtest
+from backtest.config import (load_backtest_config, execution_kwargs, OutputPaths,
                     index_history_start)
-from bull_report import export_bull_daily_status, plot_bull_backtest
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+from backtest.reports.bull_report import export_bull_daily_status, plot_bull_backtest
 
-from strategies import LuMACDBullStrategy
-from lib.plotting import setup_matplotlib
-from lib.market_data import fetch_index_data
-from lib.console import use_utf8
+from backtest.strategies import LuMACDBullStrategy
+from backtest.reports.plotting import setup_matplotlib
+from backtest.lib.market_data import fetch_index_data
+from backtest.lib.console import use_utf8
 
 setup_matplotlib()
 

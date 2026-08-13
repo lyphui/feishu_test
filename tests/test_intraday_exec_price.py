@@ -1,4 +1,4 @@
-"""jcy_intraday_timing 的两条执行口径（2026-08-09 修正）。
+"""backtest_jcy_intraday 的两条执行口径（2026-08-09 修正）。
 
 ① 可成交价 = 首个 GO 柱的**下一根开盘价**，不是 GO 柱自己的收盘价（后者是前视）
 ② 分时条件只决定「几点买」，不决定「买不买」——无 GO / 无分时数据都必须照常建仓
@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-jit = pytest.importorskip("jcy_intraday_timing")
-from lib import execution as ex
+from backtest.lib import execution as ex
+from backtest.lib.position_tracker import PositionTracker
 
 BARS = ["10:00", "10:30", "11:00", "11:30", "13:30", "14:00", "14:30", "15:00"]
 
@@ -25,9 +25,9 @@ def make_exec_bars(closes, opens=None):
 
 
 def summary_at(bars, pos):
-    return jit.TimingSummary(has_go=True, go_times=[bars.index[pos]],
-                             first_go=bars.index[pos], go_count=1,
-                             total_bars=len(bars))
+    return ex.TimingSummary(has_go=True, go_times=[bars.index[pos]],
+                            first_go=bars.index[pos], go_count=1,
+                            total_bars=len(bars))
 
 
 # ── ① 可成交价口径 ───────────────────────────────────────────────────────────
@@ -35,22 +35,22 @@ def summary_at(bars, pos):
 def test_exec_price_is_next_bar_open_not_go_bar_close():
     bars = make_exec_bars([10.0, 10.2, 10.5, 10.4, 10.6, 10.8, 10.7, 10.9],
                           opens=[9.9, 10.1, 10.3, 10.45, 10.5, 10.7, 10.75, 10.85])
-    px = jit._executable_price(bars, summary_at(bars, 2))
+    px = ex.executable_price(bars, summary_at(bars, 2))
     assert px == pytest.approx(10.45)          # 第 4 根的开盘价
     assert px != pytest.approx(10.5)           # 不是 GO 柱(第3根)的收盘价
 
 
 def test_exec_price_falls_back_to_close_when_go_is_last_bar():
     bars = make_exec_bars([10.0, 10.2, 10.5, 10.4, 10.6, 10.8, 10.7, 10.9])
-    px = jit._executable_price(bars, summary_at(bars, len(bars) - 1))
+    px = ex.executable_price(bars, summary_at(bars, len(bars) - 1))
     assert px == pytest.approx(10.9)           # 身后没有 K 线了，只能收盘价
 
 
 def test_exec_price_falls_back_to_close_when_no_go():
     bars = make_exec_bars([10.0, 10.2, 10.5, 10.4, 10.6, 10.8, 10.7, 10.9])
-    s = jit.TimingSummary(has_go=False, go_times=[], first_go=None,
+    s = ex.TimingSummary(has_go=False, go_times=[], first_go=None,
                           go_count=0, total_bars=len(bars))
-    assert jit._executable_price(bars, s) == pytest.approx(10.9)
+    assert ex.executable_price(bars, s) == pytest.approx(10.9)
 
 
 def test_exec_price_matches_lib_execution_go_price():
@@ -68,12 +68,12 @@ def test_exec_price_matches_lib_execution_go_price():
     panel = ex.daily_panel(ex.intraday_macd(flat), warmup_bars=0)
 
     wide = flat.set_index("dt")[["open", "high", "low", "close", "volume"]]
-    wide = jit.add_macd(wide)
+    wide = ex.intraday_macd(wide.reset_index()).set_index("dt")
 
     checked = 0
     for _, r in panel.iterrows():
-        bars = jit.classify_timing(wide[wide.index.normalize() == r["date"]], "buy")
-        mine = jit._executable_price(bars, jit.summarize_timing(bars))
+        bars = ex.classify_timing(wide[wide.index.normalize() == r["date"]], "buy")
+        mine = ex.executable_price(bars, ex.summarize_timing(bars))
         assert mine == pytest.approx(r["go_price"]), f"{r['date']} 口径不一致"
         checked += 1
     assert checked >= 30
@@ -94,7 +94,7 @@ def _df_sig(n=6, close=10.0, closes=None):
 def test_buys_at_given_exec_price():
     df = _df_sig()
     d0 = df.index[0]
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df, {d0: {"exec_date": d0, "exec_price": 9.5, "action": "buy", "dif": 0.5}})
     buys = [x for x in t.trades if x.action == "初仓"]
     assert len(buys) == 1
@@ -105,7 +105,7 @@ def test_missing_intraday_price_still_buys_using_daily_close():
     """exec_price=None（分时数据缺失）不能再让这一笔凭空消失。"""
     df = _df_sig(close=12.0)
     d0 = df.index[0]
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df, {d0: {"exec_date": d0, "exec_price": None, "action": "buy", "dif": 0.5}})
     buys = [x for x in t.trades if x.action == "初仓"]
     assert len(buys) == 1, "分时数据缺失不该改变是否建仓"
@@ -116,7 +116,7 @@ def test_pending_buy_uses_exec_day_close_not_signal_day_close():
     """兜底价要取执行日的收盘价——拿信号日的价去成交次日的单是错配。"""
     df = _df_sig(closes=[8.0, 9.0, 9.0, 9.0, 9.0, 9.0])
     d0, d1 = df.index[0], df.index[1]
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df, {d0: {"exec_date": d1, "exec_price": None, "action": "buy", "dif": 0.5}})
     buys = [x for x in t.trades if x.action == "初仓"]
     assert len(buys) == 1

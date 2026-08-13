@@ -6,8 +6,8 @@ import types
 import pandas as pd
 import pytest
 
-from lib import market_data as md
-from lib import price_store as ps
+from backtest.lib import market_data as md
+from backtest.lib import price_store as ps
 
 
 # ── yfinance ticker 后缀 ─────────────────────────────────────────────────────

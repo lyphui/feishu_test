@@ -7,11 +7,11 @@
 
 用法
 ----
-    python backtest/fatfinger_bench.py                     # 默认两只票、五档 k
-    python backtest/fatfinger_bench.py --offline           # 不联网，只读本地缓存
-    python backtest/fatfinger_bench.py --k 0.02 0.05 0.08
-    python backtest/fatfinger_bench.py --fast              # 卖单当日收盘就回补
-    python backtest/fatfinger_bench.py --symbols 601857
+    python -m backtest.scripts.backtest_fatfinger                     # 默认两只票、五档 k
+    python -m backtest.scripts.backtest_fatfinger --offline           # 不联网，只读本地缓存
+    python -m backtest.scripts.backtest_fatfinger --k 0.02 0.05 0.08
+    python -m backtest.scripts.backtest_fatfinger --fast              # 卖单当日收盘就回补
+    python -m backtest.scripts.backtest_fatfinger --symbols 601857
 
 口径
 ----
@@ -21,22 +21,21 @@
 """
 
 import argparse
-import os
-import sys
 
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from lib.fatfinger import (ROUND_TRIP_BP, fill_edge, simulate_fatfinger,
+from backtest.lib.fatfinger import (ROUND_TRIP_BP, fill_edge, simulate_fatfinger,
                            simulate_static_mix)
-from lib.ladder import simulate_buy_hold, simulate_grid
-from lib.price_store import load_daily
-from lib.console import use_utf8
+from backtest.lib.ladder import simulate_buy_hold, simulate_grid
+from backtest.lib.price_store import load_daily
+from backtest.lib.console import use_utf8
+from backtest.lib.cli import base_parser
+from backtest.lib.oil_price import OIL_STOCKS
 
-DEFAULT_SYMBOLS = ["601857", "600938"]
+# A 股油气股票统一取 lib/oil_price.OIL_STOCKS
+DEFAULT_SYMBOLS = list(OIL_STOCKS)
 DEFAULT_KS = [0.02, 0.03, 0.05, 0.08, 0.095, 0.30]
-NAMES = {"601857": "中国石油", "600938": "中国海油"}
+NAMES = dict(OIL_STOCKS)
 HISTORY_START = "20180101"
 LIMIT_PCT = 0.10
 
@@ -133,14 +132,14 @@ def run_symbol(symbol: str, df: pd.DataFrame, ks, capital: float, fast: bool) ->
 
 def main():
     use_utf8()
-    ap = argparse.ArgumentParser(description="乌龙指捕捉策略实测")
+    ap = argparse.ArgumentParser(description="乌龙指捕捉策略实测",
+                                 parents=[base_parser()])
     ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     ap.add_argument("--k", nargs="+", type=float, default=DEFAULT_KS,
                     help="挂单相对锚价的偏离幅度，可给多个")
-    ap.add_argument("--capital", type=float, default=100_000)
-    ap.add_argument("--offline", action="store_true", help="不联网，只读本地缓存")
     ap.add_argument("--fast", action="store_true",
                     help="卖单成交后当日收盘即回补（买单仍受 T+1 约束）")
+    ap.set_defaults(capital=100_000)
     args = ap.parse_args()
 
     if args.fast:

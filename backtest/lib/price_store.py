@@ -24,7 +24,7 @@ meta 记的是**请求过**的区间，而不是数据的首尾日期。两者�
 
 用法
 ----
-    from lib.price_store import load_daily, update_daily, load_dividends
+    from backtest.lib.price_store import load_daily, update_daily, load_dividends
 
     df = load_daily("601857", "20240101", "20260808")   # 缺什么补什么，然后返回
     update_daily("601857", rebuild=True)                # 整表重建
@@ -32,11 +32,12 @@ meta 记的是**请求过**的区间，而不是数据的首尾日期。两者�
 
 import json
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import pandas as pd
 
-from lib.market_data import (DEFAULT_ADJUST, fetch_etf_data, fetch_hk_data,
+from backtest.lib import store_base
+from backtest.lib.market_data import (DEFAULT_ADJUST, fetch_etf_data, fetch_hk_data,
                              fetch_index_data, fetch_stock_data)
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -68,16 +69,8 @@ def dividend_path(symbol: str) -> str:
 
 # ── 日期工具 ──────────────────────────────────────────────────────────────────
 
-def _today() -> str:
-    return date.today().strftime("%Y%m%d")
-
-
 def _to_ymd(d) -> str:
     return pd.Timestamp(d).strftime("%Y%m%d")
-
-
-def _shift_ymd(d: str, days: int) -> str:
-    return (datetime.strptime(d, "%Y%m%d") + timedelta(days=days)).strftime("%Y%m%d")
 
 
 # ── 读写 ──────────────────────────────────────────────────────────────────────
@@ -149,6 +142,50 @@ def _fetch(symbol: str, start: str, end: str, kind: str, adjust: str,
     return df[~df.index.duplicated(keep="last")].sort_index()
 
 
+# ── 增量更新 ──────────────────────────────────────────────────────────────────
+
+def update_daily(
+    symbol: str,
+    start: str = "20180101",
+    end: str = None,
+    *,
+    adjust: str = DEFAULT_ADJUST,
+    kind: str = "stock",
+    proxy: str = "",
+    rebuild: bool = False,
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """
+    把 [start, end] 补齐到本地仓库并返回该区间数据。
+
+    只抓本地缺的头段和尾段；尾段多抓 OVERLAP_DAYS 天与本地对账，
+    收盘价不一致（数据源改口径/修数）则整表重建。
+    qfq 口径无法安全追加，一律整表重建。
+
+    增量算法本体在 `store_base.incremental_update`（与 intraday_store 共用）。
+    """
+    return store_base.incremental_update(
+        symbol, start, end,
+        columns=OHLCV,
+        overlap_days=OVERLAP_DAYS,
+        log_prefix="store",
+        force_rebuild=adjust == "qfq",
+        rebuild=rebuild,
+        verbose=verbose,
+        read_local=lambda: read_daily(symbol, adjust),
+        write_local=lambda df: write_daily(df, symbol, adjust),
+        read_meta=lambda: read_meta(symbol, adjust),
+        write_meta=lambda req_start, req_end, df: write_meta(
+            symbol, adjust, req_start=req_start, req_end=req_end, df=df, kind=kind),
+        fetch_full=lambda s, e: _fetch(symbol, s, e, kind, adjust, proxy),
+        fetch_gap=lambda s, e: _fetch_safe(symbol, s, e, kind, adjust, proxy),
+        local_bounds=lambda df: (_to_ymd(df.index[0]), _to_ymd(df.index[-1])),
+        overlap_check=_overlap_matches,
+        merge_pieces=_merge_by_index,
+        slice_range=slice_range,
+    )
+
+
 def _fetch_safe(symbol: str, start: str, end: str, kind: str, adjust: str,
                 proxy: str = "") -> pd.DataFrame:
     """
@@ -174,90 +211,9 @@ def _overlap_matches(local: pd.DataFrame, fresh: pd.DataFrame) -> bool:
     return bool((a - b).abs().le(b.abs() * PRICE_RTOL + 1e-8).all())
 
 
-# ── 增量更新 ──────────────────────────────────────────────────────────────────
-
-def update_daily(
-    symbol: str,
-    start: str = "20180101",
-    end: str = None,
-    *,
-    adjust: str = DEFAULT_ADJUST,
-    kind: str = "stock",
-    proxy: str = "",
-    rebuild: bool = False,
-    verbose: bool = True,
-) -> pd.DataFrame:
-    """
-    把 [start, end] 补齐到本地仓库并返回该区间数据。
-
-    只抓本地缺的头段和尾段；尾段多抓 OVERLAP_DAYS 天与本地对账，
-    收盘价不一致（数据源改口径/修数）则整表重建。
-    qfq 口径无法安全追加，一律整表重建。
-    """
-    end = end or _today()
-    if adjust == "qfq":
-        rebuild = True
-
-    local = pd.DataFrame(columns=OHLCV) if rebuild else read_daily(symbol, adjust)
-
-    if local.empty:
-        if verbose:
-            print(f"[store] {symbol} 全量拉取 {start} → {end}")
-        merged = _fetch(symbol, start, end, kind, adjust, proxy)
-        if merged.empty:
-            raise RuntimeError(f"{symbol} 未取到任何行情数据（{start}~{end}）")
-        write_daily(merged, symbol, adjust)
-        write_meta(symbol, adjust, req_start=start, req_end=end, df=merged, kind=kind)
-        if verbose:
-            print(f"[store] {symbol} 写入 {len(merged)} 行 → {daily_path(symbol, adjust)}")
-        return slice_range(merged, start, end)
-
-    meta = read_meta(symbol, adjust)
-    covered_start = meta.get("requested_start") or _to_ymd(local.index[0])
-    covered_end = meta.get("requested_end") or _to_ymd(local.index[-1])
-    pieces = [local]
-    added = 0
-
-    # 头段：请求区间比已覆盖区间更早
-    if start < covered_start:
-        head_end = _shift_ymd(covered_start, -1)
-        if verbose:
-            print(f"[store] {symbol} 补头段 {start} → {head_end}")
-        head = _fetch_safe(symbol, start, head_end, kind, adjust, proxy)
-        if not head.empty:
-            pieces.append(head)
-            added += len(head.index.difference(local.index))
-
-    # 尾段：多抓 OVERLAP_DAYS 天用于对账。
-    # `end >= 今天` 时总是重查一次：早盘跑过一次、收盘后再跑，当天的 K 线才补得上。
-    if end > covered_end or end >= _today():
-        fetch_from = _shift_ymd(_to_ymd(local.index[-1]), -OVERLAP_DAYS)
-        if verbose:
-            print(f"[store] {symbol} 补尾段 {fetch_from} → {end}（含 {OVERLAP_DAYS} 天重叠对账）")
-        tail = _fetch_safe(symbol, fetch_from, end, kind, adjust, proxy)
-        if not tail.empty:
-            if not _overlap_matches(local, tail):
-                print(f"[store] ⚠ {symbol} 重叠区间收盘价与本地不一致"
-                      f"（数据源可能改了复权口径或修了历史数据），整表重建")
-                return update_daily(symbol, start, end, adjust=adjust, kind=kind,
-                                    proxy=proxy, rebuild=True, verbose=verbose)
-            pieces.append(tail)
-            added += len(tail.index.difference(local.index))
-
+def _merge_by_index(pieces: list) -> pd.DataFrame:
     merged = pd.concat(pieces)
-    merged = merged[~merged.index.duplicated(keep="last")].sort_index()
-
-    if added:
-        write_daily(merged, symbol, adjust)
-        if verbose:
-            print(f"[store] {symbol} 新增 {added} 行，合计 {len(merged)} 行 "
-                  f"（{_to_ymd(merged.index[0])}~{_to_ymd(merged.index[-1])}）")
-    elif verbose:
-        print(f"[store] {symbol} 已是最新（本地 {len(merged)} 行，"
-              f"至 {_to_ymd(merged.index[-1])}）")
-    write_meta(symbol, adjust, req_start=start, req_end=end, df=merged, kind=kind)
-
-    return slice_range(merged, start, end)
+    return merged[~merged.index.duplicated(keep="last")].sort_index()
 
 
 def slice_range(df: pd.DataFrame, start: str = None, end: str = None) -> pd.DataFrame:

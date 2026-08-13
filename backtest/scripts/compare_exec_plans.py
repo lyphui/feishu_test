@@ -4,13 +4,13 @@
 把 `lib/execution.py` 的度量层跑在真实分时数据上，产出「哪种下单方式成交价更好」
 的实测表。**度量衡共享，读数不共享**——每个池子各跑各的，结论各写各的文档。
 
-    python backtest/exec_bench.py --universe oil --side both
-    python backtest/exec_bench.py --universe jcy --side sell --limit 45
-    python backtest/exec_bench.py --universe oil --offline        # 只读本地缓存
+    python -m backtest.scripts.compare_exec_plans --universe oil --side both
+    python -m backtest.scripts.compare_exec_plans --universe jcy --side sell --limit 45
+    python -m backtest.scripts.compare_exec_plans --universe oil --offline        # 只读本地缓存
 
 为什么要有这个脚本而不是临时脚本
 --------------------------------
-这些 bp 数字会被写进 `jcy_intraday_timing.py` 的 docstring、CLAUDE.md 和 changelog。
+这些 bp 数字会被写进 `backtest_jcy_intraday.py` 的 docstring、CLAUDE.md 和 changelog。
 写进文档的数字必须随时能重跑验证，否则过几个月没人说得清它们是怎么来的。
 分时行情缓存在 `data/market/intraday/`（不复权，见 `lib/intraday_store.py`）。
 
@@ -28,25 +28,20 @@
 import argparse
 import os
 import random
-import sys
 
 import pandas as pd
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-from lib.execution import (add_limit_plan, benchmark, daily_panel, intraday_macd,
+from backtest.lib.execution import (add_limit_plan, benchmark, daily_panel, intraday_macd,
                            split_by_go, wait_value)
-from lib.intraday_store import load_intraday
-from lib.console import use_utf8
+from backtest.lib.intraday_store import load_intraday
+from backtest.lib.console import fmt_table, use_utf8
+from backtest.lib.cli import base_parser
+from backtest.lib.oil_price import OIL_STOCKS
 from jcy.lib.common import is_ashare_code, load_candidates
 
 # JCY 池抽样的固定种子——换了种子就是换了样本，文档里的数字会对不上
 SAMPLE_SEED = 20260809
-OIL_SYMBOLS = {"601857": "中国石油", "600938": "中国海油"}
-
+# 油气池 A 股代码表统一在 lib/oil_price.OIL_STOCKS，这里不再各写一遍
 DEFAULT_START = "20220101"
 LIMIT_OFFSET = 0.005            # 限价单相对开盘价的偏移幅度（买侧取负）
 
@@ -72,7 +67,7 @@ def jcy_universe(limit: int | None) -> dict[str, str]:
 
 def build_universe(name: str, limit: int | None) -> dict[str, str]:
     if name == "oil":
-        return dict(OIL_SYMBOLS)
+        return dict(OIL_STOCKS)
     if name == "jcy":
         return jcy_universe(limit)
     raise ValueError(f"未知股票池 {name!r}")
@@ -140,21 +135,16 @@ def per_stock_winner(pooled: pd.DataFrame, side: str) -> pd.Series:
     return edge.idxmax(axis=1).value_counts()
 
 
-def _fmt(df: pd.DataFrame) -> str:
-    return df.to_string(index=False, float_format=lambda v: f"{v:7.1f}")
-
-
 def main():
     use_utf8()
-    ap = argparse.ArgumentParser(description="日内下单方案实测（按池分别出数）")
+    ap = argparse.ArgumentParser(description="日内下单方案实测（按池分别出数）",
+                                 parents=[base_parser()])
     ap.add_argument("--universe", choices=["jcy", "oil"], default="oil")
     ap.add_argument("--side", choices=["buy", "sell", "both"], default="both")
     ap.add_argument("--limit", type=int, default=45, help="JCY 池抽样只数（定种子）")
     ap.add_argument("--period", type=int, default=30, choices=[5, 15, 30, 60])
-    ap.add_argument("--start", default=DEFAULT_START)
     ap.add_argument("--end", default=None)
-    ap.add_argument("--offline", action="store_true", help="不联网，只读本地缓存")
-    ap.add_argument("--output", default="output/exec_bench")
+    ap.set_defaults(start=DEFAULT_START, output="output/exec_bench")
     args = ap.parse_args()
 
     universe = build_universe(args.universe, args.limit)
@@ -176,7 +166,7 @@ def main():
         n_days, n_sym = len(pooled), pooled["symbol"].nunique()
         print(f"\n样本：{n_sym} 只 × 合计 {n_days} 个股票-交易日  "
               f"GO 天占比 {pooled['has_go'].mean():.0%}\n")
-        print(_fmt(table))
+        print(fmt_table(table, "{:7.1f}"))
 
         print(f"\n逐股最优方案计票（共 {n_sym} 只）：")
         for plan, cnt in per_stock_winner(pooled, side).items():
@@ -185,7 +175,7 @@ def main():
         wv = wait_value(pooled, side=side)
         if not wv.empty:
             print(f"\nGO 成交后再等到收盘（因果可执行的比较）：")
-            print(_fmt(wv))
+            print(fmt_table(wv, "{:7.1f}"))
 
         print(f"\n按当天有无 GO 拆开（归因用，不可作决策）：")
         print(split_by_go(pooled, side=side).to_string(

@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lib import regime as rg
-from lib.ladder import (simulate_adaptive, simulate_buy_hold, simulate_dca,
+from backtest.lib import regime as rg
+from backtest.lib.ladder import (simulate_adaptive, simulate_buy_hold, simulate_dca,
                         simulate_grid, simulate_ladder)
-from lib.swings import drawdown_episodes, swing_table
+from backtest.lib.swings import drawdown_episodes, swing_table
 
 
 def make_df(closes, start="2020-01-01") -> pd.DataFrame:

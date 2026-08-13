@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategies import LuMACDStrategy, LuMACDBullStrategy, MACDStrategy
-from strategies.base import BaseStrategy
+from backtest.strategies import LuMACDStrategy, LuMACDBullStrategy, MACDStrategy
+from backtest.strategies.base import BaseStrategy
 
 
 # ── 构造数据 ──────────────────────────────────────────────────────────────────

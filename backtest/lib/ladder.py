@@ -11,7 +11,9 @@
 ----------------------------------------------
 * T 日收盘触发 → **T+1 开盘**成交
 * 100 股整数手；佣金双边万三、单笔最低 5 元；印花税卖出单边千一；双边滑点千一
-* 停牌（volume==0）、开盘涨停买不进 / 开盘跌停卖不掉时，当日不成交
+* 停牌（volume<=0）、开盘涨停买不进 / 开盘跌停卖不掉时，当日不成交。
+  成交判定唯一实现在 `lib/costs.tradability`（与 engine.py 共用），
+  采用 engine 的严格口径：相对容差 1e-4、`volume <= 0`、prev_close 非法放行
 * 行情用**后复权（hfq）**，即含股息再投的全收益口径，各策略同口径可比
 
 闲置现金按 `cash_rate` 计息。不计息的话，分批策略会被平白扣掉一块收益——
@@ -25,23 +27,15 @@ import pandas as pd
 
 # 成本假设与 `engine.py` 共用同一份定义（`lib/costs.py`），不在这里另写字面量——
 # 两套撮合骨架的数字一旦漂开，梯度/网格与满仓持有的横向比较就失去意义。
-# 这里 re-export 是为了让 `lib/fatfinger.py` 继续 `from lib.ladder import ...`。
-from lib.costs import (COMMISSION_RATE, LIMIT_PCT_MAIN, LOT,  # noqa: F401
-                       MIN_COMMISSION, SLIPPAGE, STAMP_DUTY)
-from lib.costs import commission as _commission
+from backtest.lib.costs import (COMMISSION_RATE, LIMIT_PCT_MAIN, LOT,
+                       MIN_COMMISSION, SLIPPAGE, STAMP_DUTY, commission,
+                       tradability)
 
 
 # ── 成交约束 ──────────────────────────────────────────────────────────────────
-
-def _tradable(row, prev_close: float, limit_pct: float) -> tuple[bool, bool]:
-    """(能买, 能卖)：停牌不成交；开盘一字涨停买不进、跌停卖不掉。"""
-    if row.get("volume", 1) == 0 or prev_close <= 0:
-        return False, False
-    up = prev_close * (1 + limit_pct)
-    down = prev_close * (1 - limit_pct)
-    can_buy = row["open"] < up * 0.999
-    can_sell = row["open"] > down * 1.001
-    return can_buy, can_sell
+# 涨跌停 / 停牌成交判定唯一实现在 `lib/costs.tradability`（与 engine.py 共用）。
+# 曾在此另存一份 `_tradable`：容差 0.999（松 10 倍）、`volume == 0` 漏判负值/NaN、
+# `prev_close <= 0` 遇 None 直接 TypeError——与引擎不可比，已删除。
 
 
 # ── 结果容器 ──────────────────────────────────────────────────────────────────
@@ -62,7 +56,7 @@ class LadderResult:
                 f"交易 {s['n_trades']:>2d} 笔")
 
 
-def _summarize(name, equity, exposure, trades, capital) -> LadderResult:
+def summarize(name, equity, exposure, trades, capital) -> LadderResult:
     eq = equity.astype(float)
     years = max(len(eq) / 252, 1e-9)
     total = eq.iloc[-1] / capital - 1
@@ -106,7 +100,7 @@ def _run(df: pd.DataFrame, capital: float, decide, name: str,
 
     for i, (date, row) in enumerate(df.iterrows()):
         cash *= 1 + daily_cash_rate
-        can_buy, can_sell = _tradable(row, prev_close, limit_pct)
+        can_buy, can_sell = tradability(row, prev_close, limit_pct)
 
         # ① 开盘执行昨日挂单
         for side, size in pending:
@@ -116,7 +110,7 @@ def _run(df: pd.DataFrame, capital: float, decide, name: str,
                 if lots > 0:
                     qty = lots * LOT
                     amt = qty * px
-                    fee = _commission(amt)
+                    fee = commission(amt)
                     if amt + fee <= cash:
                         cash -= amt + fee
                         cost_basis += amt + fee
@@ -129,7 +123,7 @@ def _run(df: pd.DataFrame, capital: float, decide, name: str,
                 if qty > 0:
                     px = float(row["open"]) * (1 - SLIPPAGE)
                     amt = qty * px
-                    fee = _commission(amt) + amt * STAMP_DUTY
+                    fee = commission(amt) + amt * STAMP_DUTY
                     cash += amt - fee
                     cost_basis *= 1 - qty / shares
                     shares -= qty
@@ -152,8 +146,8 @@ def _run(df: pd.DataFrame, capital: float, decide, name: str,
         prev_close = close
 
     idx = df.index
-    return _summarize(name, pd.Series(equity, index=idx),
-                      pd.Series(exposure, index=idx), trades, capital)
+    return summarize(name, pd.Series(equity, index=idx),
+                     pd.Series(exposure, index=idx), trades, capital)
 
 
 # ── 策略一：一次性买入并持有 ──────────────────────────────────────────────────

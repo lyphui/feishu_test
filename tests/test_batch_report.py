@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from batch_report import (
+from backtest.reports.batch_report import (
     SUMMARY_COLUMNS, build_portfolio_curve, build_summary, compare_rating_pools,
     index_window_return, normalized_equity, result_to_row, write_batch_report,
 )
@@ -200,8 +200,8 @@ def test_real_engine_result_feeds_the_report_layer(tmp_path):
     汇总层读的 equity_base / costs.cost_drag_pct 等键必须真的由引擎产出。
     _fake_result 是手写的，改了引擎它不会报错——这个测试才会。
     """
-    from engine import run_backtest
-    from strategies.base import BaseStrategy
+    from backtest.engine import run_backtest
+    from backtest.strategies.base import BaseStrategy
 
     class _Scripted(BaseStrategy):
         name = "scripted"

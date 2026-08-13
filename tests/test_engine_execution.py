@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from engine import run_backtest, infer_limit_pct, _commission, _tradability
-from strategies.base import BaseStrategy
+from backtest.engine import run_backtest, infer_limit_pct, _commission, _tradability
+from backtest.strategies.base import BaseStrategy
 
 
 # ── 测试脚手架 ────────────────────────────────────────────────────────────────

@@ -15,7 +15,8 @@ _ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 
 
 def test_importing_engine_does_not_load_matplotlib():
-    """在**子进程**里验证：import engine 之后 sys.modules 里不该出现 matplotlib。
+    """在**子进程**里验证：import backtest.engine 之后 sys.modules 里不该出现
+    matplotlib。
 
     必须起子进程——同一个 pytest 会话里其他测试早就把 matplotlib 导进来了，
     在本进程内检查 `sys.modules` 永远会误判为失败。
@@ -23,11 +24,11 @@ def test_importing_engine_does_not_load_matplotlib():
     code = textwrap.dedent("""
         import os, sys
         root = sys.argv[1]
-        sys.path[:0] = [os.path.join(root, "backtest"), root]
-        import engine
+        sys.path[:0] = [root]
+        import backtest.engine
         assert "matplotlib" not in sys.modules, \\
             "engine 又把 matplotlib 拖进来了——绘图应该留在 report.py"
-        assert callable(engine.run_backtest)
+        assert callable(backtest.engine.run_backtest)
         print("OK")
     """)
     r = subprocess.run([sys.executable, "-c", code, _ROOT],
@@ -37,8 +38,8 @@ def test_importing_engine_does_not_load_matplotlib():
 
 
 def test_report_still_exposes_plot_backtest():
-    """拆分不能弄丢公开接口：report 与 macd_analysis 两条路径都要能拿到。"""
-    import report
+    """拆分不能弄丢公开接口：report 与 backtest_macd 两条路径都要能拿到。"""
+    from backtest.reports import report
     assert callable(report.plot_backtest)
-    import macd_analysis
-    assert macd_analysis.plot_backtest is report.plot_backtest
+    from backtest.scripts import backtest_macd
+    assert backtest_macd.plot_backtest is report.plot_backtest

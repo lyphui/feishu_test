@@ -10,18 +10,18 @@
 
 项目里 `bull_report.py` / `batch_report.py` 早就是这么分的，engine 只是没跟上。
 
-    from engine import run_backtest
-    from report import plot_backtest          # 只有真要出图才 import
+    from backtest.engine import run_backtest
+    from backtest.reports.report import plot_backtest          # 只有真要出图才 import
 
-`macd_analysis.py` 仍 re-export `plot_backtest`，历史导入路径不受影响。
+`backtest_macd.py` 仍 re-export `plot_backtest`，历史导入路径不受影响。
 """
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 
-from engine import fmt_sharpe
-from lib.plotting import (
+from backtest.engine import fmt_sharpe
+from backtest.reports.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_MUTED, COLORS,
     setup_matplotlib, style_ax,
 )

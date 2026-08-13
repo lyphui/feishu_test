@@ -4,8 +4,8 @@ from datetime import date
 
 import pytest
 
-import config as bt_config
-from config import BacktestConfig, load_backtest_config
+import backtest.config as bt_config
+from backtest.config import BacktestConfig, load_backtest_config
 
 
 _INI_FULL = """\
@@ -133,7 +133,7 @@ def test_execution_kwargs_overrides(monkeypatch, tmp_path):
 def test_execution_kwargs_feed_run_backtest():
     """返回的键必须全部是 run_backtest 认识的参数名。"""
     import inspect
-    from engine import run_backtest
+    from backtest.engine import run_backtest
     cfg = BacktestConfig(symbol="600519", name="x", start_date="20200101",
                          end_date="20240101")
     sig = inspect.signature(run_backtest).parameters
@@ -149,7 +149,7 @@ def test_index_history_start_is_absolute_not_pool_dependent():
     往 jcy_insights.json 里加一篇更早的文章就会改写全部个股的 bull_market
     历史 —— 回测数值随候选池变化，不可复现。起点必须是绝对日期。
     """
-    from config import INDEX_HISTORY_START, index_history_start
+    from backtest.config import INDEX_HISTORY_START, index_history_start
 
     # 与候选池无关：不传参数永远是同一个绝对起点
     assert index_history_start() == INDEX_HISTORY_START
@@ -166,7 +166,7 @@ def test_index_history_start_is_absolute_not_pool_dependent():
 def test_index_history_start_leaves_room_for_monthly_macd():
     """至少要够 EMA(26) 月线收敛（26 根远远不够，这里要求 ≥ 8 年）。"""
     from datetime import date
-    from config import INDEX_HISTORY_START
+    from backtest.config import INDEX_HISTORY_START
 
     start = date(int(INDEX_HISTORY_START[:4]), int(INDEX_HISTORY_START[4:6]),
                  int(INDEX_HISTORY_START[6:]))

@@ -2,12 +2,15 @@
 
 日线的 signal / 红柱缩短 / 死叉 / DIF<0 都要等当日收盘才算得出来，
 所以每一条都必须排到下一个交易日成交——买卖两侧、窗口内外，一视同仁。
+
+直接从 `lib/position_tracker` 导入（纯计算模块），不再 importorskip 进
+那个 1300+ 行的 CLI 脚本。
 """
 
 import pandas as pd
 import pytest
 
-jit = pytest.importorskip("jcy_intraday_timing")
+from backtest.lib.position_tracker import PositionTracker
 
 
 def frame(*, closes, signal=None, expanding=None, shrinking=None,
@@ -33,7 +36,7 @@ def by_action(tracker, action):
 def test_buy_executes_next_day_not_signal_day():
     """signal 要等 T 日收盘才算得出来，不能在 T 日收盘价成交。"""
     df = frame(closes=[10.0, 11.0, 12.0, 13.0], signal=[1, 0, 0, 0])
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df)
     buys = by_action(t, "初仓")
     assert len(buys) == 1
@@ -44,7 +47,7 @@ def test_buy_executes_next_day_not_signal_day():
 def test_signal_on_last_bar_never_trades():
     """最后一根 K 线之后没有 T+1，该操作只能作废，不许当日抢成交。"""
     df = frame(closes=[10.0, 11.0, 12.0], signal=[0, 0, 1])
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df)
     assert t.trades == []
 
@@ -54,7 +57,7 @@ def test_buy_add_also_deferred():
     df = frame(closes=[10.0, 11.0, 12.0, 13.0, 14.0],
                signal=[1, 0, 0, 0, 0],
                expanding=[False, False, True, False, False])
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df)
     adds = by_action(t, "加仓")
     assert len(adds) == 1
@@ -81,7 +84,7 @@ def _full_position_frame():
 def test_three_stage_sells_are_all_deferred_one_day():
     """一级红柱缩短、二级死叉、三级 DIF<0 —— 三级全部 T+1 成交。"""
     df = _full_position_frame()
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df)
 
     sells = [x for x in t.trades if x.action in ("减仓", "清仓")]
@@ -94,7 +97,7 @@ def test_three_stage_sells_are_all_deferred_one_day():
 def test_sell_price_is_exec_day_not_signal_day():
     """价格必须取执行日的——拿信号日的价成交次日的单是把已知价错配到另一天。"""
     df = _full_position_frame()
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df)
     first_sell = [x for x in t.trades if x.reason == "红柱缩短"][0]
     assert first_sell.price != pytest.approx(df["close"].iloc[4])   # 信号日 20.0
@@ -113,11 +116,11 @@ def test_lookback_window_does_not_change_execution_dates():
     df = _full_position_frame()
     d0 = df.index[0]
 
-    bare = jit.PositionTracker(capital=100_000)
+    bare = PositionTracker(capital=100_000)
     bare.run(df)
 
     # 同一个信号进了 lookback 窗口，但分时价缺失（exec_price=None）
-    covered = jit.PositionTracker(capital=100_000)
+    covered = PositionTracker(capital=100_000)
     covered.run(df, {d0: {"exec_date": df.index[1], "exec_price": None,
                           "action": "buy", "dif": 0.5}})
 
@@ -128,7 +131,7 @@ def test_lookback_window_does_not_change_execution_dates():
 def test_intraday_price_changes_price_only_not_date():
     df = _full_position_frame()
     d0 = df.index[0]
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df, {d0: {"exec_date": df.index[1], "exec_price": 9.5,
                     "action": "buy", "dif": 0.5}})
     buy = by_action(t, "初仓")[0]
@@ -140,7 +143,7 @@ def test_exec_day_same_mode_still_fills_same_day():
     """`--exec_day same` 是使用者明确选的盘中实时口径，保留当日成交。"""
     df = _full_position_frame()
     d0 = df.index[0]
-    t = jit.PositionTracker(capital=100_000)
+    t = PositionTracker(capital=100_000)
     t.run(df, {d0: {"exec_date": d0, "exec_price": 9.9,
                     "action": "buy", "dif": 0.5}})
     buy = by_action(t, "初仓")[0]

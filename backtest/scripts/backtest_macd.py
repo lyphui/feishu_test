@@ -4,28 +4,26 @@ A股 MACD 策略回测工具（CLI 入口）
 回测引擎已抽取至 engine.py；本文件仅保留 MACDStrategy 的命令行入口，
 并 re-export 引擎符号以兼容历史导入（from macd_analysis import run_backtest, ...）。
 
+注意：这是一个 **~100 行的薄 re-export 入口**，不是完整实现。卢式策略的
+两个入口（backtest_lu_macd / backtest_lu_macd_bull，各 400+ 行）才是
+独立策略 + 专属绘图 / 诊断导出的完整脚本——新增功能不要堆到本文件里。
+
 使用方法：
-    python backtest/macd_analysis.py --config jxty_jcy_260104.ini
+    python -m backtest.scripts.backtest_macd --config jxty_jcy_260104.ini
 
 或直接调用引擎：
-    from engine import run_backtest
+    from backtest.engine import run_backtest
     result = run_backtest("600519", "20200101", "20241231")
 """
 
-import os
 import sys
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
 # 向后兼容 re-export：历史代码 from macd_analysis import run_backtest / fetch_stock_data
-from engine import run_backtest, fetch_stock_data  # noqa: F401
-from report import plot_backtest  # noqa: F401 — 绘图已拆到 report.py，此处续接旧导入路径
+from backtest.engine import run_backtest, fetch_stock_data  # noqa: F401
+from backtest.reports.report import plot_backtest  # noqa: F401 — 绘图已拆到 report.py，此处续接旧导入路径
 
-from config import load_backtest_config, execution_kwargs, OutputPaths
-from lib.console import use_utf8
+from backtest.config import load_backtest_config, execution_kwargs, OutputPaths
+from backtest.lib.console import use_utf8
 
 
 _DEFAULT_INI = """\
@@ -75,7 +73,7 @@ max_pending_days =
 def main():
     use_utf8()
     import argparse
-    from strategies import MACDStrategy
+    from backtest.strategies import MACDStrategy
 
     parser = argparse.ArgumentParser(description="A股 MACD 策略回测工具")
     parser.add_argument("--config", type=str, default="jxty_jcy_260104.ini",

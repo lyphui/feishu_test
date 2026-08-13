@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lib import execution as ex
+from backtest.lib import execution as ex
 
 BARS = ["10:00", "10:30", "11:00", "11:30", "13:30", "14:00", "14:30", "15:00"]
 
@@ -119,28 +119,31 @@ def test_split_by_go_returns_both_branches():
     assert t["天数"].sum() == len(p)
 
 
-def test_go_buy_matches_jcy_intraday_timing():
-    """与 jcy_intraday_timing 的买入 GO 定义必须一致，否则两处会悄悄漂移。"""
-    jit = pytest.importorskip("jcy_intraday_timing")
-    bars = make_bars(30, seed=17)
-    mine = ex.intraday_macd(bars)
+def test_go_buy_labels_match_intraday_macd_go_buy():
+    """classify_timing 的买侧 GO 标签必须逐柱等于 intraday_macd 的 go_buy。
 
-    theirs = bars.set_index("dt")[["open", "high", "low", "close", "volume"]]
-    theirs = jit.classify_timing(jit.add_macd(theirs), "buy")
-    assert (mine["go_buy"].values == (theirs["timing"].values == "GO")).all()
+    classify_timing 从 backtest_jcy_intraday 并入 execution 后只读 go_buy/go_sell
+    （唯一真值源），这里守住"打标签层不得与 GO 定义漂移"。
+    """
+    bars = make_bars(30, seed=17)
+    flat = ex.intraday_macd(bars)
+    wide = flat.set_index("dt")
+    day = wide[wide.index.normalize() == wide.index.normalize()[2]]
+    labeled = ex.classify_timing(day, "buy")
+    assert (labeled["timing"] == "GO").equals(labeled["go_buy"])
+    assert (labeled["timing"] == "AVOID").equals(~(labeled["DIF"] > labeled["DEA"]))
 
 
 # ── 卖出侧 ───────────────────────────────────────────────────────────────────
 
-def test_go_sell_matches_jcy_intraday_timing():
-    """卖出 GO 同样要与 jcy_intraday_timing 对齐（红柱缩短 或 死叉）。"""
-    jit = pytest.importorskip("jcy_intraday_timing")
+def test_go_sell_labels_match_intraday_macd_go_sell():
+    """卖出侧 GO 标签同样必须逐柱等于 intraday_macd 的 go_sell。"""
     bars = make_bars(30, seed=17)
-    mine = ex.intraday_macd(bars)
-
-    theirs = bars.set_index("dt")[["open", "high", "low", "close", "volume"]]
-    theirs = jit.classify_timing(jit.add_macd(theirs), "sell")
-    assert (mine["go_sell"].values == (theirs["timing"].values == "GO")).all()
+    flat = ex.intraday_macd(bars)
+    wide = flat.set_index("dt")
+    day = wide[wide.index.normalize() == wide.index.normalize()[2]]
+    labeled = ex.classify_timing(day, "sell")
+    assert (labeled["timing"] == "GO").equals(labeled["go_sell"])
 
 
 def test_sell_go_is_looser_than_buy_go():

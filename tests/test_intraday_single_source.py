@@ -1,11 +1,13 @@
 """
 分时取数只能有**一处**实现。
 
-`jcy_intraday_timing` 曾经自带一份 `_fetch_intraday_baostock`，与
+`backtest_jcy_intraday` 曾经自带一份 `_fetch_intraday_baostock`（以及
+akshare/baostock 回退 + 重试的 `fetch_intraday`），与
 `lib/intraday_store.fetch_intraday_raw` 是两份独立代码，而且**复权口径还不一样**
 （前者 qfq、后者 none），靠人看着两处维持一致。两个口径本身都对——分时 MACD 要
 复权（不复权在除权日有假跳空），VWAP 基准要不复权（amount/volume 恒为原始值）——
-所以正确形态是同一个函数的两种参数，而不是两份实现。
+所以正确形态是同一个函数的两种参数，而不是两份实现。现在脚本的 `fetch_intraday`
+整段已删，改用 `store.fetch_intraday_indexed`（= `fetch_intraday_raw` + 索引转换）。
 
 这些测试全部离线：用假的 baostock 模块拦住网络调用，只检查参数与形状。
 """
@@ -16,9 +18,8 @@ import types
 import pandas as pd
 import pytest
 
-from lib import intraday_store as store
-
-jit = pytest.importorskip("jcy_intraday_timing")
+from backtest.lib import intraday_store as store
+from backtest.scripts import backtest_jcy_intraday as jit
 
 
 class _FakeRS:
@@ -59,41 +60,32 @@ def fake_bs(monkeypatch):
 
 # ── 单一实现 ──────────────────────────────────────────────────────────────────
 
-def test_jcy_no_longer_has_its_own_baostock_fetcher():
-    assert not hasattr(jit, "_fetch_intraday_baostock"), \
-        "分时取数又出现第二份实现了——应当复用 intraday_store.fetch_intraday_raw"
+def test_script_no_longer_has_its_own_fetcher():
+    """脚本不得再自带分时取数实现——akshare/baostock 回退那一套已删除。"""
+    assert not hasattr(jit, "_fetch_intraday_akshare")
+    assert not hasattr(jit, "_fetch_intraday_baostock")
+    assert not hasattr(jit, "fetch_intraday_raw"), \
+        "脚本里不应再出现独立的 fetch_intraday_raw——应当复用 intraday_store"
 
 
-def test_jcy_delegates_to_the_shared_fetcher(monkeypatch):
-    """akshare 失败时必须走仓库那一份，且传 qfq。"""
-    monkeypatch.setattr(jit, "_fetch_intraday_akshare", lambda *a, **k: None)
-    calls = {}
+def test_script_delegates_to_the_shared_fetcher():
+    """脚本用的 `fetch_intraday_indexed` 必须就是 intraday_store 那一个对象。"""
+    assert jit.fetch_intraday_indexed is store.fetch_intraday_indexed
 
-    def spy(symbol, start, end, period=30, adjust="none"):
-        calls.update(symbol=symbol, period=period, adjust=adjust)
-        return pd.DataFrame({
-            "dt": pd.to_datetime(["2026-03-05 10:00", "2026-03-05 10:30"]),
-            "date": pd.to_datetime(["2026-03-05"] * 2),
-            "open": [10.0, 10.1], "high": [10.2, 10.4], "low": [9.9, 10.0],
-            "close": [10.1, 10.3], "volume": [1000, 2000],
-            "amount": [10100, 20600]})
 
-    monkeypatch.setattr(jit, "fetch_intraday_raw", spy)
-    out = jit.fetch_intraday("601857", "20260301", "20260306", period=30)
-
-    assert calls == {"symbol": "601857", "period": 30, "adjust": "qfq"}
-    # 本模块按 datetime 索引消费，且不要 amount
+def test_fetch_intraday_indexed_returns_indexed_panel(fake_bs):
+    """`fetch_intraday_indexed` 默认 qfq（MACD 要复权），返回 datetime 索引宽表。"""
+    out = store.fetch_intraday_indexed("601857", "20260301", "20260306", 30)
+    assert fake_bs["adjustflag"] == "2"            # qfq
     assert isinstance(out.index, pd.DatetimeIndex)
     assert list(out.columns) == ["open", "high", "low", "close", "volume"]
     assert len(out) == 2
 
 
-def test_jcy_returns_empty_frame_when_both_sources_fail(monkeypatch):
-    """取数失败必须是空表而不是异常——上层靠"无分时数据也照常建仓"兜底。"""
-    monkeypatch.setattr(jit, "_fetch_intraday_akshare", lambda *a, **k: None)
-    monkeypatch.setattr(jit, "fetch_intraday_raw",
-                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
-    assert jit.fetch_intraday("601857", "20260301", "20260306").empty
+def test_fetch_intraday_indexed_passes_none_adjust_through(fake_bs):
+    """不复权口径（VWAP 测算用）也允许显式传。"""
+    store.fetch_intraday_indexed("601857", "20260301", "20260306", 30, adjust="none")
+    assert fake_bs["adjustflag"] == "3"
 
 
 # ── 复权口径 ──────────────────────────────────────────────────────────────────

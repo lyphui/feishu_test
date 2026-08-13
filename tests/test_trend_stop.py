@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lib.trend_stop import (buy_hold, hk_fee_rate, hk_trade_cost,
+from backtest.lib.trend_stop import (buy_hold, hk_fee_rate, hk_trade_cost,
                             month_end_flags, next_decision_date, simulate,
                             sweep)
 

@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from param_sweep import (AXES, DEFAULTS, METRICS, build_matrix, fmt_value,
+from backtest.scripts.sweep_params import (AXES, DEFAULTS, METRICS, build_matrix, fmt_value,
                          parse_args, resolve_universe, split_candidates)
 
 
@@ -26,7 +26,7 @@ def _cands(dates):
 
 def test_explicit_codes_bypass_the_jcy_json(monkeypatch):
     """给了 --codes 就不该去碰 jcy_insights.json——这正是解绑的意义。"""
-    import param_sweep
+    import backtest.scripts.sweep_params as param_sweep
     monkeypatch.setattr(param_sweep, "load_candidates",
                         lambda *a, **k: pytest.fail("显式池不该读 JCY JSON"))
     monkeypatch.setattr(param_sweep, "JSON_PATH", "/nonexistent/nope.json")
@@ -40,7 +40,7 @@ def test_explicit_codes_bypass_the_jcy_json(monkeypatch):
 
 
 def test_jcy_pool_is_still_the_default(monkeypatch):
-    import param_sweep
+    import backtest.scripts.sweep_params as param_sweep
     monkeypatch.setattr(param_sweep, "load_candidates",
                         lambda path, ratings: _cands(["20240101", "20240202"]))
     monkeypatch.setattr(param_sweep.os.path, "exists", lambda p: True)
@@ -58,7 +58,7 @@ def test_universe_entries_carry_only_what_evaluate_combo_needs():
 def parse_args_for(argv):
     import sys
     old = sys.argv
-    sys.argv = ["param_sweep.py", *argv]
+    sys.argv = ["sweep_params.py", *argv]
     try:
         return parse_args()
     finally:
@@ -147,9 +147,9 @@ def test_defaults_match_batch_cli(monkeypatch):
     "默认格"不是实际在跑的那组参数。这里直接调用 batch.parse_args() 取值，
     不复制一份常量——复制出来的测试永远通过，也就永远发现不了漂移。
     """
-    import jcy_macd_bull_batch as batch
+    import backtest.scripts.backtest_jcy_pool as batch
 
-    monkeypatch.setattr("sys.argv", ["jcy_macd_bull_batch.py"])
+    monkeypatch.setattr("sys.argv", ["backtest_jcy_pool.py"])
     cli = vars(batch.parse_args())
 
     for key in ("stop_loss", "take_profit", "shrink_exit"):
@@ -163,7 +163,7 @@ def test_defaults_match_batch_cli(monkeypatch):
     ("off", None), ("", None), ("  ", None),
 ])
 def test_ratio_or_none_parses_disable_keywords(raw, expected):
-    import jcy_macd_bull_batch as batch
+    import backtest.scripts.backtest_jcy_pool as batch
     assert batch._ratio_or_none(raw) == expected
 
 
@@ -173,7 +173,7 @@ def test_every_metric_is_actually_produced_by_evaluate_combo(monkeypatch):
     evaluate_combo 的真实产出对齐：少一个则合法指标被 argparse 拒掉，
     多一个则跑完整个网格才在最后 KeyError。这里打桩掉行情与回测，只验契约。
     """
-    import param_sweep
+    import backtest.scripts.sweep_params as param_sweep
 
     monkeypatch.setattr(param_sweep, "_cached_stock",
                         lambda *a: pd.DataFrame({"close": range(100)}))
@@ -203,13 +203,13 @@ def test_daily_metric_is_the_default_not_total_excess():
     import sys
     from unittest import mock
 
-    with mock.patch.object(sys, "argv", ["param_sweep.py"]):
+    with mock.patch.object(sys, "argv", ["sweep_params.py"]):
         assert parse_args().metric == "日均超额中位bp"
 
 
 def test_bad_metric_is_rejected_before_the_grid_runs(monkeypatch):
     """拼错指标名要在 argparse 阶段就退出，而不是跑完几十分钟的网格再崩。"""
-    monkeypatch.setattr("sys.argv", ["param_sweep.py", "--metric", "不存在的指标"])
+    monkeypatch.setattr("sys.argv", ["sweep_params.py", "--metric", "不存在的指标"])
     with pytest.raises(SystemExit):
         parse_args()
 

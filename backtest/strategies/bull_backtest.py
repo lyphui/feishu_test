@@ -3,13 +3,13 @@
 ================================================
 BullStrategyAdapter: 将双参数 prepare(df, index_df) 适配为单参数接口。
 
-报告输出（plot_bull_backtest / export_bull_daily_status）已移至 backtest/bull_report.py。
+报告输出（plot_bull_backtest / export_bull_daily_status）已移至 backtest/reports/bull_report.py。
 """
 
 import pandas as pd
 
-from strategies import LuMACDBullStrategy
-from strategies.base import BaseStrategy
+from backtest.strategies import LuMACDBullStrategy
+from backtest.strategies.base import BaseStrategy
 
 
 # ── 策略适配器 ────────────────────────────────────────────────────────────────

@@ -2,12 +2,12 @@
 单票打法对比台：给定一只票，回答「这只票该用什么打法」
 ====================================================
 
-    python backtest/stock_playbook.py --code 688256 --name 寒武纪
-    python backtest/stock_playbook.py --code 601899 --start 20180101 --offline
+    python -m backtest.scripts.compare_playbooks --code 688256 --name 寒武纪
+    python -m backtest.scripts.compare_playbooks --code 601899 --start 20180101 --offline
 
 为什么单独一个入口
 ------------------
-`ma_cross_bench.py` 比的是**同一个策略家族在不同品类上**的表现；这里反过来，
+`compare_ma_cross.py` 比的是**同一个策略家族在不同品类上**的表现；这里反过来，
 比的是**同一只票上不同打法**——择时、分批、趋势跟踪三条路，各自的模拟器在
 仓库里本来就有（`engine` / `lib.ladder` / `lib.trend_stop`），缺的只是把它们
 摆到同一张表、同一段数据、同一套成本口径上。散在三个脚本里各跑各的，
@@ -55,21 +55,16 @@ import sys
 import numpy as np
 import pandas as pd
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-from engine import run_backtest
-from lib import costs, trend_stop
-from lib.console import use_utf8
-from lib.ladder import (simulate_adaptive, simulate_buy_hold, simulate_dca,
+from backtest.engine import run_backtest
+from backtest.lib import costs, trend_stop
+from backtest.lib.console import print_wide, use_utf8
+from backtest.lib.ladder import (simulate_adaptive, simulate_buy_hold, simulate_dca,
                         simulate_grid, simulate_ladder)
-from lib.price_store import load_daily
-from lib.regime import (BEAR, CHOP, LABELS, TREND_UP, classify,
+from backtest.lib.price_store import load_daily
+from backtest.lib.regime import (BEAR, CHOP, LABELS, TREND_UP, classify,
                         regime_episodes, regime_stats)
-from lib.swings import drawdown_profile
-from strategies import MACrossStrategy
+from backtest.lib.swings import drawdown_profile
+from backtest.strategies import MACrossStrategy
 
 TRADING_DAYS = 252
 DEFAULT_START = "20180101"
@@ -352,17 +347,6 @@ def episode_breakdown(curves: dict, eps: pd.DataFrame,
                        else float("nan"))
         out[name] = col
     return pd.DataFrame(out, index=eps["标签"].tolist())
-
-
-def print_wide(table: pd.DataFrame, chunk: int = 5,
-               floatfmt: str = "{:9.1f}") -> None:
-    """列太多时按列分块打印，避免 pandas 折行把表拆得没法看。"""
-    cols = list(table.columns)
-    for i in range(0, len(cols), chunk):
-        part = table[cols[i:i + chunk]]
-        print(part.to_string(float_format=lambda v: floatfmt.format(v)))
-        if i + chunk < len(cols):
-            print()
 
 
 def print_regime_periods(eps: pd.DataFrame, min_days: int = 20) -> None:

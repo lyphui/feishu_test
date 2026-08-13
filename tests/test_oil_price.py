@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lib import oil_price as op
+from backtest.lib import oil_price as op
 
 
 def _oil_bars(start: str, n: int, base: float = 80.0, seed: int = 0) -> pd.DataFrame:

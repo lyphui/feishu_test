@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lib.fatfinger import fill_edge, simulate_fatfinger, simulate_static_mix
+from backtest.lib.fatfinger import fill_edge, simulate_fatfinger, simulate_static_mix
 
 
 def make_df(rows, start="2020-01-01") -> pd.DataFrame:

@@ -1,8 +1,8 @@
 # MA5/MA8 金叉死叉：分品类实测与证伪
 
 > 从 [CLAUDE.md](../CLAUDE.md) 的模块表进入。代码：
-> [`strategies/ma_cross.py`](../strategies/ma_cross.py) +
-> [`backtest/ma_cross_bench.py`](../backtest/ma_cross_bench.py)
+> [`backtest/strategies/ma_cross.py`](../backtest/strategies/ma_cross.py) +
+> [`backtest/scripts/compare_ma_cross.py`](../backtest/scripts/compare_ma_cross.py)
 
 被检验的规则（坊间「超短线纪律」的标准表述）：
 
@@ -15,11 +15,11 @@
 ## 1. 怎么测的
 
 ```bash
-python backtest/ma_cross_bench.py                 # 六个品类桶 × 八个变体
-python backtest/ma_cross_bench.py --quick         # 只跑核心四个变体
-python backtest/ma_cross_bench.py --offline       # 不联网，只读本地缓存
-python backtest/ma_cross_bench.py --buckets 宽基ETF 高波成长股
-python backtest/ma_cross_bench.py --codes 688256:寒武纪 --no-hk   # 自选标的复查
+python -m backtest.scripts.compare_ma_cross                 # 六个品类桶 × 八个变体
+python -m backtest.scripts.compare_ma_cross --quick         # 只跑核心四个变体
+python -m backtest.scripts.compare_ma_cross --offline       # 不联网，只读本地缓存
+python -m backtest.scripts.compare_ma_cross --buckets 宽基ETF 高波成长股
+python -m backtest.scripts.compare_ma_cross --codes 688256:寒武纪 --no-hk   # 自选标的复查
 ```
 
 **区间**：2018-01-02 → 2026-08-11（约 8.6 年，含 2018 熊市、2019–21 结构牛、
@@ -39,7 +39,7 @@ python backtest/ma_cross_bench.py --codes 688256:寒武纪 --no-hk   # 自选标
 
 **八个变体**：MA5/8、MA5/8+量能过滤、MA5/8 零成本、MA3/8、MA5/10、MA5/20、
 MA10/20、MA20/60。后五个是**参数邻域**——单点结果说明不了问题，只有邻域同号
-才不是噪音（同 [`param_sweep.py`](../backtest/param_sweep.py) 的判读方式）。
+才不是噪音（同 [`backtest/scripts/sweep_params.py`](../backtest/scripts/sweep_params.py) 的判读方式）。
 
 **统计窗口对齐**：所有变体共用同一个 `eval_start` = `--start` 与「最长慢线
 （MA60）预热完毕那天」取晚者。策略 `prepare()` 会 dropna 掉均线预热期，
@@ -178,7 +178,7 @@ A 股/ETF 上仍然跑不赢躺着不动。省手续费救不回来。
 `--codes`，产物落在 `output/ma_cross_bench/custom_*.csv`，不覆盖固定桶的结果：
 
 ```bash
-python backtest/ma_cross_bench.py --codes 688256:寒武纪 --no-hk
+python -m backtest.scripts.compare_ma_cross --codes 688256:寒武纪 --no-hk
 ```
 
 **寒武纪 688256**（2020-09 起 1410 个交易日，年化波动 69%，ρ1 = +0.06，
@@ -203,7 +203,7 @@ python backtest/ma_cross_bench.py --codes 688256:寒武纪 --no-hk
 
 注意 MA5/20 那格的 −2.1%：它是全表最接近打平的一格，但左右两个邻居
 （MA5/10 −24.5、MA10/20 −22.2）都是深负——典型的**孤立亮点 = 噪声**，
-不能拿它当"找到了合适参数"的证据（判读方式同 `param_sweep.py`）。
+不能拿它当"找到了合适参数"的证据（判读方式同 `backtest/scripts/sweep_params.py`）。
 
 ---
 

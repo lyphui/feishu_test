@@ -89,21 +89,12 @@ def month_end_flags(index) -> pd.Series:
     return s.groupby([idx.year, idx.month]).transform("max") == idx
 
 
-def week_end_flags(index) -> pd.Series:
-    idx = pd.DatetimeIndex(index)
-    s = pd.Series(idx, index=idx)
-    iso = idx.isocalendar()
-    return s.groupby([iso.year.values, iso.week.values]).transform("max") == idx
-
-
 def _decision_flags(index, freq: str) -> np.ndarray:
     if freq == "month":
         return month_end_flags(index).to_numpy()
-    if freq == "week":
-        return week_end_flags(index).to_numpy()
     if freq == "day":
         return np.ones(len(index), dtype=bool)
-    raise ValueError(f"未知决策频率：{freq}（可选 day / week / month）")
+    raise ValueError(f"未知决策频率：{freq}（可选 day / month）")
 
 
 @dataclass

@@ -1,6 +1,6 @@
 # 港股原油 ETF：月频均线 + 移动止损
 
-对应代码：`backtest/lib/trend_stop.py`、`backtest/hk_oil_etf_signal.py`
+对应代码：`backtest/lib/trend_stop.py`、`backtest/scripts/track_hk_oil_etf.py`
 主用标的：**3175.HK**（三星标普高盛原油期货 ETF，规模 3.47 亿港币）
 
 ---
@@ -176,11 +176,11 @@ backwardation（近月贵）时为正、contango（近月便宜）时为负，�
 ## 6. 日常使用
 
 ```bash
-python backtest/hk_oil_etf_signal.py                 # 更新行情 + 当前信号 + 回测
-python backtest/hk_oil_etf_signal.py --offline       # 不联网，只读本地缓存
-python backtest/hk_oil_etf_signal.py --sweep         # 附参数敏感性网格
-python backtest/hk_oil_etf_signal.py --ma 120 --stop 0.12
-python backtest/hk_oil_etf_signal.py --symbol 3097.HK --capital 50000
+python -m backtest.scripts.track_hk_oil_etf                 # 更新行情 + 当前信号 + 回测
+python -m backtest.scripts.track_hk_oil_etf --offline       # 不联网，只读本地缓存
+python -m backtest.scripts.track_hk_oil_etf --sweep         # 附参数敏感性网格
+python -m backtest.scripts.track_hk_oil_etf --ma 120 --stop 0.12
+python -m backtest.scripts.track_hk_oil_etf --symbol 3097.HK --capital 50000
 ```
 
 每月最后一个交易日收盘后跑一次；持仓期间每天扫一眼止损线即可。

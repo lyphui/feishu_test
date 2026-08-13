@@ -2,7 +2,7 @@
 
 > 从 [CLAUDE.md](../CLAUDE.md) 拆出。
 
-## 批量回测 (`backtest/jcy_macd_bull_batch.py` + `backtest/batch_report.py`)
+## 批量回测 (`backtest/scripts/backtest_jcy_pool.py` + `backtest/reports/batch_report.py`)
 
 **职责：** 读取 `jcy_insights.json` → 筛选 A 股推荐 → 批量执行牛市策略回测 → 横截面汇总
 
@@ -16,7 +16,7 @@
 - 个股预热 600 自然日；**大盘指数只取一次、全池共用，起点是绝对日期
   `config.INDEX_HISTORY_START`**（不是「最早推荐日 − 600 天」）。月线 EMA(26) 要几十根月线
   才收敛，按候选池取会让「加一篇更早的文章 → 所有个股 `bull_market` 改写」，回测不可复现。
-  四个调用方（batch / sweep / intraday_timing / lu_macd_bull_analysis）统一走 `index_history_start()`
+  四个调用方（batch / sweep / backtest_jcy_intraday / backtest_lu_macd_bull）统一走 `index_history_start()`
 
 **看空对照组（`--control`）：** `--control 减持,回避` 用**完全相同的策略与参数**把看空池
 再跑一遍，输出到 `output/control/` 并写 `summary_rating_compare.csv`。
@@ -53,9 +53,9 @@
   **按窗口长度分组**（<3月 / 3-6月 / 6-12月 / ≥1年）的日均超额，最好/最差各 5 只。
   收益分布右偏，均值会被个别翻倍股拉高；分组则用来识别"信号只在推荐后一两个月有效"这种衰减
 
-**CLI：** `python backtest/jcy_macd_bull_batch.py [--ratings 买入,增持] [--control 减持,回避] [--output output/] [--take_profit 0.2]`
+**CLI：** `python -m backtest.scripts.backtest_jcy_pool [--ratings 买入,增持] [--control 减持,回避] [--output output/] [--take_profit 0.2]`
 
-## 参数敏感性扫描 (`backtest/param_sweep.py`)
+## 参数敏感性扫描 (`backtest/scripts/sweep_params.py`)
 
 **职责：** 在一个股票池上网格遍历两个参数轴，判断当前参数是"策略有效"还是"恰好挑中幸运点"。
 
@@ -68,7 +68,7 @@
 
 - 可扫轴见 `AXES`：`expand_bars` / `cross_window` / `fast` / `slow` / `signal_period` / `shrink_exit` / `stop_loss` / `take_profit`。
   `stop_loss` / `take_profit` 的候选值含 `None`（=不启用），`None` 正是 `take_profit` 的默认值
-- `DEFAULTS` 必须与 `jcy_macd_bull_batch.py` 的 CLI 默认值一致，否则热力图标出的"默认格"
+- `DEFAULTS` 必须与 `backtest/scripts/backtest_jcy_pool.py` 的 CLI 默认值一致，否则热力图标出的"默认格"
   不是实际在跑的参数；`tests/test_param_sweep.py::test_defaults_match_batch_cli` 守住这一点
 - 判读看**稳健性**不看最大值：整片偏绿=结论稳健；孤立亮点、邻居全负=过拟合
 - 输出 `output/sweep/sweep_results.csv` + `sweep_heatmap.png`（默认参数格用金框标出）。
@@ -88,4 +88,4 @@
 选完参数后自动把 IS 最优格与默认格拿到 OOS 上重跑并给出判读：
 IS 最优在 OOS 转负 = 选中的是噪声；默认格在 OOS 反而更好 = 最优格是拟合出来的。
 
-**CLI：** `python backtest/param_sweep.py [--axis stop_loss take_profit] [--limit 20] [--oos-frac 0.3] [--codes CODE...] [--codes-start YYYYMMDD]`
+**CLI：** `python -m backtest.scripts.sweep_params [--axis stop_loss take_profit] [--limit 20] [--oos-frac 0.3] [--codes CODE...] [--codes-start YYYYMMDD]`

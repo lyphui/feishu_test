@@ -1,4 +1,4 @@
-# 长期跟踪与分批建仓 (`backtest/oil_track.py` + `lib/price_store|swings|regime|ladder`)
+# 长期跟踪与分批建仓 (`backtest/scripts/track_oil.py` + `lib/price_store|swings|regime|ladder`)
 
 > 从 [CLAUDE.md](../CLAUDE.md) 拆出。也见 [[oil-majors-tracking]] memory（投资论点）与 [[backtest-continuous-vs-segmented]] memory（连续 vs 分段回测教训）。
 
@@ -24,4 +24,4 @@
 
 **`simulate_grid` 的锚价默认钉死在首根收盘价**，一路上涨的标的会让网格从未装上膛：600938 自上市起没跌破首日锚 1.2% 以上，36 组参数全是 1 笔交易、结果完全相同。看网格结论前先看 `n_trades` 是不是 1；需要锚随新高上移就传 `ratchet=True`（只在 `level==0` 时移，持仓期间抬锚会让卖出触发价对不上买入格）。
 
-**CLI：** `python backtest/oil_track.py [--offline] [--backtest] [--chart] [--symbols ...] [--capital N]`
+**CLI：** `python -m backtest.scripts.track_oil [--offline] [--backtest] [--chart] [--symbols ...] [--capital N]`

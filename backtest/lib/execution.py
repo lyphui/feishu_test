@@ -2,7 +2,7 @@
 日内下单方案的成交价测算（与标的、与策略无关的度量层）。
 
 回答的问题只有一个：**已经决定要买（卖）了，用哪种下单方式成交价更好。**
-这跟"买不买""买多少"无关——那些是策略的事，在 strategies/ 和 lib/ladder.py 里。
+这跟"买不买""买多少"无关——那些是策略的事，在 backtest/strategies/ 和 lib/ladder.py 里。
 
 基准取当日 VWAP（`sum(amount) / sum(volume)`，全天成交的加权均价）。
 为什么是 VWAP 而不是当日最低价：最低价只有事后才知道、谁也挂不到，
@@ -51,7 +51,7 @@
 
 用法
 ----
-    from lib.execution import intraday_macd, daily_panel, add_limit_plan, benchmark
+    from backtest.lib.execution import intraday_macd, daily_panel, add_limit_plan, benchmark
 
     bars = pd.read_csv(...)                     # 30min 不复权 K 线
     bars = intraday_macd(bars)                  # 追加 DIF/DEA/hist/go_buy/go_sell
@@ -67,6 +67,7 @@
 
 import numpy as np
 import pandas as pd
+from dataclasses import dataclass, field
 
 REQUIRED = ["dt", "date", "open", "high", "low", "close", "volume", "amount"]
 
@@ -90,7 +91,7 @@ def intraday_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26,
     """
     在**连续跨日**的分时序列上算 MACD，并标出买/卖两侧的 GO 柱。
 
-    与 `jcy_intraday_timing.add_macd` / `classify_timing()` 同式：
+    与 `backtest_jcy_intraday.add_macd` / `classify_timing()` 同式：
         go_buy  = 红柱为正且正在拉长 且 DIF > DEA          （动能起步，进场）
         go_sell = 红柱为正但正在缩短 或 DIF 下穿 DEA        （动能衰减，离场）
 
@@ -319,3 +320,89 @@ def split_by_go(panel: pd.DataFrame, price_col: str = "go_price",
             "开盘→收盘 bp": ((s["close"] / s["open"] - 1) * 1e4).mean(),
         })
     return panel.groupby("has_go").apply(agg, include_groups=False)
+
+
+# ── 分时择时的展示层辅助（供 backtest_jcy_intraday 使用）───────────────────────
+#
+# `intraday_macd` 在跨日序列上算好 `go_buy`/`go_sell`（唯一真值源）。下面的
+# 打标签 / 汇总 / 计价只读这些列，不再重复推导条件——从
+# `backtest_jcy_intraday` 的 `add_macd`/`classify_timing` 合并过来后，
+# GO 定义只剩 `intraday_macd` 一处。
+
+@dataclass
+class TimingSummary:
+    """单个执行日的分时择时汇总。"""
+    has_go: bool
+    go_times: list = field(default_factory=list)
+    first_go: pd.Timestamp | None = None
+    second_go: pd.Timestamp | None = None
+    go_count: int = 0
+    total_bars: int = 0
+
+
+def classify_timing(day_slice: pd.DataFrame, action: str) -> pd.DataFrame:
+    """
+    对执行日的每根分时 K 线打时机标签：GO / WAIT / AVOID。
+
+    action: 'buy' or 'sell'
+
+    买入判断：
+      GO    → `go_buy`（DIF > DEA 且红柱正在拉长，与日线信号完全共振）
+      WAIT  → DIF > DEA 但红柱未拉长（方向对，等动能起步）
+      AVOID → DIF <= DEA（方向相反，开盘混沌期或回调中）
+
+    卖出判断：
+      GO    → `go_sell`（红柱开始缩短，或 DIF 下穿 DEA）
+      WAIT  → 动能仍在高位（暂时持有）
+
+    两侧**不对称**：买侧要求方向与动能同时成立，还留了 AVOID 一档；
+    卖侧只要动能转弱就放行，死叉那一路根本不看红柱正负，也没有 AVOID。
+    所以卖侧的 GO 天数占比天然高得多，两边的 bp 不可横向比较。
+
+    前置条件：入参必须来自 `intraday_macd` 的输出（含 `go_buy`/`go_sell`
+    与 DIF/DEA 列），且是**单个交易日**的切片。
+    """
+    df = day_slice.copy()
+    if action == "buy":
+        conditions = [
+            df["go_buy"],
+            df["DIF"] > df["DEA"],
+        ]
+        df["timing"] = np.select(conditions, ["GO", "WAIT"], default="AVOID")
+    else:
+        df["timing"] = np.select([df["go_sell"]], ["GO"], default="WAIT")
+    return df
+
+
+def summarize_timing(day_df: pd.DataFrame) -> TimingSummary:
+    """从打好标签的执行日切片中汇总 GO 窗口信息。"""
+    go_bars = day_df[day_df["timing"] == "GO"]
+    return TimingSummary(
+        has_go=len(go_bars) > 0,
+        go_times=list(go_bars.index),
+        first_go=go_bars.index[0] if len(go_bars) > 0 else None,
+        second_go=go_bars.index[1] if len(go_bars) > 1 else None,
+        go_count=len(go_bars),
+        total_bars=len(day_df),
+    )
+
+
+def executable_price(exec_bars: pd.DataFrame, summary: TimingSummary) -> float:
+    """
+    把择时结论换算成**可成交价**（口径见 `daily_panel.go_price`）。
+
+    有 GO → 首个 GO 柱的**下一根 K 线开盘价**；GO 出现在当日最后一根、
+    或全天无 GO → 当日最后一柱收盘价。
+
+    为什么是"下一根的开盘价"而不是"GO 柱的收盘价"：要等这根 K 线走完才能判定
+    它是不是 GO，那一刻它的收盘价已经成为历史，挂不进去。你看到 GO 之后能下的
+    第一个单，成交在下一根的开盘。与 `daily_panel()` 的 `go_price` 同口径，
+    两处若要改动请一起改；`tests/test_intraday_exec_price.py` 守住这条一致性。
+    """
+    last_close = float(exec_bars["close"].iloc[-1])
+    if not (summary.has_go and summary.first_go is not None):
+        return last_close
+    pos = exec_bars.index.get_loc(summary.first_go)
+    if pos + 1 >= len(exec_bars):
+        return last_close                      # GO 在最后一根，身后没有可成交的 K 线
+    return float(exec_bars["open"].iloc[pos + 1])

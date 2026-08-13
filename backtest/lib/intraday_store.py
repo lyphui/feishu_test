@@ -21,7 +21,7 @@
 
 用法
 ----
-    from lib.intraday_store import load_intraday
+    from backtest.lib.intraday_store import load_intraday
 
     bars = load_intraday("601857", "20220101", "20260808", period=30)
     bars = load_intraday("601857", period=30, auto_update=False)   # 纯离线
@@ -29,9 +29,11 @@
 
 import json
 import os
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
+
+from backtest.lib import store_base
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 INTRADAY_DIR = os.path.join(_BASE_DIR, "data", "market", "intraday")
@@ -51,16 +53,8 @@ def meta_path(symbol: str, period: int = 30) -> str:
     return os.path.join(INTRADAY_DIR, f"{symbol}_{period}m_none.meta.json")
 
 
-def _today() -> str:
-    return date.today().strftime("%Y%m%d")
-
-
 def _dash(d: str) -> str:
     return f"{d[:4]}-{d[4:6]}-{d[6:]}"
-
-
-def _shift(d: str, days: int) -> str:
-    return (datetime.strptime(d, "%Y%m%d") + timedelta(days=days)).strftime("%Y%m%d")
 
 
 def _bs_code(symbol: str) -> str:
@@ -127,6 +121,29 @@ def fetch_intraday_raw(symbol: str, start: str, end: str,
     return out.dropna().sort_values("dt").reset_index(drop=True)[COLUMNS]
 
 
+def fetch_intraday_indexed(symbol: str, start: str, end: str,
+                           period: int = 30, adjust: str = "qfq") -> pd.DataFrame:
+    """
+    取分时 K 线并转成 **datetime 索引** 的宽表（open/high/low/close/volume，
+    无 amount），供按**连续跨日序列**算 MACD
+    （`lib.execution.intraday_macd`）消费。
+
+    `fetch_intraday_raw` 返回扁平表（dt/date 列 + amount，供 VWAP 测算）；
+    本函数是它的展示层适配，默认 `adjust="qfq"`——MACD 要复权，否则除权日的
+    假跳空会带偏指标。不复权（none）才是 VWAP 基准的正确口径，两个口径都保留、
+    别混用（`execution._check_same_basis` 会拦混用）。
+
+    曾有两份独立的分时取数实现（backtest_jcy_intraday 自带一份 akshare/baostock
+    回退 + 重试，口径还是 qfq），已删除；全仓库的分时取数现在只有 `fetch_intraday_raw`
+    一处，本函数只是它的一种索引形态。
+    """
+    flat = fetch_intraday_raw(symbol, start, end, period=period, adjust=adjust)
+    if flat.empty:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    return (flat.set_index("dt")[["open", "high", "low", "close", "volume"]]
+                .rename_axis("dt"))
+
+
 # ── 读写 ──────────────────────────────────────────────────────────────────────
 
 def read_intraday(symbol: str, period: int = 30) -> pd.DataFrame:
@@ -188,61 +205,30 @@ def _overlap_matches(local: pd.DataFrame, fresh: pd.DataFrame) -> bool:
 def update_intraday(symbol: str, start: str = "20220101", end: str | None = None,
                     *, period: int = 30, rebuild: bool = False,
                     verbose: bool = True) -> pd.DataFrame:
-    """把 [start, end] 补齐到本地并返回该区间。只抓缺的头段与尾段。"""
-    end = end or _today()
-    local = pd.DataFrame(columns=COLUMNS) if rebuild else read_intraday(symbol, period)
+    """把 [start, end] 补齐到本地并返回该区间。只抓缺的头段与尾段。
 
-    if local.empty:
-        if verbose:
-            print(f"[intraday] {symbol} 全量拉取 {start} → {end}（{period}min，不复权）")
-        merged = fetch_intraday_raw(symbol, start, end, period)
-        if merged.empty:
-            raise RuntimeError(f"{symbol} 未取到任何分时数据（{start}~{end}）")
-        write_intraday(merged, symbol, period)
-        write_meta(symbol, period, req_start=start, req_end=end, df=merged)
-        if verbose:
-            print(f"[intraday] {symbol} 写入 {len(merged)} 根 / "
-                  f"{merged['date'].nunique()} 天")
-        return slice_range(merged, start, end)
-
-    meta = read_meta(symbol, period)
-    covered_start = meta.get("requested_start") or local["date"].iloc[0].strftime("%Y%m%d")
-    covered_end = meta.get("requested_end") or local["date"].iloc[-1].strftime("%Y%m%d")
-    pieces, added = [local], 0
-
-    if start < covered_start:
-        head_end = _shift(covered_start, -1)
-        if verbose:
-            print(f"[intraday] {symbol} 补头段 {start} → {head_end}")
-        head = _fetch_safe(symbol, start, head_end, period)
-        if not head.empty:
-            pieces.append(head)
-            added += len(head)
-
-    if end > covered_end or end >= _today():
-        fetch_from = _shift(local["date"].iloc[-1].strftime("%Y%m%d"), -OVERLAP_DAYS)
-        if verbose:
-            print(f"[intraday] {symbol} 补尾段 {fetch_from} → {end}（含重叠对账）")
-        tail = _fetch_safe(symbol, fetch_from, end, period)
-        if not tail.empty:
-            if not _overlap_matches(local, tail):
-                print(f"[intraday] ⚠ {symbol} 重叠时段收盘价与本地不一致，整表重建")
-                return update_intraday(symbol, start, end, period=period,
-                                       rebuild=True, verbose=verbose)
-            pieces.append(tail)
-            added += len(tail)
-
-    merged = (pd.concat(pieces).drop_duplicates("dt", keep="last")
-              .sort_values("dt").reset_index(drop=True))
-    if len(merged) != len(local):
-        write_intraday(merged, symbol, period)
-        if verbose:
-            print(f"[intraday] {symbol} 新增 {len(merged) - len(local)} 根，"
-                  f"合计 {len(merged)} 根 / {merged['date'].nunique()} 天")
-    elif verbose:
-        print(f"[intraday] {symbol} 已是最新（{len(merged)} 根）")
-    write_meta(symbol, period, req_start=start, req_end=end, df=merged)
-    return slice_range(merged, start, end)
+    增量算法本体在 `store_base.incremental_update`（与 price_store 共用）。
+    """
+    return store_base.incremental_update(
+        symbol, start, end,
+        columns=COLUMNS,
+        overlap_days=OVERLAP_DAYS,
+        log_prefix="intraday",
+        rebuild=rebuild,
+        verbose=verbose,
+        read_local=lambda: read_intraday(symbol, period),
+        write_local=lambda df: write_intraday(df, symbol, period),
+        read_meta=lambda: read_meta(symbol, period),
+        write_meta=lambda req_start, req_end, df: write_meta(
+            symbol, period, req_start=req_start, req_end=req_end, df=df),
+        fetch_full=lambda s, e: fetch_intraday_raw(symbol, s, e, period),
+        fetch_gap=lambda s, e: _fetch_safe(symbol, s, e, period),
+        local_bounds=lambda df: (df["date"].iloc[0].strftime("%Y%m%d"),
+                                 df["date"].iloc[-1].strftime("%Y%m%d")),
+        overlap_check=_overlap_matches,
+        merge_pieces=_merge_by_dt,
+        slice_range=slice_range,
+    )
 
 
 def _fetch_safe(symbol: str, start: str, end: str, period: int) -> pd.DataFrame:
@@ -252,6 +238,11 @@ def _fetch_safe(symbol: str, start: str, end: str, period: int) -> pd.DataFrame:
     except Exception as e:                      # noqa: BLE001 — 数据源异常五花八门
         print(f"[intraday] ⚠ {symbol} 补 {start}~{end} 失败（{e}），沿用本地缓存")
         return pd.DataFrame(columns=COLUMNS)
+
+
+def _merge_by_dt(pieces: list) -> pd.DataFrame:
+    return (pd.concat(pieces).drop_duplicates("dt", keep="last")
+            .sort_values("dt").reset_index(drop=True))
 
 
 def slice_range(df: pd.DataFrame, start: str | None = None,

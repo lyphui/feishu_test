@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 环境要求
 
 - Python **≥ 3.11**
-- **纯源码运行，无需安装本项目**：所有命令从仓库根目录执行。`python prepare_jcy_data.py` 这类**从仓库根启动的脚本**，其所在目录（= 仓库根）自动入 `sys.path`，`jcy/`、`strategies/` 直接可导。`backtest/x.py` 则只有 `backtest/` 自动入 path（Python **不会**把 cwd 加进去），所以每个入口脚本都在 import 之前内联一段 bootstrap 把仓库根也补上——新增入口脚本时**照抄 `exec_bench.py` 顶部那 4 行**，否则 `from strategies import` 会 `ModuleNotFoundError`。
+- **纯源码运行，无需安装本项目**：所有命令从仓库根目录执行。`python prepare_jcy_data.py` 这类**从仓库根启动的脚本**，其所在目录（= 仓库根）自动入 `sys.path`，`jcy/` 直接可导。`backtest/` 是正规包（有 `__init__.py`），CLI 以 `python -m backtest.scripts.x` 运行——`-m` 把**仓库根**（而非脚本所在目录）放进 `sys.path[0]`，所以 `from backtest.lib.x` / `from jcy.lib.common` 都能解析。**不要用 `python backtest/scripts/x.py` 直接跑**：脚本自身已无 sys.path bootstrap，那样 `backtest` 解析不了，会 `ModuleNotFoundError: No module named 'backtest'`。
 - 仅需安装第三方依赖：
   ```bash
   pip install pandas numpy matplotlib requests openai python-dotenv pyyaml akshare yfinance pytest
@@ -60,54 +60,58 @@ feishu_test/
 │       └── pplx.py                # Perplexity API 客户端封装
 │
 ├── ── 回测脚本 ─────────────────────────────────
-├── backtest/                      # 脚本模式（非包），以 python backtest/x.py 运行，同级裸导入
-│   ├── engine.py                  # 核心回测引擎：run_backtest（无 CLI、**不含绘图**，含 A 股成交约束）
-│   ├── report.py                  # 单股回测图表层：plot_backtest（4 面板），从 engine 拆出
-│   ├── config.py                  # 共享配置层：BacktestConfig / load_backtest_config / execution_kwargs / OutputPaths / INDEX_HISTORY_START
-│   ├── bull_report.py             # 牛市策略报告：plot_bull_backtest / export_bull_daily_status
-│   ├── batch_report.py            # 批量回测横截面汇总：summary.csv / 等权组合净值 vs 指数
-│   ├── param_sweep.py             # 参数敏感性网格扫描（判断是否过拟合）
-│   ├── jcy_macd_bull_batch.py     # Step 4: 批量 MACD 牛市策略回测（读 jcy_insights.json）
-│   ├── jcy_intraday_timing.py     # 日线信号 + 分时择时（多周期共振）
-│   ├── exec_bench.py              # 日内下单方案实测台：买/卖两侧，按股票池分别出数
-│   ├── fatfinger_bench.py         # 「乌龙指捕捉」实测：50/50 两侧挂远距离限价单等错价
-│   ├── oil_track.py               # 油气双雄长期跟踪：增量更新 + 当前状态与打法 + 连续全样本回测
-│   ├── hk_oil_etf_signal.py       # 港股原油 ETF（3175.HK）月频信号台：均线+移动止损，出「今天该做什么」
-│   ├── ma_cross_bench.py          # MA5/8 金叉死叉分品类实测台（6 个品类桶 × 8 个变体，结论为证伪）
-│   ├── stock_playbook.py          # 单票打法对比台：满仓/定投/梯度/网格/自适应/月频趋势/日频择时同表比
-│   ├── macd_analysis.py           # 薄入口：re-export engine + MACDStrategy CLI
-│   ├── lu_macd_analysis.py        # 单股卢式 MACD 三级底部策略回测
-│   ├── lu_macd_bull_analysis.py   # 单股卢式 MACD 牛市动能截取策略回测
+├── backtest/                      # 回测体系：engine/config 内核 + reports/（一切出图）+ scripts/ + strategies/ + lib/ + presets/
+│   ├── engine.py                  # 库：核心回测引擎 run_backtest（无 CLI、**不含绘图**，含 A 股成交约束）
+│   ├── config.py                  # 库：共享配置层 BacktestConfig / load_backtest_config / execution_kwargs / OutputPaths / INDEX_HISTORY_START
+│   ├── reports/                   # 报告层：**一切 import matplotlib 的都在这里**（含 plotting 样式）
+│   │   ├── report.py              # 单股回测图表 plot_backtest（4 面板），从 engine 拆出
+│   │   ├── bull_report.py         # 牛市策略报告 plot_bull_backtest / export_bull_daily_status
+│   │   ├── batch_report.py        # 批量回测横截面汇总 summary.csv / 等权组合净值 vs 指数
+│   │   ├── plotting.py            # 绘图样式（GitHub Dark 配色 + matplotlib 配置）
+│   │   ├── intraday_report.py     # 分时择时 3 面板图（backtest_jcy_intraday 拆出）
+│   │   └── lu_macd_report.py      # 卢式 MACD 6 面板图 + 每日状态 CSV（backtest_lu_macd 拆出）
+│   ├── scripts/                   # CLI 入口（以 python -m backtest.scripts.x 运行；命名按前缀动词聚合）
+│   │   ├── backtest_macd.py       # 薄入口：re-export engine + MACDStrategy CLI
+│   │   ├── backtest_lu_macd.py    # 单股卢式 MACD 三级底部策略回测
+│   │   ├── backtest_lu_macd_bull.py # 单股卢式 MACD 牛市动能截取策略回测
+│   │   ├── backtest_jcy_pool.py   # Step 4: 批量 MACD 牛市策略回测（读 jcy_insights.json）
+│   │   ├── backtest_jcy_intraday.py # 日线信号 + 分时择时（多周期共振）
+│   │   ├── compare_exec_plans.py  # 日内下单方案实测台：买/卖两侧，按股票池分别出数
+│   │   ├── backtest_fatfinger.py  # 「乌龙指捕捉」实测：50/50 两侧挂远距离限价单等错价
+│   │   ├── track_oil.py           # 油气双雄长期跟踪：增量更新 + 当前状态与打法 + 连续全样本回测
+│   │   ├── track_hk_oil_etf.py    # 港股原油 ETF（3175.HK）月频信号台：均线+移动止损，出「今天该做什么」
+│   │   ├── compare_ma_cross.py    # MA5/8 金叉死叉分品类实测台（6 个品类桶 × 8 个变体，结论为证伪）
+│   │   ├── compare_playbooks.py   # 单票打法对比台：满仓/定投/梯度/网格/自适应/月频趋势/日频择时同表比
+│   │   └── sweep_params.py        # 参数敏感性网格扫描（判断是否过拟合）
+│   ├── strategies/                # 策略 + 适配器（from backtest.strategies import）
+│   │   ├── __init__.py            # 导出策略类
+│   │   ├── base.py                # BaseStrategy 抽象基类（含共享 _ema() 方法）
+│   │   ├── macd.py                # MACDStrategy（金叉/死叉，教科书版）
+│   │   ├── lu_macd.py             # LuMACDStrategy（三级底部确认，长线建仓）
+│   │   ├── lu_macd_bull.py        # LuMACDBullStrategy（牛市截陡坡，高频战术）
+│   │   ├── ma_cross.py            # MACrossStrategy（快慢均线交叉，默认 MA5/8，量能只过滤进场）
+│   │   └── bull_backtest.py       # 牛市策略通用适配器 BullStrategyAdapter（import 具体策略类，从 lib/ 移入）
 │   ├── presets/                   # 单股回测输入预设 .ini（symbol/日期区间/止损止盈等）
 │   │   ├── jxty_jcy_260104.ini    # 单股 MACD 回测示例预设
 │   │   ├── lu_macd_config.ini     # 卢式 MACD 策略回测预设
 │   │   ├── lu_macd_bull_config.ini # 卢式牛市策略回测预设
 │   │   └── rjgd_syr_260130.ini    # 其他回测预设示例
-│   └── lib/                       # backtest 内部工具（被引擎/入口复用，from lib.x import）
+│   └── lib/                       # backtest 内部工具（无绘图的计算与数据工具，from backtest.lib.x import）
 │       ├── market_data.py         # 行情数据获取：个股 + 指数（akshare → baostock → yfinance 三源，统一后复权 hfq）
 │       ├── price_store.py         # 本地行情仓库：增量更新 + 重叠对账 + 分红记录（data/market/）
 │       ├── intraday_store.py      # 本地分时仓库：**不复权**含 amount，供 execution.py 用（不入库）
+│       ├── store_base.py          # price_store / intraday_store 共用的增量更新骨架（头尾缺口 + 重叠对账 + 重建）
 │       ├── swings.py              # ZigZag 波段分解、独立回撤事件与修复耗时剖面
 │       ├── regime.py              # 市场状态分类（趋势上行/宽幅震荡/趋势下行，严格只用历史数据）
 │       ├── ladder.py              # 分批建仓模拟器：梯度加仓/定投/网格/按状态自适应切换
-│       ├── plotting.py            # 绘图样式（GitHub Dark 配色 + matplotlib 配置）
-│       ├── console.py             # use_utf8()：入口脚本 main() 首行必调，防重定向时 GBK 报错
-│       ├── costs.py               # A 股成本与交易约束的**唯一真值源**（engine 与 ladder 共用）
-│       ├── bull_backtest.py       # 牛市策略通用适配器 BullStrategyAdapter
+│       ├── console.py             # use_utf8()：入口脚本 main() 首行必调；表格打印辅助
+│       ├── costs.py               # A 股成本与交易约束的**唯一真值源**（engine 与 ladder 共用，含 tradability）
+│       ├── position_tracker.py    # JCY 分级买入 + 三级递进卖出仓位管理器（backtest_jcy_intraday 拆出）
 │       ├── oil_price.py           # Brent/WTI/SC 原油价格（新浪源）+ 油价→股价传导相关性分析
 │       ├── execution.py           # 日内下单方案测算（VWAP 基准，买卖双向，与标的/策略无关的度量层）
 │       ├── fatfinger.py           # 乌龙指捕捉模拟器：日内触价撮合 + 涨跌停拒单 + 成交质量 edge
 │       └── trend_stop.py          # 月频均线+移动止损（港股口径）：含最低佣金成本模型 hk_trade_cost
-│
-├── ── 策略包 ──────────────────────────────────
-├── strategies/
-│   ├── __init__.py                # 导出四个策略类
-│   ├── base.py                    # BaseStrategy 抽象基类（含共享 _ema() 方法）
-│   ├── macd.py                    # MACDStrategy（金叉/死叉，教科书版）
-│   ├── lu_macd.py                 # LuMACDStrategy（三级底部确认，长线建仓）
-│   ├── lu_macd_bull.py            # LuMACDBullStrategy（牛市截陡坡，高频战术）
-│   └── ma_cross.py                # MACrossStrategy（快慢均线交叉，默认 MA5/8，量能只过滤进场）
-│
+
 ├── ── 数据目录 ─────────────────────────────────
 ├── data/market/                   # 本地行情仓库（price_store.py 维护，增量追加）
 │   ├── daily/{symbol}_{adjust}.csv       # 日线 OHLCV，hfq=回测口径 / none=盘面实际价 / qfq=港股与 ETF（源只给前复权）
@@ -151,13 +155,13 @@ feishu_test/
 |---|------|--------|----------|
 | 0-1 | 飞书授权 + JCY 数据流水线 | `authorize/` 换取 token；`jcy/` 完成 Step1-3（采集→AI建议→结构化提取），含全部 provider 与环境变量 | [docs/jcy-pipeline.md](docs/jcy-pipeline.md) |
 | 2 | MACD 回测引擎 | `backtest/engine.py` 核心 `run_backtest`（纯计算，图表在 `report.py`）：A股成交约束、T+1、成本口径（来自 `lib/costs.py`）、`eval_start` 窗口；`backtest/config.py` 共享配置层；预设 `.ini` 格式 | [docs/backtest-engine.md](docs/backtest-engine.md) |
-| 3 | 策略体系 | `strategies/`：MACDStrategy / LuMACDStrategy / LuMACDBullStrategy，BaseStrategy 共享方法与时序铁律 | [docs/strategies.md](docs/strategies.md) |
-| 4, 4b | 批量回测 + 参数扫描 | `jcy_macd_bull_batch.py` 批量跑（看多池 + `--control` 看空对照组）+ `batch_report.py` 横截面汇总（选股/择时两个 alpha 分开报、在场比例）；`param_sweep.py` 网格扫描判断过拟合，含样本外验证 | [docs/batch-and-sweep.md](docs/batch-and-sweep.md) |
-| 4c | 长期跟踪 + 分批建仓 | `oil_track.py` + `lib/price_store\|swings\|regime\|ladder`：本地行情仓库、市场状态分类、分批建仓模拟器 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) |
-| 4d | 日内下单测算 | `lib/execution.py` + `exec_bench.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表；末节含远距离限价单（`lib/fatfinger.py` + `fatfinger_bench.py`）实测 | [docs/execution-bench.md](docs/execution-bench.md) |
-| 4e | 港股原油 ETF 择时 | `lib/trend_stop.py` + `hk_oil_etf_signal.py`：月末均线 + 移动止损，含港股最低佣金成本模型；留档两个否定结论（展期收益不可择时、港股油气股不是油价工具） | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) |
-| 4f | MA5/8 分品类实测 | `strategies/ma_cross.py` + `ma_cross_bench.py`：6 个品类桶 × 8 个变体（含零成本对照与参数邻域）；**证伪留档**——MA5/8 在 30 个标的上 0 个跑赢买入持有，零成本下仍全负，回撤反而更深 | [docs/ma-cross-5-8.md](docs/ma-cross-5-8.md) |
-| 4g | 单票打法对比 | `stock_playbook.py`：把 `engine`/`ladder`/`trend_stop` 的 14 种打法放进同一张表（满仓/定投/梯度/网格/自适应/月频趋势/日频择时），含标的画像与回撤修复剖面；寒武纪实测留档 | [docs/stock-playbook.md](docs/stock-playbook.md) |
+| 3 | 策略体系 | `backtest/strategies/`：MACDStrategy / LuMACDStrategy / LuMACDBullStrategy，BaseStrategy 共享方法与时序铁律 | [docs/strategies.md](docs/strategies.md) |
+| 4, 4b | 批量回测 + 参数扫描 | `backtest/scripts/backtest_jcy_pool.py` 批量跑（看多池 + `--control` 看空对照组）+ `backtest/reports/batch_report.py` 横截面汇总（选股/择时两个 alpha 分开报、在场比例）；`backtest/scripts/sweep_params.py` 网格扫描判断过拟合，含样本外验证 | [docs/batch-and-sweep.md](docs/batch-and-sweep.md) |
+| 4c | 长期跟踪 + 分批建仓 | `backtest/scripts/track_oil.py` + `lib/price_store\|swings\|regime\|ladder`：本地行情仓库、市场状态分类、分批建仓模拟器 | [docs/tracking-and-ladder.md](docs/tracking-and-ladder.md) |
+| 4d | 日内下单测算 | `lib/execution.py` + `backtest/scripts/compare_exec_plans.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表；末节含远距离限价单（`lib/fatfinger.py` + `backtest/scripts/backtest_fatfinger.py`）实测 | [docs/execution-bench.md](docs/execution-bench.md) |
+| 4e | 港股原油 ETF 择时 | `lib/trend_stop.py` + `backtest/scripts/track_hk_oil_etf.py`：月末均线 + 移动止损，含港股最低佣金成本模型；留档两个否定结论（展期收益不可择时、港股油气股不是油价工具） | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) |
+| 4f | MA5/8 分品类实测 | `backtest/strategies/ma_cross.py` + `backtest/scripts/compare_ma_cross.py`：6 个品类桶 × 8 个变体（含零成本对照与参数邻域）；**证伪留档**——MA5/8 在 30 个标的上 0 个跑赢买入持有，零成本下仍全负，回撤反而更深 | [docs/ma-cross-5-8.md](docs/ma-cross-5-8.md) |
+| 4g | 单票打法对比 | `backtest/scripts/compare_playbooks.py`：把 `engine`/`ladder`/`trend_stop` 的 14 种打法放进同一张表（满仓/定投/梯度/网格/自适应/月频趋势/日频择时），含标的画像与回撤修复剖面；寒武纪实测留档 | [docs/stock-playbook.md](docs/stock-playbook.md) |
 | 5 | 包内工具层参考表 | `jcy/lib/` 与 `backtest/lib/` 全部模块的速查表 | [docs/lib-reference.md](docs/lib-reference.md) |
 
 ---
@@ -177,7 +181,7 @@ data/jcy/jcy_docs.yaml          （原始文档正文）
                          ──────────► data/jcy/jcy_insights.json
                                          {companies, rating, markets, key_advice}
                                                  │
-                                  backtest/jcy_macd_bull_batch.py（Step 4）
+                                  backtest/scripts/backtest_jcy_pool.py（Step 4）
                                                  │
                                       akshare/yfinance 行情
                                                  │
@@ -227,6 +231,21 @@ COZE_URL=...
 
 ## 更新日志约定
 
+### 什么时候写（默认不写）
+
+**默认不写 changelog。** 只有满足下面任一条时才写，其余一律不写、也不要问：
+
+- **行为变更**：会改变已有回测输出数值、改变策略/成本/成交口径、改变命令行为或数据格式。
+- **新增能力**：新策略、新实测台、新入口脚本、新的 `lib/` 模块。
+- **留档结论**：跑出来的实测结论（含证伪）需要以后能查回来。
+- **架构调整**：目录搬迁、模块拆分/合并、导入路径变化等影响后续开发心智的改动。
+
+**明确不写**的情形：bug 修复（不改口径的那种）、typo、日志/报错文案、注释与文档措辞、
+格式化与重命名、临时试验与调参、加/改测试、`.gitignore` 之类的配置微调。
+拿不准时按「不写」处理——用户要的话会直接说。
+
+### 怎么写
+
 改动记录放在 `changelog/`，**一条改动一个文件**，命名 `YYYY-MM-DD-<英文短横线标题>.md`。
 不要把多条改动追加进同一个 `CHANGELOG.md` —— 那个文件只作索引表，正文一律写进条目文件。
 
@@ -240,8 +259,8 @@ COZE_URL=...
 
 项目不打包、不依赖 `pip install -e .`。**所有命令从仓库根目录执行**：
 
-- `jcy/`、`strategies/` 等包直接被 Python 解析，如 `python prepare_jcy_data.py`（脚本在仓库根，其目录自动入 path）、`pytest`（`tests/conftest.py` 补 path）。
-- `backtest/` 为脚本模式（无 `__init__.py`），以 `python backtest/x.py` 运行，脚本目录自动入 `sys.path[0]`；测试经 `tests/conftest.py` 把 `backtest/` 加入 path。
+- `jcy/` 包直接被 Python 解析，如 `python prepare_jcy_data.py`（脚本在仓库根，其目录自动入 path）、`pytest`（仓库根 `pytest.ini` 的 `pythonpath = .` 把根目录放进 sys.path）。
+- `backtest/` 是正规包（`backtest/__init__.py`、`backtest/scripts/__init__.py`）：全库用带包前缀的绝对导入（`from backtest.lib.x import ...` / `from backtest.engine import ...` / `from backtest.strategies import ...`）。CLI 入口在 `backtest/scripts/`，以 `python -m backtest.scripts.x` 运行——`-m` 把仓库根放进 `sys.path[0]`，因此**必须在仓库根执行**。`backtest/__init__.py` 必须保持为空（`tests/test_engine_no_matplotlib.py` 依赖它不拉 matplotlib）。
 
 只需安装第三方依赖（见「环境要求」），无本项目安装步骤。
 
@@ -252,54 +271,54 @@ COZE_URL=...
 ```bash
 # 完整流水线（按序执行）
 python prepare_jcy_data.py                  # Step 1-3：拉取数据 → AI建议 → 结构化提取
-python backtest/jcy_macd_bull_batch.py      # Step 4：批量量化回测（默认池 = 买入+增持）
-python backtest/jcy_macd_bull_batch.py --control 减持,回避   # 带看空对照组，判断评级有没有区分度
+python -m backtest.scripts.backtest_jcy_pool      # Step 4：批量量化回测（默认池 = 买入+增持）
+python -m backtest.scripts.backtest_jcy_pool --control 减持,回避   # 带看空对照组，判断评级有没有区分度
 
 # 分时择时（日线信号 + 分时 MACD 共振）
-python backtest/jcy_intraday_timing.py                  # 全部候选股
-python backtest/jcy_intraday_timing.py --code 600519    # 单股分析
-python backtest/jcy_intraday_timing.py --period 60      # 60min K 线
+python -m backtest.scripts.backtest_jcy_intraday                  # 全部候选股
+python -m backtest.scripts.backtest_jcy_intraday --code 600519    # 单股分析
+python -m backtest.scripts.backtest_jcy_intraday --period 60      # 60min K 线
 
 # 日内下单方案实测（买/卖两侧，两个池子分别出数，结论不可互相外推）
-python backtest/exec_bench.py --universe jcy --side both --limit 45
-python backtest/exec_bench.py --universe oil --side sell
-python backtest/exec_bench.py --universe oil --offline   # 不联网，只读分时缓存
+python -m backtest.scripts.compare_exec_plans --universe jcy --side both --limit 45
+python -m backtest.scripts.compare_exec_plans --universe oil --side sell
+python -m backtest.scripts.compare_exec_plans --universe oil --offline   # 不联网，只读分时缓存
 
 # 「乌龙指捕捉」实测（50/50 两侧挂远距离限价单等人敲错价，六档 k 与同敞口基准对比）
-python backtest/fatfinger_bench.py --offline
-python backtest/fatfinger_bench.py --k 0.02 0.05 0.08 --fast
+python -m backtest.scripts.backtest_fatfinger --offline
+python -m backtest.scripts.backtest_fatfinger --k 0.02 0.05 0.08 --fast
 
 # 独立单股回测
-python backtest/macd_analysis.py --config jxty_jcy_260104.ini
-python backtest/lu_macd_analysis.py
-python backtest/lu_macd_bull_analysis.py
+python -m backtest.scripts.backtest_macd --config jxty_jcy_260104.ini
+python -m backtest.scripts.backtest_lu_macd
+python -m backtest.scripts.backtest_lu_macd_bull
 
 # 油气双雄长期跟踪（增量更新本地行情 → 当前状态与挂单价）
-python backtest/oil_track.py                      # 增量更新 + 跟踪报告
-python backtest/oil_track.py --offline            # 不联网，只读本地缓存
-python backtest/oil_track.py --backtest --chart   # 连续全样本回测 + 出图
+python -m backtest.scripts.track_oil                      # 增量更新 + 跟踪报告
+python -m backtest.scripts.track_oil --offline            # 不联网，只读本地缓存
+python -m backtest.scripts.track_oil --backtest --chart   # 连续全样本回测 + 出图
 
 # 单票打法对比（满仓/定投/梯度/网格/自适应/月频趋势/日频择时，同表比）
-python backtest/stock_playbook.py --code 688256 --name 寒武纪 --start 20200101
-python backtest/stock_playbook.py --code 601899 --offline
+python -m backtest.scripts.compare_playbooks --code 688256 --name 寒武纪 --start 20200101
+python -m backtest.scripts.compare_playbooks --code 601899 --offline
 
 # MA5/8 金叉死叉分品类实测（结论为证伪，见 docs/ma-cross-5-8.md）
-python backtest/ma_cross_bench.py                 # 6 个品类桶 × 8 个变体
-python backtest/ma_cross_bench.py --quick         # 只跑核心 4 个变体
-python backtest/ma_cross_bench.py --offline       # 不联网，只读本地缓存
-python backtest/ma_cross_bench.py --buckets 宽基ETF 高波成长股
+python -m backtest.scripts.compare_ma_cross                 # 6 个品类桶 × 8 个变体
+python -m backtest.scripts.compare_ma_cross --quick         # 只跑核心 4 个变体
+python -m backtest.scripts.compare_ma_cross --offline       # 不联网，只读本地缓存
+python -m backtest.scripts.compare_ma_cross --buckets 宽基ETF 高波成长股
 
 # 港股原油 ETF 月频信号（每月最后一个交易日收盘后跑一次）
-python backtest/hk_oil_etf_signal.py              # 更新行情 + 当前信号 + 回测
-python backtest/hk_oil_etf_signal.py --offline    # 不联网，只读本地缓存
-python backtest/hk_oil_etf_signal.py --sweep      # 附参数敏感性网格
-python backtest/hk_oil_etf_signal.py --symbol 3097.HK --capital 50000
+python -m backtest.scripts.track_hk_oil_etf              # 更新行情 + 当前信号 + 回测
+python -m backtest.scripts.track_hk_oil_etf --offline    # 不联网，只读本地缓存
+python -m backtest.scripts.track_hk_oil_etf --sweep      # 附参数敏感性网格
+python -m backtest.scripts.track_hk_oil_etf --symbol 3097.HK --capital 50000
 
 # 参数敏感性（判断是否过拟合，建议先 --limit 试跑）
-python backtest/param_sweep.py --limit 20
-python backtest/param_sweep.py --axis stop_loss take_profit
-python backtest/param_sweep.py --oos-frac 0.3          # 留最近 30% 推荐做样本外验证
-python backtest/param_sweep.py --codes 601857 600938 --codes-start 20180101  # 扫非 JCY 池
+python -m backtest.scripts.sweep_params --limit 20
+python -m backtest.scripts.sweep_params --axis stop_loss take_profit
+python -m backtest.scripts.sweep_params --oos-frac 0.3          # 留最近 30% 推荐做样本外验证
+python -m backtest.scripts.sweep_params --codes 601857 600938 --codes-start 20180101  # 扫非 JCY 池
 
 # 测试（离线，不联网、不读真实 data/）
 pytest

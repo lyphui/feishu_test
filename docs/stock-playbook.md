@@ -1,16 +1,16 @@
-# 单票打法对比台（`stock_playbook.py`）
+# 单票打法对比台（`backtest/scripts/compare_playbooks.py`）
 
 > 从 [CLAUDE.md](../CLAUDE.md) 的模块表进入。代码：
-> [`backtest/stock_playbook.py`](../backtest/stock_playbook.py)
+> [`backtest/scripts/compare_playbooks.py`](../backtest/scripts/compare_playbooks.py)
 
-`ma_cross_bench.py` 比的是**同一个策略家族在不同品类上**的表现；这里反过来，
+`backtest/scripts/compare_ma_cross.py` 比的是**同一个策略家族在不同品类上**的表现；这里反过来，
 比**同一只票上的不同打法**。三套模拟器（`engine` / `lib.ladder` /
 `lib.trend_stop`）本来就在仓库里，缺的只是把它们摆到同一张表、同一段数据、
 同一套成本口径上——散在三个脚本里各跑各的，数字没法直接比大小。
 
 ```bash
-python backtest/stock_playbook.py --code 688256 --name 寒武纪 --start 20200101
-python backtest/stock_playbook.py --code 601899 --start 20180101 --offline
+python -m backtest.scripts.compare_playbooks --code 688256 --name 寒武纪 --start 20200101
+python -m backtest.scripts.compare_playbooks --code 601899 --start 20180101 --offline
 ```
 
 ## 对比的打法

@@ -4,10 +4,10 @@
 被所有回测入口脚本复用：`run_backtest` 执行回测并返回结果 dict，
 `print_summary` 打印文本汇总。
 
-    from engine import run_backtest
+    from backtest.engine import run_backtest
     result = run_backtest("600519", "20200101", "20241231")
 
-图表在 `report.py`（`from report import plot_backtest`）——引擎保持纯计算，
+图表在 `report.py`（`from backtest.reports.report import plot_backtest`）——引擎保持纯计算，
 批量回测/参数扫描/pytest 这些不出图的场景就不必拖进 matplotlib。
 """
 
@@ -16,13 +16,14 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from lib.market_data import fetch_stock_data   # noqa: F401 — re-export for backward compat
+from backtest.lib.market_data import fetch_stock_data   # noqa: F401 — re-export for backward compat
 # 成本假设与 `lib/ladder.py` 共用同一份定义，不在这里另写字面量——两套撮合骨架的
 # 数字一旦漂开，二元引擎与分批建仓模拟器的结果就不可横向比较。
-# `_commission` / `infer_limit_pct` 保留旧名 re-export，历史导入不受影响。
-from lib.costs import (COMMISSION_RATE, LOT, MIN_COMMISSION, SLIPPAGE,
-                       STAMP_DUTY, infer_limit_pct)   # noqa: F401
-from lib.costs import commission as _commission
+# `_commission` / `infer_limit_pct` / `_tradability` 保留旧名 re-export，历史导入不受影响。
+from backtest.lib.costs import (COMMISSION_RATE, LOT, MIN_COMMISSION, SLIPPAGE,
+                       STAMP_DUTY, infer_limit_pct,
+                       tradability as _tradability)   # noqa: F401
+from backtest.lib.costs import commission as _commission
 
 warnings.filterwarnings("ignore")
 
@@ -30,30 +31,10 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────
 # A 股交易规则
 # ─────────────────────────────────────────
-
-def _tradability(row, prev_close: float, limit_pct: float) -> tuple[bool, bool]:
-    """
-    判断当日开盘能否买入 / 卖出，返回 (can_buy, can_sell)。
-
-    - 停牌（无成交量）：买卖都不可能成交
-    - 开盘即涨停：买单排在队尾，成交不了；卖出不受影响
-    - 开盘即跌停：卖不掉；买入不受影响
-
-    价格用相对容差比较而不是 round(_, 2)：复权后的价格已不是真实报价，
-    绝对分位对不上。
-    """
-    if row.get("volume", 1) is not None and float(row.get("volume", 1)) <= 0:
-        return False, False
-    if prev_close is None or not np.isfinite(prev_close) or prev_close <= 0:
-        return True, True
-
-    tol = 1e-4
-    open_ = row["open"]
-    limit_up   = prev_close * (1 + limit_pct)
-    limit_down = prev_close * (1 - limit_pct)
-    can_buy  = open_ < limit_up   * (1 - tol)
-    can_sell = open_ > limit_down * (1 + tol)
-    return bool(can_buy), bool(can_sell)
+# 涨跌停 / 停牌成交判定唯一实现在 `lib/costs.tradability`（与 `lib/ladder.py`
+# 共用）。两套撮合骨架曾各抄一份且容差不同（engine 1e-4 vs ladder 0.999，
+# 差 10 倍），统一后引擎与分批建仓模拟器的成交判定才真正可比。
+# `_tradability` 是它的旧名 re-export（见上）。
 
 
 
@@ -106,7 +87,7 @@ def run_backtest(
       该日之后的区间上计算，图表仍显示完整区间（保留指标上下文）。
     """
 
-    from strategies import MACDStrategy
+    from backtest.strategies import MACDStrategy
     if strategy is None:
         strategy = MACDStrategy()
     if limit_pct is None:

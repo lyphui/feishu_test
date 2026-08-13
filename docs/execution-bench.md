@@ -1,9 +1,9 @@
-# 日内下单测算 (`backtest/lib/execution.py` + `exec_bench.py` + `lib/intraday_store.py`)
+# 日内下单测算 (`backtest/lib/execution.py` + `backtest/scripts/compare_exec_plans.py` + `lib/intraday_store.py`)
 
 > 从 [CLAUDE.md](../CLAUDE.md) 拆出。也见 [[dont-extrapolate-across-universes]] memory。
 
 **职责：** 回答一个与标的、与策略都无关的问题——**已经决定要买（卖）了，用哪种下单方式成交价更好。**
-"买不买""买多少"是策略的事（`strategies/`、`lib/ladder.py`），不在这里。
+"买不买""买多少"是策略的事（`backtest/strategies/`、`lib/ladder.py`），不在这里。
 
 两条工作流（JCY 动量股 / 油气蓝筹）**共用这一套度量衡，但各自跑各自的读数**。
 方法可以共享，结论不能——实测两个池子的日内形状不一样，**卖出侧连排序都相反**（见下）。
@@ -30,7 +30,7 @@
 - `split_by_go()` 按"当天有无 GO"拆开看钱赚在哪一侧——**仅用于归因**，
   `has_go` 要等当天走完才知道。唯一**因果可执行**的是 `wait_value()`：
   它比较"GO 一出现就做掉"与"放着等收盘"，两个动作在同一时刻都摆在面前。
-- **`jcy_intraday_timing.py` 与本模块口径绑定**：`_executable_price()` 必须与
+- **`backtest/scripts/backtest_jcy_intraday.py` 与本模块口径绑定**：`_executable_price()` 必须与
   `daily_panel()` 的 `go_price` 同价，`go_buy`/`go_sell` 必须与 `classify_timing()` 同判，
   `tests/test_intraday_exec_price.py` 与 `tests/test_execution.py` 逐日比对守住。
   那边还遵守两条铁律——**分时只决定「几点做」，不决定「做不做」**
@@ -38,11 +38,11 @@
   以及 **`PositionTracker` 统一 T+1 成交**：日线的 signal / 红柱缩短 / 死叉 / DIF<0
   全都要等当日收盘才算得出来，一律排到下一个交易日，`intraday_map` 只换价不换日。
   旧实现里窗口内 T+1、窗口外当日收盘，等于 `--lookback` 这个打印参数在改历史收益。
-- **数字必须可复现**：`exec_bench.py` 是唯一的出数入口（定种子抽样），
+- **数字必须可复现**：`backtest/scripts/compare_exec_plans.py` 是唯一的出数入口（定种子抽样），
   分时行情由 `lib/intraday_store.py` 缓存在 `data/market/intraday/`（不复权、
   只增不改、**不入库**，47 只 32MB，随时可从 baostock 重建）。
 
-**CLI：** `python backtest/exec_bench.py --universe jcy|oil --side buy|sell|both [--offline]`
+**CLI：** `python -m backtest.scripts.compare_exec_plans --universe jcy|oil --side buy|sell|both [--offline]`
 
 ## 实测结论（各池子分开记，不可互相外推）
 
@@ -72,7 +72,7 @@
 
 ## 相关：远距离限价单（「乌龙指捕捉」）
 
-`backtest/lib/fatfinger.py` + `fatfinger_bench.py`，条目见
+`backtest/lib/fatfinger.py` + `backtest/scripts/backtest_fatfinger.py`，条目见
 [changelog](../changelog/2026-08-10-limit-order-and-grid-bench.md)。
 
 上表的限价单挂在开盘价 ∓0.5%；把同一个动作推到 ∓2%~∓9.5%——**永久 50% 持仓 /

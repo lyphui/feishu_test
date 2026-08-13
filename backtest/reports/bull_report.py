@@ -13,10 +13,10 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 
-from lib.plotting import (
+from backtest.reports.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_GOLD, C_MUTED, style_ax,
 )
-from engine import fmt_sharpe
+from backtest.engine import fmt_sharpe
 
 
 # ── 每日状态导出 ──────────────────────────────────────────────────────────────

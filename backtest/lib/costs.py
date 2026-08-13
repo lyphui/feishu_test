@@ -18,11 +18,18 @@ A 股成交成本与交易约束的**唯一真值源**。
 docstring 写一句"与 engine.py 保持一致"人肉同步。现在收成一处：改一个数，两套
 引擎同时生效，也不会出现"改了一处忘了另一处、两组回测数字从此不可比"。
 
+涨跌停 / 停牌的成交判定（`tradability`）同样曾有两份实现：engine 用相对容差
+1e-4 且检查 volume<=0 / prev_close 非法，ladder 用 0.999 的松 10 倍容差且漏判
+负值与 NaN。两者**行为真的不同**，导致两套撮合骨架的回测不可比。统一收在
+本模块的 `tradability`（采用 engine 的严格口径）。
+
 口径
 ----
 默认值取 A 股零售常见水平。佣金**双边**收取、印花税**仅卖出**、滑点按**单边**
 计（买价上浮、卖价下压）。要试"零成本"对照组，改调用方的传参，别改这里。
 """
+
+import numpy as np
 
 #: 券商佣金费率，双边收取（万三）
 COMMISSION_RATE = 0.0003
@@ -47,6 +54,38 @@ def commission(amount: float,
                minimum: float = MIN_COMMISSION) -> float:
     """券商佣金：按成交额比例收取，但不低于单笔最低佣金。"""
     return max(amount * rate, minimum)
+
+
+def tradability(row, prev_close: float, limit_pct: float) -> tuple[bool, bool]:
+    """
+    判断当日开盘能否买入 / 卖出，返回 (can_buy, can_sell)。
+
+    `engine` 与 `lib/ladder` 两套撮合骨架共用这一份实现（engine 以
+    `_tradability` 旧名 re-export，历史导入不受影响）。**只有这一份**——
+    曾有两份且行为不同：ladder 用 0.999 的松容差、`volume == 0` 漏判负值/NaN、
+    `prev_close <= 0` 遇 None 直接 TypeError，与 engine 不可比。这里统一采用
+    engine 的严格口径。
+
+    - 停牌（volume <= 0，含 NaN / 负值）：买卖都不可能成交
+    - 开盘即涨停：买单排在队尾，成交不了；卖出不受影响
+    - 开盘即跌停：卖不掉；买入不受影响
+    - `prev_close` 非法（None / 非有限 / <= 0）：首根 K 线没有前收，放行
+
+    价格用相对容差（1e-4）比较而不是 round(_, 2)：复权后的价格已不是真实报价，
+    绝对分位对不上。
+    """
+    if row.get("volume", 1) is not None and float(row.get("volume", 1)) <= 0:
+        return False, False
+    if prev_close is None or not np.isfinite(prev_close) or prev_close <= 0:
+        return True, True
+
+    tol = 1e-4
+    open_ = row["open"]
+    limit_up   = prev_close * (1 + limit_pct)
+    limit_down = prev_close * (1 - limit_pct)
+    can_buy  = open_ < limit_up * (1 - tol)
+    can_sell = open_ > limit_down * (1 + tol)
+    return bool(can_buy), bool(can_sell)
 
 
 def infer_limit_pct(symbol: str) -> float:

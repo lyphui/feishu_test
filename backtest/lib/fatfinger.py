@@ -45,9 +45,12 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-# 成本模型与统计口径与分批建仓模拟器共用，否则两边数字没法横向比
-from lib.ladder import (COMMISSION_RATE, LOT, SLIPPAGE, STAMP_DUTY,
-                        LadderResult, _commission, _summarize)
+# 成本常量直接取自 `lib/costs.py`（唯一真值源，与 ladder 同源）；
+# 结果容器与统计口径从 `lib/ladder` 拿公开的 `LadderResult` / `summarize`，
+# 保证和梯度/网格/自适应那几套数字可比。不再绕道 ladder 取私有符号。
+from backtest.lib.costs import (COMMISSION_RATE, LOT, SLIPPAGE, STAMP_DUTY,
+                                commission)
+from backtest.lib.ladder import LadderResult, summarize
 
 #: 判定"挂单价是否落在涨跌停带内"的浮点容差（纯数值误差，不是报价最小变动单位）
 _EPS = 1e-9
@@ -74,7 +77,7 @@ class _Book:
     def _buy_qty(self, px: float, qty: int, date, kind: str):
         while qty > 0:
             amt = qty * px
-            fee = _commission(amt)
+            fee = commission(amt)
             if amt + fee <= self.cash:
                 self.cash -= amt + fee
                 self.shares += qty
@@ -90,7 +93,7 @@ class _Book:
         if qty <= 0:
             return None
         amt = qty * px
-        fee = _commission(amt) + amt * STAMP_DUTY
+        fee = commission(amt) + amt * STAMP_DUTY
         self.cash += amt - fee
         self.shares -= qty
         self.trades.append({"date": date, "action": "sell", "kind": kind,
@@ -176,7 +179,7 @@ def simulate_fatfinger(
         book.accrue(daily_cash_rate)
         o, h, l, c = (float(row["open"]), float(row["high"]),
                       float(row["low"]), float(row["close"]))
-        halted = row.get("volume", 1) == 0
+        halted = row.get("volume", 1) is not None and float(row.get("volume", 1)) <= 0
 
         # ── ① 建初始仓位 ──
         # 第 0 根只算"决定要建仓"，成交排到下一根开盘：与 `ladder._run` 的 T+1
@@ -245,8 +248,8 @@ def simulate_fatfinger(
         prev_close = c
 
     label = name or f"乌龙指 ±{k_up:.1%}/{k_dn:.1%}（{target:.0%}仓）"
-    res = _summarize(label, pd.Series(equity_s, index=df.index),
-                     pd.Series(exposure_s, index=df.index), book.trades, capital)
+    res = summarize(label, pd.Series(equity_s, index=df.index),
+                    pd.Series(exposure_s, index=df.index), book.trades, capital)
 
     f = pd.DataFrame(fills)
     if not f.empty:
@@ -331,7 +334,7 @@ def simulate_static_mix(
     for i, (date, row) in enumerate(df.iterrows()):
         book.accrue(daily_cash_rate)
         o, c = float(row["open"]), float(row["close"])
-        halted = row.get("volume", 1) == 0
+        halted = row.get("volume", 1) is not None and float(row.get("volume", 1)) <= 0
 
         # i > 0：首根只做决策，成交排到下一根开盘（T+1 口径，同 `ladder._run`）
         if pending and not halted and i > 0:
@@ -347,5 +350,5 @@ def simulate_static_mix(
 
     label = name or (f"静态{target:.0%}仓"
                      + (f"·{rebalance_days}日再平衡" if rebalance_days else "·躺平"))
-    return _summarize(label, pd.Series(equity_s, index=df.index),
-                      pd.Series(exposure_s, index=df.index), book.trades, capital)
+    return summarize(label, pd.Series(equity_s, index=df.index),
+                     pd.Series(exposure_s, index=df.index), book.trades, capital)

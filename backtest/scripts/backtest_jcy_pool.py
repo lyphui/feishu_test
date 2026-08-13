@@ -37,7 +37,7 @@ JCY 推荐股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 早先的默认值是 stop_loss=0.20 / take_profit=0.10——1:2 的反向盈亏比，
 与策略前提直接冲突。现改为止损 0.10、止盈交给 shrink_exit。
 要验证这个选择，跑：
-    python backtest/param_sweep.py --axis stop_loss take_profit
+    python -m backtest.scripts.sweep_params --axis stop_loss take_profit
 
 数据与买入逻辑
 --------------
@@ -60,10 +60,10 @@ JCY 推荐股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 
 用法示例
 --------
-    python jcy_macd_bull_batch.py
-    python jcy_macd_bull_batch.py --control 减持,回避       # 带看空对照组
-    python jcy_macd_bull_batch.py --ratings 买入            # 只跑最强评级
-    python jcy_macd_bull_batch.py --stop_loss 0.15 --take_profit 0.12
+    python -m backtest.scripts.backtest_jcy_pool
+    python -m backtest.scripts.backtest_jcy_pool --control 减持,回避       # 带看空对照组
+    python -m backtest.scripts.backtest_jcy_pool --ratings 买入            # 只跑最强评级
+    python -m backtest.scripts.backtest_jcy_pool --stop_loss 0.15 --take_profit 0.12
 """
 
 import argparse
@@ -71,21 +71,17 @@ import os
 import sys
 from datetime import date as _date, timedelta
 
-from engine import run_backtest, fmt_sharpe
-from config import OutputPaths, index_history_start
-from bull_report import export_bull_daily_status, plot_bull_backtest
-from batch_report import (result_to_row, normalized_equity, write_batch_report,
+from backtest.engine import run_backtest, fmt_sharpe
+from backtest.config import OutputPaths, index_history_start
+from backtest.reports.bull_report import export_bull_daily_status, plot_bull_backtest
+from backtest.reports.batch_report import (result_to_row, normalized_equity, write_batch_report,
                           compare_rating_pools)
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from strategies import LuMACDBullStrategy
-from lib.plotting import setup_matplotlib
-from lib.market_data import fetch_index_data
-from lib.bull_backtest import BullStrategyAdapter
-from lib.console import use_utf8
+from backtest.strategies import LuMACDBullStrategy
+from backtest.reports.plotting import setup_matplotlib
+from backtest.lib.market_data import fetch_index_data
+from backtest.strategies.bull_backtest import BullStrategyAdapter
+from backtest.lib.console import use_utf8
 from jcy.lib.common import (JSON_PATH, LONG_RATINGS, CONTROL_RATINGS,
                             load_candidates, parse_ratings)
 

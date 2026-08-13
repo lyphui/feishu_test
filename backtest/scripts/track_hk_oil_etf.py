@@ -6,11 +6,11 @@
 
 用法
 ----
-    python backtest/hk_oil_etf_signal.py                  # 更新行情 + 当前信号 + 回测
-    python backtest/hk_oil_etf_signal.py --offline        # 不联网，只读本地缓存
-    python backtest/hk_oil_etf_signal.py --sweep          # 附参数敏感性网格
-    python backtest/hk_oil_etf_signal.py --ma 120 --stop 0.12
-    python backtest/hk_oil_etf_signal.py --symbol 3097.HK --capital 50000
+    python -m backtest.scripts.track_hk_oil_etf                  # 更新行情 + 当前信号 + 回测
+    python -m backtest.scripts.track_hk_oil_etf --offline        # 不联网，只读本地缓存
+    python -m backtest.scripts.track_hk_oil_etf --sweep          # 附参数敏感性网格
+    python -m backtest.scripts.track_hk_oil_etf --ma 120 --stop 0.12
+    python -m backtest.scripts.track_hk_oil_etf --symbol 3097.HK --capital 50000
 
 费用口径
 --------
@@ -20,17 +20,14 @@
 """
 
 import argparse
-import os
-import sys
 
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from lib.price_store import load_daily
-from lib.trend_stop import (buy_hold, hk_fee_rate, hk_trade_cost,
+from backtest.lib.price_store import load_daily
+from backtest.lib.trend_stop import (buy_hold, hk_fee_rate, hk_trade_cost,
                             next_decision_date, simulate, sweep)
-from lib.console import use_utf8
+from backtest.lib.console import use_utf8
+from backtest.lib.cli import base_parser
 
 DEFAULT_SYMBOL = "3175.HK"
 HISTORY_START = "20160101"
@@ -142,17 +139,16 @@ def print_sweep(df, fee_rate) -> None:
 
 def main():
     use_utf8()
-    ap = argparse.ArgumentParser(description="港股原油 ETF 月频均线+移动止损信号")
+    ap = argparse.ArgumentParser(description="港股原油 ETF 月频均线+移动止损信号",
+                                 parents=[base_parser()])
     ap.add_argument("--symbol", default=DEFAULT_SYMBOL, help="港交所代码，如 3175.HK")
     ap.add_argument("--ma", type=int, default=150, help="均线长度（交易日）")
     ap.add_argument("--stop", type=float, default=0.15,
                     help="移动止损幅度，0 表示不设")
-    ap.add_argument("--freq", default="month", choices=["day", "week", "month"],
+    ap.add_argument("--freq", default="month", choices=["day", "month"],
                     help="决策频率，默认月频（日频会被手续费吃光，别用）")
-    ap.add_argument("--capital", type=float, default=100_000, help="本金（港币）")
-    ap.add_argument("--start", default=HISTORY_START)
-    ap.add_argument("--offline", action="store_true", help="不联网，只读本地缓存")
     ap.add_argument("--sweep", action="store_true", help="附参数敏感性网格")
+    ap.set_defaults(capital=100_000, start=HISTORY_START)
     args = ap.parse_args()
 
     # 港股走 yfinance（前复权口径），price_store 对 qfq 强制整表重建
@@ -166,7 +162,7 @@ def main():
     stop = args.stop if args.stop and args.stop > 0 else None
 
     name = NAMES.get(args.symbol, args.symbol)
-    freq_cn = {"day": "日", "week": "周", "month": "月"}[args.freq]
+    freq_cn = {"day": "日", "month": "月"}[args.freq]
     print(f"\n{name}　{args.symbol}　"
           f"规则：MA{args.ma} {freq_cn}频 + 移动止损 "
           f"{f'{stop:.0%}' if stop else '无'}")

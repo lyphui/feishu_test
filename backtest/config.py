@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date as _date
 
-from lib import costs
+from backtest.lib import costs
 
 # 回测预设 .ini 内置于 backtest 包内（backtest/presets/），取本文件所在目录
 _PRESETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets")
@@ -61,9 +61,6 @@ class BacktestConfig:
     proxy: str = ""
     index_symbol: str = "000300"
     extra: dict = field(default_factory=dict)   # 策略专属原始字符串值
-
-    def get_str(self, key: str, default: str = "") -> str:
-        return self.extra.get(key, default)
 
     def get_int(self, key: str, default: int = 0) -> int:
         raw = self.extra.get(key, "").strip()
@@ -156,24 +153,6 @@ def execution_kwargs(cfg: BacktestConfig) -> dict:
         "limit_move_check": cfg.get_bool("limit_move_check", True),
         "max_pending_days": cfg.get_int("max_pending_days", 3),
     }
-
-
-# 可粘进任意 preset .ini 的成本参数模板（留空即用默认值）
-EXECUTION_INI_BLOCK = """
-# ── 成交成本与交易约束（留空即用默认值）──────────────────────────────────────
-# 券商佣金费率（双边），默认 0.0003 万三
-commission_rate =
-# 单笔最低佣金（元），默认 5
-min_commission =
-# 印花税（仅卖出），默认 0.001 千一
-stamp_duty =
-# 单边滑点，默认 0.001 千一；设 0 可与旧版无滑点结果对比
-slippage =
-# 是否模拟涨跌停/停牌无法成交，默认 true
-limit_move_check =
-# 信号因涨跌停未成交时最多顺延几个交易日，默认 3
-max_pending_days =
-"""
 
 
 @dataclass

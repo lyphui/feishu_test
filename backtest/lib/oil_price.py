@@ -10,7 +10,7 @@
 akshare 的 `futures_foreign_hist`（外盘 Brent/WTI）和 `futures_main_sina`
 （SC 原油主力连续）底层打的是 `stock2.finance.sina.com.cn`，本机实测连通，
 所以油价改走这两个函数。baostock 不提供商品期货数据，没有备用可回退——
-一旦新浪这条线也被墙，这里会抛异常，调用方按 backtest/oil_track.py 的做法
+一旦新浪这条线也被墙，这里会抛异常，调用方按 backtest/scripts/track_oil.py 的做法
 捕获后跳过传导分析即可，不必让整个流程崩掉。
 
 口径提醒：WTI/Brent 是美元计价连续合约，SC 是人民币计价的上海国际能源
@@ -33,10 +33,12 @@ akshare 的 `futures_foreign_hist`（外盘 Brent/WTI）和 `futures_main_sina`
     data/market/oil/{symbol}.csv        date,open,high,low,close,volume
     data/market/oil/{symbol}.meta.json  数据区间 + 最后更新时间
 
-跟 price_store.py 不同：新浪这两个接口不支持"只要某段区间"的增量拉取——
-每次都是整段全量吐给你，start/end 只是拿到手之后的本地切片，多传参数不
-省流量。数据量也小（几千行、几十 KB），所以这里没有头尾段增量 + 重叠对账
-的逻辑，每次更新就是整表覆盖，省一套用不上的对账代码。
+跟 price_store.py / intraday_store.py 不同：那两个仓库共用
+`lib/store_base.incremental_update`（头尾段增量 + 重叠对账 + 容差不符则重建）；
+新浪这两个接口不支持"只要某段区间"的增量拉取——每次都是整段全量吐给你，
+start/end 只是拿到手之后的本地切片，多传参数不省流量。数据量也小（几千行、
+几十 KB），所以这里**有意不复用 store_base**，每次更新就是整表覆盖，
+省一套用不上的对账代码。
 """
 
 import json
@@ -59,6 +61,11 @@ _SOURCES = {
     "SC": ("futures_main_sina", "SC0"),
 }
 OIL_SYMBOLS = list(_SOURCES)
+
+# A 股油气股票代码 → 名称。track_oil / compare_exec_plans / backtest_fatfinger
+# 共用（曾各写一遍，且与上面的 `OIL_SYMBOLS`（商品代码 WTI/BRENT/SC）**同名不同义**，
+# 已改名区分）。注意这里的代码是 A 股，不是上面那个商品品种列表。
+OIL_STOCKS = {"601857": "中国石油", "600938": "中国海油"}
 
 _COLUMN_MAP_CN = {
     "日期": "date", "开盘价": "open", "最高价": "high", "最低价": "low",

@@ -9,12 +9,12 @@
 
 用法
 ----
-    python backtest/oil_track.py                 # 增量更新 + 输出跟踪报告
-    python backtest/oil_track.py --offline       # 不联网，只用本地缓存
-    python backtest/oil_track.py --backtest      # 附带连续全样本策略对比
-    python backtest/oil_track.py --chart         # 出图到 output/oil/
-    python backtest/oil_track.py --capital 200000
-    python backtest/oil_track.py --symbols 601857 600938 600028
+    python -m backtest.scripts.track_oil                 # 增量更新 + 输出跟踪报告
+    python -m backtest.scripts.track_oil --offline       # 不联网，只用本地缓存
+    python -m backtest.scripts.track_oil --backtest      # 附带连续全样本策略对比
+    python -m backtest.scripts.track_oil --chart         # 出图到 output/oil/
+    python -m backtest.scripts.track_oil --capital 200000
+    python -m backtest.scripts.track_oil --symbols 601857 600938 600028
 
 价格口径
 --------
@@ -34,26 +34,25 @@
 
 import argparse
 import os
-import sys
 
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from lib.ladder import (PLAYBOOK, simulate_adaptive, simulate_buy_hold,
+from backtest.lib.ladder import (PLAYBOOK, simulate_adaptive, simulate_buy_hold,
                         simulate_dca, simulate_grid, simulate_ladder)
-from lib.oil_price import OIL_SYMBOLS, load_oil, transmission_table, update_oil
-from lib.oil_price import read_meta as read_oil_meta
-from lib.price_store import (load_daily, load_dividends, read_meta,
+from backtest.lib.oil_price import (OIL_STOCKS, OIL_SYMBOLS, load_oil,
+                                    transmission_table, update_oil)
+from backtest.lib.oil_price import read_meta as read_oil_meta
+from backtest.lib.price_store import (load_daily, load_dividends, read_meta,
                              update_daily, update_dividends)
-from lib.regime import BEAR, CHOP, TREND_UP, classify, regime_episodes, regime_stats
-from lib.swings import drawdown_profile, swing_table
-from lib.console import use_utf8
+from backtest.lib.regime import BEAR, CHOP, TREND_UP, classify, regime_episodes, regime_stats
+from backtest.lib.swings import drawdown_profile, swing_table
+from backtest.lib.console import use_utf8
+from backtest.lib.cli import base_parser
 
-DEFAULT_SYMBOLS = ["601857", "600938"]
-NAMES = {"601857": "中国石油", "600938": "中国海油", "600028": "中国石化",
-         "000300": "沪深300"}
+# A 股油气股票统一取 lib/oil_price.OIL_STOCKS（商品代码 OIL_SYMBOLS 与之不同义）
+DEFAULT_SYMBOLS = list(OIL_STOCKS)
+NAMES = {**OIL_STOCKS, "600028": "中国石化", "000300": "沪深300"}
 INDEX_SYMBOL = "000300"
 HISTORY_START = "20180101"
 
@@ -332,7 +331,7 @@ def plot_symbol(symbol: str, data: dict, info: dict, results, save_dir: str) -> 
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from lib.plotting import COLORS, setup_matplotlib, style_ax
+    from backtest.reports.plotting import COLORS, setup_matplotlib, style_ax
 
     setup_matplotlib()
     hfq, raw = data["hfq"], data["raw"]
@@ -398,13 +397,12 @@ def plot_symbol(symbol: str, data: dict, info: dict, results, save_dir: str) -> 
 
 def main():
     use_utf8()
-    ap = argparse.ArgumentParser(description="油气双雄长期跟踪")
+    ap = argparse.ArgumentParser(description="油气双雄长期跟踪",
+                                 parents=[base_parser()])
     ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
-    ap.add_argument("--capital", type=float, default=100_000, help="计划投入本金")
-    ap.add_argument("--offline", action="store_true", help="不联网，只读本地缓存")
     ap.add_argument("--backtest", action="store_true", help="附带连续全样本策略对比")
     ap.add_argument("--chart", action="store_true", help="输出图表")
-    ap.add_argument("--output", default="output/oil", help="图表输出目录")
+    ap.set_defaults(capital=100_000, output="output/oil")
     args = ap.parse_args()
 
     refresh(args.symbols, args.offline)

@@ -6,7 +6,7 @@ import os
 import pandas as pd
 import pytest
 
-from lib import price_store as ps
+from backtest.lib import price_store as ps
 
 
 def _bars(start: str, n: int, base: float = 10.0) -> pd.DataFrame:

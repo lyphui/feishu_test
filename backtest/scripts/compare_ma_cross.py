@@ -4,10 +4,10 @@ MA5/MA8 金叉死叉：分品类实测台
 回答一个具体问题：**「5 日线上穿 8 日线买、下穿卖」这套超短线纪律，
 放在哪类标的上还能剩下正的超额？**
 
-    python backtest/ma_cross_bench.py                 # 全部品类，全部变体
-    python backtest/ma_cross_bench.py --quick         # 只跑核心 4 个变体
-    python backtest/ma_cross_bench.py --offline       # 不联网，只读本地缓存
-    python backtest/ma_cross_bench.py --buckets 宽基ETF 高波成长股
+    python -m backtest.scripts.compare_ma_cross                 # 全部品类，全部变体
+    python -m backtest.scripts.compare_ma_cross --quick         # 只跑核心 4 个变体
+    python -m backtest.scripts.compare_ma_cross --offline       # 不联网，只读本地缓存
+    python -m backtest.scripts.compare_ma_cross --buckets 宽基ETF 高波成长股
 
 为什么要按品类分桶，而不是跑一个大池子取平均
 --------------------------------------------
@@ -25,7 +25,7 @@ MA5/MA8 金叉死叉：分品类实测台
      两者之差就是成本吃掉的部分——短均线策略每年交易几十次，
      不把成本单独拆出来，就分不清「信号没用」和「信号有用但被费用吃光」。
   3. **参数邻域**：MA3/8、MA5/10、MA5/20、MA10/20、MA20/60。
-     单点最优毫无意义（同 `param_sweep.py` 的判读方式）；只有邻域整体
+     单点最优毫无意义（同 `sweep_params.py` 的判读方式）；只有邻域整体
      同号，结论才不是噪音。
 
 成交口径
@@ -60,16 +60,11 @@ from datetime import date as _date, datetime, timedelta
 import numpy as np
 import pandas as pd
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-from engine import run_backtest
-from lib.console import use_utf8
-from lib.price_store import load_daily
-from lib import costs, trend_stop
-from strategies import MACrossStrategy
+from backtest.engine import run_backtest
+from backtest.lib.console import fmt_table, use_utf8
+from backtest.lib.price_store import load_daily
+from backtest.lib import costs, trend_stop
+from backtest.strategies import MACrossStrategy
 
 # ── 标的池：五个品类桶 ────────────────────────────────────────────────────────
 #
@@ -373,11 +368,6 @@ def summarize(detail: pd.DataFrame) -> pd.DataFrame:
     return g.reset_index()
 
 
-def fmt(df: pd.DataFrame, floatfmt: str = "{:7.2f}") -> str:
-    return df.to_string(index=False,
-                        float_format=lambda v: floatfmt.format(v))
-
-
 def print_variant_table(summary: pd.DataFrame, buckets: list[str],
                         metric: str) -> None:
     """一个指标一张交叉表：行=品类，列=变体。"""
@@ -561,7 +551,7 @@ def run_hk_section(variants: list, args) -> None:
     out = pd.DataFrame(rows)[
         ["变体", "年化%", "持有年化%", "年化超额%", "最大回撤%",
          "交易次数/年", "成本%/年", "在场%"]]
-    print(fmt(out))
+    print(fmt_table(out))
 
     # 参照：已在 docs/hk-oil-etf-trend-stop.md 定稿的月频规则，同一段数据重跑。
     # 费率必须按 --hk-capital 算（最低佣金 HK$100 的费率完全由本金决定），

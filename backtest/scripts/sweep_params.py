@@ -10,8 +10,8 @@
 只有 `resolve_universe()` 一个接口，它把任何来源归一成
 `[{"code", "date"}, ...]`——`date` 是该票的**回测起点**（JCY 池里就是推荐日）。
 
-    python backtest/param_sweep.py                        # 默认 JCY 推荐池
-    python backtest/param_sweep.py --codes 601857 600938 --codes-start 20180101
+    python -m backtest.scripts.sweep_params                        # 默认 JCY 推荐池
+    python -m backtest.scripts.sweep_params --codes 601857 600938 --codes-start 20180101
 
 以前 `main()` 直接读 `jcy_insights.json`，于是这个通用工具只能扫 JCY 池，
 想给油气池做同样的过拟合检验就得改代码。
@@ -46,12 +46,12 @@
 
 用法
 ----
-    python backtest/param_sweep.py                       # 默认网格（JCY 池）
-    python backtest/param_sweep.py --limit 20            # 只跑前 20 只，快速试
-    python backtest/param_sweep.py --axis expand_bars cross_window
-    python backtest/param_sweep.py --axis stop_loss take_profit
-    python backtest/param_sweep.py --oos-frac 0.3        # 留最近 30% 做样本外
-    python backtest/param_sweep.py --codes 601857 600938 --codes-start 20180101
+    python -m backtest.scripts.sweep_params                       # 默认网格（JCY 池）
+    python -m backtest.scripts.sweep_params --limit 20            # 只跑前 20 只，快速试
+    python -m backtest.scripts.sweep_params --axis expand_bars cross_window
+    python -m backtest.scripts.sweep_params --axis stop_loss take_profit
+    python -m backtest.scripts.sweep_params --oos-frac 0.3        # 留最近 30% 做样本外
+    python -m backtest.scripts.sweep_params --codes 601857 600938 --codes-start 20180101
 
 注意：网格大小 = 轴1 × 轴2 × 股票数，每格都要跑一次完整回测。
 行情数据在进程内缓存，但首次拉取仍然耗时，建议先用 --limit 试跑。
@@ -67,20 +67,15 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (_HERE, os.path.dirname(_HERE)):      # backtest/ 与仓库根都要在 path 上
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-from engine import run_backtest
-from config import index_history_start
-from strategies import LuMACDBullStrategy
-from lib.plotting import (
+from backtest.engine import run_backtest
+from backtest.config import index_history_start
+from backtest.strategies import LuMACDBullStrategy
+from backtest.reports.plotting import (
     C_BG, C_FG, C_MUTED, setup_matplotlib, style_ax,
 )
-from lib.market_data import fetch_stock_data, fetch_index_data
-from lib.bull_backtest import BullStrategyAdapter
-from lib.console import use_utf8
+from backtest.lib.market_data import fetch_stock_data, fetch_index_data
+from backtest.strategies.bull_backtest import BullStrategyAdapter
+from backtest.lib.console import use_utf8
 from jcy.lib.common import (JSON_PATH, LONG_RATINGS, load_candidates,
                             parse_ratings)
 
@@ -116,7 +111,7 @@ METRICS = [
     "超额中位数%",
 ]
 
-# 必须与 backtest/jcy_macd_bull_batch.py 的 CLI 默认值保持一致，
+# 必须与 backtest/scripts/backtest_jcy_pool.py 的 CLI 默认值保持一致，
 # 否则热力图上标出的"默认格"不是实际在跑的那组参数。
 DEFAULTS = {
     "expand_bars": 2, "cross_window": 3,

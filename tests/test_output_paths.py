@@ -2,7 +2,7 @@
 
 import os
 
-from config import OutputPaths
+from backtest.config import OutputPaths
 
 
 def test_stem_and_suffixes(tmp_path):

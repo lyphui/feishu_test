@@ -1,4 +1,4 @@
-# 策略体系 (`strategies/`)
+# 策略体系 (`backtest/strategies/`)
 
 > 从 [CLAUDE.md](../CLAUDE.md) 拆出。
 

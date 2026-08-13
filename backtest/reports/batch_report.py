@@ -57,7 +57,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from lib.plotting import (
+from backtest.reports.plotting import (
     C_BG, C_FG, C_GREEN, C_RED, C_BLUE, C_MUTED, setup_matplotlib, style_ax,
 )
 

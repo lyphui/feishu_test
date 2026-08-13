@@ -6,10 +6,16 @@
 **一条改动一个文件**，命名 `YYYY-MM-DD-<英文短横线标题>.md`；同一天有多条时用
 不同的标题后缀区分。本文件只做索引，不放正文——所有内容写进各自的条目文件。
 
-新增一条时：在 `changelog/` 下建文件，并在下表**最上方**加一行。
+**默认不写**：只有行为变更、新增能力、留档结论、架构调整才建条目；bug 修复、typo、
+文案、格式化、测试、调参一律不写。判定细则见 CLAUDE.md「更新日志约定 → 什么时候写」。
+
+需要写时：在 `changelog/` 下建文件，并在下表**最上方**加一行。
 
 | 日期 | 条目 | 主题 | 含行为变更 |
 |------|------|------|:----------:|
+| 2026-08-13 | [backtest 重构收尾](2026-08-13-backtest-refactor-wrap-up.md) | 包化（`backtest.*` 绝对导入、删 12 段 bootstrap，运行统一 `python -m backtest.scripts.x`）；12 个 CLI 按动词前缀改名（backtest_/compare_/sweep_/track_）；缓存双实现收成 `lib/store_base.py`；`PositionTracker` 拆进 `lib/`、绘图拆进 `reports/`；分层规则写死（出图进 `reports/`、策略相关进 `strategies/`）；新增 `pytest.ini` 与子进程级脚本可运行测试 | 否（回测逻辑与数值不变，343 passed） |
+| 2026-08-13 | [涨跌停/停牌判定统一](2026-08-13-tradability-unified.md) | `engine._tradability` 与 `lib/ladder._tradable` 两份行为不同的实现合并为 `lib/costs.tradability`（采用 engine 的严格口径：容差 1e-4、`volume<=0`、prev_close 非法放行）；ladder/fatfinger 转调并改用公开 `commission`/`summarize`，fatfinger 常量直取 `costs` | **是**（实测 601857/600938 两样本回测数字逐字不变） |
+| 2026-08-13 | [目录结构重排](2026-08-13-backtest-directory-restructure.md) | 12 个 CLI 入口全部移入 `backtest/scripts/`，`strategies/` 并入 `backtest/strategies/`；库层（engine/config/report/batch_report/bull_report）与 `lib/`、`presets/` 原地不动；运行命令变为 `python backtest/scripts/x.py` | 否（纯目录与运行命令变化，回测逻辑与数值不变） |
 | 2026-08-13 | [单票打法对比台](2026-08-13-stock-playbook-bench.md) | 新增 `stock_playbook.py`：把 `engine`/`ladder`/`trend_stop` 三套模拟器的 14 种打法摆进同一张表（含科创板 ±20% 涨跌停与整手本金两处口径修正）；寒武纪实测留档——两个起点都显示择时打不赢「始终在场」、分批是唯一稳定改良、止盈止损在高波动票上是灾难 | 否（纯新增入口脚本） |
 | 2026-08-11 | [MA5/8 金叉死叉证伪](2026-08-11-ma-cross-5-8-falsified.md) | 新增 `strategies/ma_cross.py`（含只过滤进场的量能条件）+ `ma_cross_bench.py` 分品类实测台（6 桶 × 8 变体）+ ETF 取数通道 `fetch_etf_data`/`kind="etf"`（并修 `_to_yfinance_ticker` 的基金号段误判）；实测结论：MA5/8 在 30 个标的上 0 个跑赢买入持有，零成本对照下仍全负，回撤反而更深 | 否（全为新增模块与新增取数分支） |
 | 2026-08-10 | [四处真耦合的解耦重构](2026-08-10-decouple-shared-layers.md) | 依赖图证明四条业务线已解耦、**不搬目录**；改修四处真耦合：分时取数两份实现（口径还不同）收成一份 `fetch_intraday_raw(adjust=)`、A 股成本两份字面量收进 `lib/costs.py`、`param_sweep` 用 `resolve_universe()` 解绑 JCY 池、`plot_backtest` 拆到 `report.py` 让引擎不再拖 matplotlib | 否（engine/fatfinger/oil_track 输出逐字一致） |

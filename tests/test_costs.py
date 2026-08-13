@@ -11,8 +11,8 @@ import inspect
 
 import pytest
 
-import engine
-from lib import costs, ladder
+import backtest.engine as engine
+from backtest.lib import costs, ladder
 
 
 def test_engine_defaults_come_from_the_shared_source():
@@ -35,7 +35,7 @@ def test_ladder_uses_the_same_constants_as_engine():
 
 def test_fatfinger_inherits_the_same_constants():
     """乌龙指模拟器经 lib.ladder 转引，也必须在同一口径内。"""
-    from lib import fatfinger
+    from backtest.lib import fatfinger
     assert fatfinger.SLIPPAGE == costs.SLIPPAGE
     assert fatfinger.STAMP_DUTY == costs.STAMP_DUTY
     assert fatfinger.LOT == costs.LOT
@@ -44,7 +44,7 @@ def test_fatfinger_inherits_the_same_constants():
 
 def test_config_ini_defaults_match_the_shared_source():
     """`.ini` 留空时落到的缺省值也必须同源。"""
-    from config import BacktestConfig, execution_kwargs
+    from backtest.config import BacktestConfig, execution_kwargs
     # extra 为空 = .ini 里那几行全部留空
     cfg = BacktestConfig(symbol="600519", name="x",
                          start_date="20200101", end_date="20241231")
@@ -71,5 +71,5 @@ def test_infer_limit_pct(symbol, expected):
 
 
 def test_engine_reexports_infer_limit_pct():
-    """历史导入 `from engine import infer_limit_pct` 必须继续可用。"""
+    """历史导入 `from backtest.engine import infer_limit_pct` 必须继续可用。"""
     assert engine.infer_limit_pct is costs.infer_limit_pct
