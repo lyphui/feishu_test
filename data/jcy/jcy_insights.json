@@ -1,7 +1,33 @@
 {
-  "updated_at": "2026-08-13 10:43:55",
-  "total": 280,
+  "updated_at": "2026-08-14 09:38:04",
+  "total": 282,
   "articles": [
+    {
+      "date": "2026-08-14",
+      "title": "Vol.260814 猜想",
+      "link": "https://feishu.cn/wiki/WosXwmYYyiIfXwkzbWbc1s7Nnig",
+      "advice_file": "2026-08-14__Vol.260814 猜想.md",
+      "extracted_at": "2026-08-14 09:38:04",
+      "llm_provider": "DashScope",
+      "companies": [],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "谨慎观望，关注长期方向，避免短线波动，建议定投基金",
+      "key_advice": [
+        "不要盯着复杂技术指标频繁操作，先看清大盘和资金方向",
+        "关注科技、资源、医药等长期有前景的行业，通过基金分批小额买入",
+        "采用月度或季度定投，控制每次买入金额在总资产一小部分",
+        "把韩国股市作为反面教材，切勿加杠杆或追高",
+        "在真正投资前，先设定简单行动信号，使用模拟仓练习"
+      ]
+    },
+    {
+      "date": "2026-08-13",
+      "title": "Vol.260813 允许悬而未决",
+      "link": "https://feishu.cn/wiki/WfDcwBMiPimCPTkhGrQcLHdWn2f",
+      "advice_file": "2026-08-13__Vol.260813 允许悬而未决.md"
+    },
     {
       "date": "2026-08-12",
       "title": "Vol.260812 反反复复为哪般",

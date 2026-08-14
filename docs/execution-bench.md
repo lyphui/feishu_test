@@ -1,4 +1,4 @@
-# 日内下单测算 (`backtest/lib/execution.py` + `backtest/scripts/compare_exec_plans.py` + `lib/intraday_store.py`)
+# 日内下单测算 (`backtest/lib/execution.py` + `backtest/scripts/compare_exec_plans.py` + `backtest/lib/intraday_store.py`)
 
 > 从 [CLAUDE.md](../CLAUDE.md) 拆出。也见 [[dont-extrapolate-across-universes]] memory。
 

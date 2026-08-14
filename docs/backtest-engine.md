@@ -4,7 +4,7 @@
 
 **职责：** 核心回测引擎（纯函数，无 CLI，**不含绘图**），被所有回测入口脚本复用。
 图表在 `backtest/reports/report.py`——`import engine` 不会拖进 matplotlib，批量回测/参数扫描/pytest 因此不必付这个代价（`tests/test_engine_no_matplotlib.py` 守住）。
-成本假设来自 `lib/costs.py`，与 `lib/ladder.py` 同源（`tests/test_costs.py` 守住）——两套撮合骨架的费率一旦漂开，敞口对齐口径就失效。
+成本假设与涨跌停/停牌成交判定（`tradability()`）都来自 `lib/costs.py`，与 `lib/ladder.py`、`lib/fatfinger.py` 同源（`tests/test_costs.py` 守住）——两套撮合骨架的费率或成交口径一旦漂开，敞口对齐口径就失效。
 `backtest/scripts/backtest_macd.py` 为薄入口，re-export `run_backtest`/`plot_backtest`/`fetch_stock_data` 以兼容历史 `from macd_analysis import ...` 导入。
 
 **关键函数：**

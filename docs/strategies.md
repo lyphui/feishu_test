@@ -8,6 +8,7 @@
 | `LuMACDStrategy` | `lu_macd.py` | 三级底部确认（0 轴上，底背离，金叉），长线建仓 |
 | `LuMACDBullStrategy` | `lu_macd_bull.py` | 牛市过滤（大盘月线）+ 截取红柱最陡段，高频战术 |
 | `MACrossStrategy` | `ma_cross.py` | 快慢均线交叉（默认 MA5/MA8），可选量能过滤；**实测为负结论**，见 [ma-cross-5-8.md](ma-cross-5-8.md) |
+| `BullStrategyAdapter`（适配器） | `bull_backtest.py` | 包装牛市策略类，将推荐日期前的信号清零（避免未来数据）；绘图/CSV 在 `backtest/reports/bull_report.py`。因 import 具体策略类而归 `strategies/`，不是通用工具 |
 
 **BaseStrategy 接口（必须实现）：**
 ```python
