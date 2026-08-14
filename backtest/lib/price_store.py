@@ -38,7 +38,7 @@ import pandas as pd
 
 from backtest.lib import store_base
 from backtest.lib.market_data import (DEFAULT_ADJUST, fetch_etf_data, fetch_hk_data,
-                             fetch_index_data, fetch_stock_data)
+                             fetch_index_data, fetch_stock_data, to_baostock_code)
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 STORE_DIR = os.path.join(_BASE_DIR, "data", "market")
@@ -249,10 +249,6 @@ def load_daily(
 
 # ── 分红 ──────────────────────────────────────────────────────────────────────
 
-def _bs_code(symbol: str) -> str:
-    return f"{'sh' if symbol[0] in '69' else 'sz'}.{symbol}"
-
-
 def update_dividends(symbol: str, start_year: int = 2015, end_year: int = None,
                      *, verbose: bool = True) -> pd.DataFrame:
     """
@@ -272,7 +268,7 @@ def update_dividends(symbol: str, start_year: int = 2015, end_year: int = None,
     try:
         rows, fields = [], []
         for year in range(start_year, end_year + 1):
-            rs = bs.query_dividend_data(code=_bs_code(symbol), year=str(year),
+            rs = bs.query_dividend_data(code=to_baostock_code(symbol), year=str(year),
                                         yearType="report")
             fields = rs.fields or fields
             while rs.error_code == "0" and rs.next():

@@ -34,6 +34,7 @@ from datetime import datetime
 import pandas as pd
 
 from backtest.lib import store_base
+from backtest.lib.market_data import to_baostock_code
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 INTRADAY_DIR = os.path.join(_BASE_DIR, "data", "market", "intraday")
@@ -55,10 +56,6 @@ def meta_path(symbol: str, period: int = 30) -> str:
 
 def _dash(d: str) -> str:
     return f"{d[:4]}-{d[4:6]}-{d[6:]}"
-
-
-def _bs_code(symbol: str) -> str:
-    return f"{'sh' if symbol[0] in '69' else 'sz'}.{symbol}"
 
 
 # ── 抓取 ──────────────────────────────────────────────────────────────────────
@@ -95,7 +92,7 @@ def fetch_intraday_raw(symbol: str, start: str, end: str,
     bs.login()
     try:
         rs = bs.query_history_k_data_plus(
-            _bs_code(symbol),
+            to_baostock_code(symbol),
             "date,time,open,high,low,close,volume,amount",
             start_date=_dash(start), end_date=_dash(end),
             frequency=str(period), adjustflag=ADJUST_FLAGS[adjust],

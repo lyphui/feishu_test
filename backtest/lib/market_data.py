@@ -38,8 +38,13 @@ def _adjust_params(adjust: str) -> dict:
 
 # ── baostock 辅助 ──────────────────────────────────────────────────────────────
 
-def _to_baostock_code(symbol: str) -> str:
-    """A 股代码 → baostock 格式（sh.600519 / sz.002202）。"""
+def to_baostock_code(symbol: str) -> str:
+    """
+    A 股代码 → baostock 格式（sh.600519 / sz.002202）。
+
+    公开名：`price_store`（查派息）与 `intraday_store`（查分时）各自也要拼这个
+    格式，曾各抄一份逐字节相同的 `_bs_code`，三份并存。这里是唯一实现。
+    """
     prefix = "sh" if symbol.startswith("6") or symbol.startswith("9") else "sz"
     return f"{prefix}.{symbol}"
 
@@ -222,7 +227,7 @@ def fetch_stock_data(
 
     # ── baostock 备用 ──
     try:
-        bs_code = _to_baostock_code(symbol)
+        bs_code = to_baostock_code(symbol)
         start_dash = _date_yyyymmdd_to_dash(start_date)
         end_dash = _date_yyyymmdd_to_dash(end_date)
         print(f"  正在从 baostock 获取 {bs_code} 日线数据（{adjust}）...")

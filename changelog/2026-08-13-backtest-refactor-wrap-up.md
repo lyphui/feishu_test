@@ -32,7 +32,9 @@
   分支；3 份表格格式化收进 `lib/console.py`；重复的 argparse 选项用
   `lib/cli.py` 的 parent parser 统一（`--offline` 等行为拉齐）；油气代码表
   集中到 `lib/oil_price.py`，A 股代码改名 `OIL_STOCKS` 与商品代码
-  `OIL_SYMBOLS` 区分开（此前同名不同义）。
+  `OIL_SYMBOLS` 区分开（此前同名不同义）；baostock 代码格式化此前有**三份**
+  实现（`market_data._to_baostock_code` 与两个 store 各一份逐字节相同的
+  `_bs_code`），统一为公开的 `market_data.to_baostock_code`。
 - **验证强化**：仓库根新增 `pytest.ini`（`pythonpath = .`），修掉裸 `pytest`
   无法解析 `jcy` 的问题；新增 `tests/test_scripts_runnable.py`，用子进程
   真正启动 `backtest/scripts/` 下每一个脚本（glob，不写死清单），
