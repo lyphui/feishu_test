@@ -73,9 +73,17 @@ def tradability(row, prev_close: float, limit_pct: float) -> tuple[bool, bool]:
 
     价格用相对容差（1e-4）比较而不是 round(_, 2)：复权后的价格已不是真实报价，
     绝对分位对不上。
+
+    volume 缺列（`None`）与 volume 为 NaN 是两回事：前者是"这份数据没带成交量"，
+    放行；后者多来自按交易日历 reindex 出的空行，就是停牌，拦下。
     """
-    if row.get("volume", 1) is not None and float(row.get("volume", 1)) <= 0:
-        return False, False
+    vol = row.get("volume", 1)
+    if vol is not None:
+        vol = float(vol)
+        # NaN 必须显式判：`float("nan") <= 0` 恒为 False，只写 <= 0 会把停牌日
+        # 当成可成交（这里曾经就漏了，docstring 却写着"含 NaN"）。
+        if not np.isfinite(vol) or vol <= 0:
+            return False, False
     if prev_close is None or not np.isfinite(prev_close) or prev_close <= 0:
         return True, True
 

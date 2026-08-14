@@ -73,3 +73,56 @@ def test_infer_limit_pct(symbol, expected):
 def test_engine_reexports_infer_limit_pct():
     """历史导入 `from backtest.engine import infer_limit_pct` 必须继续可用。"""
     assert engine.infer_limit_pct is costs.infer_limit_pct
+
+
+# ── 成交约束（涨跌停 / 停牌） ──────────────────────────────────────────────────
+#
+# 与上面的成本常量同理：engine 与 ladder 曾各存一份成交判定且**行为不同**
+# （ladder 用 0.999 的松 10 倍容差、`volume == 0` 漏判负值与 NaN），
+# 两套骨架的回测因此不可比。合并之后必须有测试钉住，否则谁再图省事写回
+# 一份本地实现，全套测试照样绿。
+
+def test_tradability_has_exactly_one_implementation():
+    """engine 与 ladder 必须指向同一个函数对象，且两侧都不许再有本地实现。"""
+    assert engine._tradability is costs.tradability
+    assert ladder.tradability is costs.tradability
+    assert not hasattr(ladder, "_tradable"), "ladder 不应再自存一份成交判定"
+
+
+@pytest.mark.parametrize("volume", [0, -1, float("nan")])
+def test_tradability_blocks_halted_bars(volume):
+    """
+    停牌：0 / 负值 / NaN 一律不可成交。
+
+    NaN 必须单独钉住——`float("nan") <= 0` 恒为 False，只写 `<= 0` 会把停牌日
+    当成可成交。按交易日历 reindex 出来的空行正是 NaN 成交量。
+    """
+    row = {"open": 10.0, "volume": volume}
+    assert costs.tradability(row, 10.0, 0.10) == (False, False)
+
+
+def test_tradability_uses_the_strict_tolerance():
+    """
+    容差是 1e-4，不是 ladder 旧实现的 1e-3。
+
+    钉的是差异带 [涨停价×0.999, 涨停价×0.9999) 的归属：这一带旧 ladder 判
+    "买不进"，统一后判"买得进"。方向别记反了——容差变窄 = 判死的日子更少。
+    """
+    prev, pct = 10.0, 0.10
+    up = prev * (1 + pct)
+    assert costs.tradability({"open": up * 0.9995, "volume": 1}, prev, pct)[0] is True
+    assert costs.tradability({"open": up * 0.99995, "volume": 1}, prev, pct)[0] is False
+
+
+def test_tradability_limit_moves_block_one_side_only():
+    """涨停只挡买、跌停只挡卖——挡错边会让回测凭空多出/少掉一半交易。"""
+    prev, pct = 10.0, 0.10
+    up, down = prev * (1 + pct), prev * (1 - pct)
+    assert costs.tradability({"open": up, "volume": 1}, prev, pct) == (False, True)
+    assert costs.tradability({"open": down, "volume": 1}, prev, pct) == (True, False)
+
+
+@pytest.mark.parametrize("prev_close", [None, float("nan"), 0.0, -1.0])
+def test_tradability_passes_the_first_bar(prev_close):
+    """首根 K 线没有前收：一律放行，且**不能抛异常**（ladder 旧实现遇 None 会 TypeError）。"""
+    assert costs.tradability({"open": 10.0, "volume": 1}, prev_close, 0.10) == (True, True)

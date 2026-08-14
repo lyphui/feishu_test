@@ -55,6 +55,26 @@ def test_buy_hold_tracks_price():
     assert r.stats["n_trades"] == 1
 
 
+def test_ladder_honors_the_shared_tradability_rule():
+    """
+    停牌与一字涨停的判定来自 `lib/costs.tradability`，ladder 转调它、不自存一份。
+
+    这条是**接线测试**：`tests/test_costs.py` 保证那个函数本身算得对，这里保证
+    ladder 的撮合循环真的走它。买单 T+1 开盘执行，所以约束要放在第 2 根 K 线上。
+    """
+    df = make_df(ramp(10, 20, 60)).astype({"volume": float})
+    assert len(simulate_buy_hold(df, 100_000).trades) == 1          # 基准：正常成交
+
+    for vol in (0.0, -5.0, float("nan")):
+        halted = df.copy()
+        halted.loc[halted.index[1], "volume"] = vol
+        assert not simulate_buy_hold(halted, 100_000).trades, f"停牌日不该成交（volume={vol}）"
+
+    limit_up = df.copy()
+    limit_up.loc[limit_up.index[1], "open"] = float(df["close"].iloc[0]) * 1.10
+    assert not simulate_buy_hold(limit_up, 100_000).trades, "开盘一字涨停买不进"
+
+
 def test_ladder_buys_more_tranches_on_deeper_fall():
     df = make_df(ramp(10, 6, 200))                        # 一路跌 40%
     shallow = simulate_ladder(df, 100_000, n_tranches=4, step=0.08)
