@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-14 09:38:04",
+  "updated_at": "2026-08-14 09:38:16",
   "total": 282,
   "articles": [
     {
@@ -26,7 +26,28 @@
       "date": "2026-08-13",
       "title": "Vol.260813 允许悬而未决",
       "link": "https://feishu.cn/wiki/WfDcwBMiPimCPTkhGrQcLHdWn2f",
-      "advice_file": "2026-08-13__Vol.260813 允许悬而未决.md"
+      "advice_file": "2026-08-13__Vol.260813 允许悬而未决.md",
+      "extracted_at": "2026-08-14 09:38:16",
+      "llm_provider": "DashScope",
+      "companies": [
+        {
+          "name": "京东方A",
+          "code": "000725",
+          "exchange": "深交所",
+          "rating": null
+        }
+      ],
+      "markets": [
+        "A股"
+      ],
+      "tendency": "维持谨慎，等待市场方向明朗，接受不确定性",
+      "key_advice": [
+        "不要追高，尤其注意放量滞涨后的冲高回落。",
+        "接受悬而未决的状态，不急于操作。",
+        "可以少量分批买入宽基ETF，降低个股风险。",
+        "学习行业基本面和数据，避免盲目跟风热门概念。",
+        "控制仓位，用5年以上不用的闲钱投资。"
+      ]
     },
     {
       "date": "2026-08-12",
