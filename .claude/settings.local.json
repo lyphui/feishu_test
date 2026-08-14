@@ -60,7 +60,13 @@
       "Bash(python -c \"import backtest.engine, backtest.bull_report, backtest.scripts.backtest_lu_macd, backtest.scripts.backtest_lu_macd_bull, backtest.scripts.backtest_macd, backtest.scripts.backtest_jcy_pool; print\\('all imports OK'\\)\")",
       "Bash(python -m pytest \"c:/Users/panhui9/PycharmProjects/feishu_test/tests\" -q)",
       "Bash(git status *)",
-      "PowerShell(python -V; python -c \"import sys; print\\(sys.executable\\)\"; \\(Get-Command -All python\\).Source)"
+      "PowerShell(python -V; python -c \"import sys; print\\(sys.executable\\)\"; \\(Get-Command -All python\\).Source)",
+      "Bash(cd d:/projects/feishu_test && sed -n '/def tradability/,/^def \\\\|^# ─/p' backtest/lib/costs.py | head -45)",
+      "Bash(cd d:/projects/feishu_test && grep -n \"trades.append\\\\|def simulate_buy_hold\" backtest/lib/ladder.py | head && echo \"---\" && sed -n '/def simulate_buy_hold/,/^def /p' backtest/lib/ladder.py | head -25)"
+    ],
+    "additionalDirectories": [
+      "d:\\projects\\feishu_test\\backtest\\lib",
+      "D:\\projects\\feishu_test\\backtest\\lib"
     ]
   }
 }
