@@ -1,5 +1,16 @@
 """
-共享行情数据获取：个股 + 指数，akshare → baostock → yfinance 三源。
+共享行情数据获取：个股 + 指数 + ETF + 港股，多源带回退。
+
+源顺序按品种而定，不是全局统一的
+--------------------------------
+  个股 `fetch_stock_data`  baostock → akshare → yfinance
+  指数 `fetch_index_data`  akshare(新浪源) → baostock → yfinance
+  ETF  `fetch_etf_data`    akshare(东财) → yfinance      （baostock 不覆盖基金）
+  港股 `fetch_hk_data`     yfinance 单源                  （另两家都不覆盖）
+
+个股为什么把 baostock 提到首位见 `fetch_stock_data` 的 docstring：**东财的 hfq
+不是全收益口径**，高股息标的上年化能差 4pp。指数不受影响（无复权概念，且
+akshare 指数接口走新浪不经东财，两源实测逐位一致），故维持原顺序。
 
 复权口径
 --------
@@ -29,11 +40,28 @@ ADJUST = {
 }
 DEFAULT_ADJUST = "hfq"
 
+#: 各 fetch_* 返回的标准列集合（`price_store.OHLCV` 与之一致）
+OHLCV_COLS = ["open", "high", "low", "close", "volume"]
+
 
 def _adjust_params(adjust: str) -> dict:
     if adjust not in ADJUST:
         raise ValueError(f"未知复权方式：{adjust}，可选 {list(ADJUST)}")
     return ADJUST[adjust]
+
+
+def _tagged(df: pd.DataFrame, source: str) -> pd.DataFrame:
+    """
+    在返回帧上记下**是哪个源给的数据**（`df.attrs["source"]`）。
+
+    为什么必须记：三源回退是静默的（akshare 挂了就退 baostock，再挂退
+    yfinance），而三者的 hfq 基准并不相同——同一只票换个源，整条历史价格
+    就是另一套数字。`price_store` 把它写进 `meta.json`，否则事后无从判断
+    仓库里哪些文件是回退源写的，"换取数路径会不会改数"这类问题也就没法查。
+    """
+    df = df.copy()
+    df.attrs["source"] = source
+    return df
 
 
 # ── baostock 辅助 ──────────────────────────────────────────────────────────────
@@ -158,6 +186,24 @@ def _warn_yfinance_adjust(adjust: str) -> None:
         )
 
 
+def _warn_akshare_hfq(symbol: str, adjust: str) -> None:
+    """
+    回退到 akshare 取 hfq 时告警：它与首选源 baostock 的口径**不同**。
+
+    东财 hfq 的分红再投累积方式与 baostock 不一致——601225 实测 8.6 年年化
+    差 4.1pp（详见 `fetch_stock_data` docstring）。落到仓库里就是"这一只票
+    与其余标的不同口径"，横截面比较会被污染，所以必须响一声，并靠
+    `meta.json` 的 `source` 字段留痕。
+    """
+    if adjust == "hfq":
+        warnings.warn(
+            f"{symbol} 已回退到 akshare(东财) 取 hfq：其分红再投累积与首选源 "
+            "baostock 不同（高股息标的年化可差约 4pp），该票与仓库其余标的"
+            "**不同口径**，横截面比较需谨慎。meta.json 的 source 会记为 akshare。",
+            UserWarning, stacklevel=3,
+        )
+
+
 def _to_yfinance_ticker(symbol: str, is_index: bool = False,
                         is_fund: bool = False) -> str:
     """A 股代码 → yfinance ticker（沪/深自动判断）。
@@ -190,7 +236,7 @@ def fetch_stock_data(
     adjust: str = DEFAULT_ADJUST,
 ) -> pd.DataFrame:
     """
-    获取 A 股个股历史行情数据。
+    获取 A 股个股历史行情数据。源顺序：**baostock → akshare → yfinance**。
 
     symbol     : 股票代码，如 "600519"
     start_date : "YYYYMMDD"
@@ -198,6 +244,23 @@ def fetch_stock_data(
     proxy      : HTTP 代理地址，留空则不使用
     adjust     : 复权方式，"hfq"（默认，后复权，回测唯一可复现的口径）
                  / "qfq" / "none"，见模块 docstring
+
+    为什么首选 baostock 而不是 akshare（2026-08 换的顺序）
+    ------------------------------------------------------
+    **东财的 hfq 不是全收益口径。** 用 601225 陕西煤业实测（纯现金分红、
+    无送转，可从第一性原理重建）：不复权价 + 税前现金分红重建出的全收益
+    年化 +22.27%；baostock 的 hfq 年化 +22.18%，与重建的日收益**中位差为 0**，
+    8.6 年里只有 9 天超过 1bp（都在除息日附近）；而东财那份年化只有 +18.17%，
+    日收益中位差 15bp、2086 天里 2013 天超 1bp，累计 +298% vs +425%——
+    **年化差 4.1pp**。除息日单看两边都对，差的是整段的分红再投累积方式。
+
+    对一个把 hfq 当作"含股息再投的全收益口径"来用的回测仓库，这是口径错误，
+    不是精度差异。另外两条次要理由：本机 eastmoney 被 DPI 阻断（akshare 的
+    个股接口打 `push2his.eastmoney.com`，长期不通）；东财只给 2 位小数，
+    在低价股上会给日收益注入 ~15bp 的舍入噪声，baostock 给 6 位。
+
+    仅限**个股**。指数（`fetch_index_data`）走的是新浪接口、不经东财，本机可达
+    且两源实测逐位一致，故维持 akshare 优先；ETF 与港股 baostock 根本不覆盖。
     """
     if proxy:
         os.environ["HTTP_PROXY"] = proxy
@@ -205,8 +268,30 @@ def fetch_stock_data(
 
     params = _adjust_params(adjust)
 
+    # ── baostock 首选（hfq 为真全收益口径，见 docstring） ──
+    try:
+        bs_code = to_baostock_code(symbol)
+        start_dash = _date_yyyymmdd_to_dash(start_date)
+        end_dash = _date_yyyymmdd_to_dash(end_date)
+        print(f"  正在从 baostock 获取 {bs_code} 日线数据（{adjust}）...")
+        df = _baostock_query(bs_code, start_dash, end_dash, frequency="d",
+                             adjustflag=params["baostock"])
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date").sort_index()
+            return _tagged(df[["open", "high", "low", "close", "volume"]], "baostock")
+        print("  baostock 返回空数据，尝试 akshare 备用...")
+    except ImportError:
+        print("  未找到 baostock，尝试 akshare 备用...")
+    except Exception as e:                          # noqa: BLE001 — 源异常五花八门
+        print(f"  baostock 获取失败：{e}，尝试 akshare 备用...")
+
+    # ── akshare 备用 ──
+    # 口径告警：东财 hfq 的分红再投累积与 baostock 不同（高股息票年化可差 4pp），
+    # 回退到这里的标的与仓库其余部分**不同口径**，meta.json 的 source 会记下来。
     try:
         import akshare as ak
+        _warn_akshare_hfq(symbol, adjust)
         print(f"  正在从 akshare 获取 {symbol} 数据（{adjust}）...")
         df = ak.stock_zh_a_hist(
             symbol=symbol, period="daily",
@@ -219,27 +304,11 @@ def fetch_stock_data(
         })
         df["date"] = pd.to_datetime(df["date"])
         df = df.set_index("date").sort_index()
-        return df[["open", "high", "low", "close", "volume"]]
+        return _tagged(df[["open", "high", "low", "close", "volume"]], "akshare")
     except ImportError:
-        print("  未找到 akshare，尝试 baostock 备用...")
+        print("  未找到 akshare，尝试 yfinance 备用...")
     except (ValueError, KeyError, OSError, RuntimeError) as e:
-        print(f"  akshare 获取失败：{e}，尝试 baostock 备用...")
-
-    # ── baostock 备用 ──
-    try:
-        bs_code = to_baostock_code(symbol)
-        start_dash = _date_yyyymmdd_to_dash(start_date)
-        end_dash = _date_yyyymmdd_to_dash(end_date)
-        print(f"  正在从 baostock 获取 {bs_code} 日线数据（{adjust}）...")
-        df = _baostock_query(bs_code, start_dash, end_dash, frequency="d",
-                             adjustflag=params["baostock"])
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"])
-            df = df.set_index("date").sort_index()
-            return df[["open", "high", "low", "close", "volume"]]
-        print("  baostock 返回空数据，尝试 yfinance 备用...")
-    except Exception as e:
-        print(f"  baostock 获取失败：{e}，尝试 yfinance 备用...")
+        print(f"  akshare 获取失败：{e}，尝试 yfinance 备用...")
 
     # ── yfinance 备用 ──
     _warn_yfinance_adjust(adjust)
@@ -249,7 +318,7 @@ def fetch_stock_data(
         _date_yyyymmdd_to_dash(start_date),
         _date_yyyymmdd_to_dash(end_date),
     )
-    return raw[["open", "high", "low", "close", "volume"]]
+    return _tagged(raw[["open", "high", "low", "close", "volume"]], "yfinance")
 
 
 # ── 场内基金（ETF / LOF）日线数据 ────────────────────────────────────────────
@@ -293,7 +362,7 @@ def fetch_etf_data(
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"])
             df = df.set_index("date").sort_index()
-            return df[["open", "high", "low", "close", "volume"]]
+            return _tagged(df[["open", "high", "low", "close", "volume"]], "akshare")
         print("  akshare 基金接口返回空数据，尝试 yfinance 备用...")
     except ImportError:
         print("  未找到 akshare，尝试 yfinance 备用...")
@@ -308,7 +377,7 @@ def fetch_etf_data(
         _date_yyyymmdd_to_dash(start_date),
         _date_yyyymmdd_to_dash(end_date),
     )
-    return raw[["open", "high", "low", "close", "volume"]]
+    return _tagged(raw[["open", "high", "low", "close", "volume"]], "yfinance")
 
 
 # ── 大盘指数日线数据 ─────────────────────────────────────────────────────────
@@ -344,7 +413,91 @@ def fetch_hk_data(
         raw.index = raw.index.tz_localize(None)
     cols = [c for c in ["open", "high", "low", "close", "volume"]
             if c in raw.columns]
-    return raw[cols]
+    return _tagged(raw[cols], "yfinance")
+
+
+def fetch_index_tr_data(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame:
+    """
+    获取中证全收益指数日线（含股息再投），如 "H00300"（沪深300全收益）。
+
+    用途只有一个：**选股 alpha 的分母**（评审 `docs/backtest-review.md` 3.2）。
+    个股 hfq 是全收益口径（含股息再投），拿它减不含股息的价格指数会把
+    「选股alpha%」系统性抬高一个股息率的量级——2018-01→2026-08 沪深300
+    实测价格指数年化 +1.62% vs 全收益 +4.07%，差 2.45%/年。
+
+    牛市过滤器**不要**用它：「大盘在不在牛市」讲的是点位不是全收益，
+    那一侧应留在价格指数（`fetch_index_data`）。两者混用会把一次口径修正
+    变成一次策略变更。
+
+    这个源有两个坑，都在下面处理掉，不要把原始返回直接入库
+    ------------------------------------------------------
+    1. **只发布收盘价**：开/高/低多数交易日为 NaN（实测 2018-01→2026-08 的
+       2824 行里 87.8% 缺 OHL，且 2021-09 之前整段全空）。直接入库会让
+       `data/market/daily/` 里出现一份「只有 close 是真的」的日线，而
+       `price_store._overlap_matches` 只对账 close，永远发现不了。
+       这里把 OHL 一律填成 close：全收益指数没有盘中报价，一根
+       open=high=low=close 的平坦 K 线是它唯一自洽的表示，下游
+       （`tradability` 读 `row["open"]`、任何策略）至少不会拿到 NaN。
+    2. **非交易日补行**：休市日会重复前一交易日的收盘价与成交量
+       （实测 2026-08-01 周六与 08-03 的 close/涨跌/成交量逐位相同，
+       2015-01-01 元旦同理）。真实平盘日的「涨跌」是 0 而不是重复的非零值，
+       所以按 (close, 涨跌, 成交量) 三元组与上一行完全相同来识别补行并丢弃。
+
+    列名按**中文列名** rename，不按位置赋值：原实现写死 16 个位置名，
+    akshare 换列序就会把「涨跌幅」静默映射成 `close`，而数值仍是合理量级，
+    没有任何地方会报错。
+    """
+    import akshare as ak
+    print(f"  正在从中证指数获取全收益指数 {symbol} 数据...")
+    raw = ak.stock_zh_index_hist_csindex(symbol=symbol, start_date=start_date,
+                                         end_date=end_date)
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=OHLCV_COLS)
+
+    colmap = {"日期": "date", "开盘": "open", "最高": "high", "最低": "low",
+              "收盘": "close", "涨跌": "chg", "成交量": "volume"}
+    missing = [cn for cn in ("日期", "收盘") if cn not in raw.columns]
+    if missing:
+        raise ValueError(
+            f"中证指数返回的列不含 {missing}，实际列={list(raw.columns)}；"
+            "接口口径可能变了，先核对再改 colmap")
+    df = raw.rename(columns=colmap)
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.set_index("date").sort_index()
+
+    close = pd.to_numeric(df["close"], errors="coerce")
+    chg = pd.to_numeric(df.get("chg"), errors="coerce")
+    volume = pd.to_numeric(df.get("volume"), errors="coerce")
+
+    # ② 丢掉休市补行：三元组与上一行逐位相同 → 后者是补行，保留前者
+    dup = (close.eq(close.shift())
+           & chg.eq(chg.shift())
+           & volume.eq(volume.shift()))
+    keep = ~dup.fillna(False)
+
+    # 头部特例：请求区间的第一天若恰是休市日（如 INDEX_HISTORY_START=20150101
+    # 撞上元旦），第 0 行本身就是对区间之前那根 K 线的补行——它没有"上一行"
+    # 可比，`dup` 漏掉它，反而把紧随其后的**真实交易日**当成重复丢掉。
+    # 所以领头的这一段重复里保留最后一根而不是第一根。
+    # 已知残留：区间中段的**非连续**补行（休市日的值恰好与更早某天相同但与
+    # 前一行不同）识别不了；这类只影响日期标签，数值仍是前值延续。
+    if len(dup) > 1 and bool(dup.iloc[1]):
+        k = 1
+        while k < len(dup) and bool(dup.iloc[k]):
+            k += 1
+        keep.iloc[0] = False
+        keep.iloc[k - 1] = True
+
+    out = pd.DataFrame({
+        # ① 只有 close 是真的，OHL 填成 close（见 docstring）
+        "open": close, "high": close, "low": close, "close": close,
+        "volume": volume,
+    }).loc[keep]
+    return _tagged(out, "csindex")
 
 
 def fetch_index_data(
@@ -373,7 +526,7 @@ def fetch_index_data(
         if not df.empty:
             cols = [c for c in ["open", "high", "low", "close", "volume"]
                     if c in df.columns]
-            return df[cols]
+            return _tagged(df[cols], "akshare")
     except ImportError:
         print("  未找到 akshare，尝试 baostock 备用...")
     except (ValueError, KeyError, OSError, RuntimeError) as e:
@@ -391,7 +544,7 @@ def fetch_index_data(
             df = df.set_index("date").sort_index()
             cols = [c for c in ["open", "high", "low", "close", "volume"]
                     if c in df.columns]
-            return df[cols]
+            return _tagged(df[cols], "baostock")
         print("  baostock 指数返回空数据，尝试 yfinance 备用...")
     except Exception as e:
         print(f"  baostock 指数获取失败：{e}，尝试 yfinance 备用...")
@@ -405,4 +558,4 @@ def fetch_index_data(
     )
     cols = [c for c in ["open", "high", "low", "close", "volume"]
             if c in raw.columns]
-    return raw[cols]
+    return _tagged(raw[cols], "yfinance")

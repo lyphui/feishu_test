@@ -34,6 +34,7 @@
 
 import argparse
 import os
+import time
 
 import numpy as np
 import pandas as pd
@@ -49,6 +50,7 @@ from backtest.lib.regime import BEAR, CHOP, TREND_UP, classify, regime_episodes,
 from backtest.lib.swings import drawdown_profile, swing_table
 from backtest.lib.console import use_utf8
 from backtest.lib.cli import base_parser
+from backtest.lib.manifest import write_run_manifest
 
 # A 股油气股票统一取 lib/oil_price.OIL_STOCKS（商品代码 OIL_SYMBOLS 与之不同义）
 DEFAULT_SYMBOLS = list(OIL_STOCKS)
@@ -398,12 +400,15 @@ def plot_symbol(symbol: str, data: dict, info: dict, results, save_dir: str) -> 
 def main():
     use_utf8()
     ap = argparse.ArgumentParser(description="油气双雄长期跟踪",
-                                 parents=[base_parser()])
+                                 # 不继承 --start：取数起点固定为 HISTORY_START
+                                 # （长期跟踪要的就是同一段可比历史）
+                                 parents=[base_parser(start=False)])
     ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     ap.add_argument("--backtest", action="store_true", help="附带连续全样本策略对比")
     ap.add_argument("--chart", action="store_true", help="输出图表")
     ap.set_defaults(capital=100_000, output="output/oil")
     args = ap.parse_args()
+    t0 = time.time()
 
     refresh(args.symbols, args.offline)
     data = load_all(args.symbols, args.offline)
@@ -440,6 +445,9 @@ def main():
         for s in args.symbols:
             print("  图表已保存：" + plot_symbol(s, data[s], infos[s],
                                                  results.get(s), args.output))
+
+    # 可复现清单（评审项 2）
+    write_run_manifest(args.output, symbols=list(args.symbols), started_at=t0)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@
   "requested_start": "20180101",
   "requested_end": "20260810",
   "data_start": "20180102",
-  "data_end": "20260807",
-  "rows": 2086,
-  "updated_at": "2026-08-10 14:12:26"
+  "data_end": "20260810",
+  "rows": 2087,
+  "source": "baostock",
+  "updated_at": "2026-08-18 10:12:15"
 }

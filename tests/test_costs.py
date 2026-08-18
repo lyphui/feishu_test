@@ -55,6 +55,52 @@ def test_config_ini_defaults_match_the_shared_source():
     assert kw["slippage"] == costs.SLIPPAGE
 
 
+# ── 无风险利率 / 现金利率 ──────────────────────────────────────────────────────
+#
+# 费率有上面的同源守护，rf 与 cash_rate 曾是唯一没有测试守的漂移面：
+# 三处夏普各写一份 0.02 字面量，哪天改了一处，同一张对比表的排序就变成
+# 按公式排序。收编进 costs.py 后由这里钉住。
+
+def test_sharpe_rf_defaults_come_from_the_shared_source():
+    """engine / compare_playbooks 的夏普默认 rf 必须同源。"""
+    sig = inspect.signature(engine._calc_sharpe).parameters
+    assert sig["rf"].default == costs.RISK_FREE_RATE
+
+    from backtest.scripts import compare_playbooks
+    sig = inspect.signature(compare_playbooks._sharpe).parameters
+    assert sig["rf"].default == costs.RISK_FREE_RATE
+
+
+def test_ladder_cash_rate_comes_from_the_shared_source():
+    """ladder 空仓计息利率必须同源——它是分批打法净值的一部分。"""
+    sig = inspect.signature(ladder._run).parameters
+    assert sig["cash_rate"].default == costs.CASH_RATE
+
+
+# ── 港股成本（评审项 6：自 trend_stop 收编） ──────────────────────────────────
+
+def test_hk_costs_have_exactly_one_implementation():
+    """trend_stop 必须是 costs 的消费者而非定义者（保留同名 re-export）。"""
+    from backtest.lib import trend_stop
+    assert trend_stop.hk_trade_cost is costs.hk_trade_cost
+    assert trend_stop.hk_fee_rate is costs.hk_fee_rate
+
+
+def test_for_market_aggregates_the_same_constants():
+    """market-aware 入口返回的费率组必须与散常量逐位一致。"""
+    a = costs.for_market("A")
+    assert (a.commission_rate, a.min_commission, a.stamp_duty, a.slippage, a.lot) == \
+        (costs.COMMISSION_RATE, costs.MIN_COMMISSION, costs.STAMP_DUTY,
+         costs.SLIPPAGE, costs.LOT)
+    hk = costs.for_market("HK")
+    assert (hk.commission_rate, hk.min_commission, hk.stamp_duty,
+            hk.platform_fee) == (costs.HK_COMMISSION_RATE, costs.HK_MIN_COMMISSION,
+                                 costs.HK_STAMP_DUTY, costs.HK_PLATFORM_FEE)
+    assert hk.etf_stamp_exempt and hk.lot is None
+    with pytest.raises(ValueError):
+        costs.for_market("US")
+
+
 def test_commission_respects_the_floor():
     assert costs.commission(1_000) == costs.MIN_COMMISSION      # 万三 = 0.3 元 < 5
     assert costs.commission(100_000) == pytest.approx(30.0)     # 万三 = 30 元 > 5
@@ -68,6 +114,43 @@ def test_commission_respects_the_floor():
 ])
 def test_infer_limit_pct(symbol, expected):
     assert costs.infer_limit_pct(symbol) == expected
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("ST张三", 0.05), ("*ST李四", 0.05), ("st某某", 0.05), ("SST前锋", 0.05),
+    ("  *ST带空格", 0.05),
+    ("贵州茅台", 0.10), ("", 0.10), (None, 0.10),
+    # 只认前缀：风险警示标识只出现在名称开头，含 ST 二字的普通名称不该被误判
+    # ——误判会让 ±10% 的票按 ±5% 撮合，成交被 tradability 静默拦掉
+    ("某某ST控股", 0.10), ("EAST科技", 0.10), ("BEST集团", 0.10),
+])
+def test_infer_limit_pct_with_name(name, expected):
+    """主板 ST 靠名称判定；无名称时维持代码前缀推断（评审项 7）。"""
+    assert costs.infer_limit_pct("600519", name) == expected
+
+
+@pytest.mark.parametrize("symbol,expected", [
+    ("300750", 0.20), ("301236", 0.20),     # 创业板注册制：ST 也是 20%
+    ("688111", 0.20), ("689009", 0.20),     # 科创板：ST 也是 20%
+    ("430047", 0.30), ("830799", 0.30),     # 北交所：ST 也是 30%
+])
+def test_board_takes_precedence_over_st(symbol, expected):
+    """
+    板块必须先于 ST 判定：±5% 的风险警示幅度**只适用于主板**。
+
+    曾经 ST 分支排在板块前缀之前，`300xxx` 的 ST 票被判成 ±5%——
+    任何超过 5% 的开盘都会被 `tradability` 当成封板，成交静默拦掉、
+    「受阻次数」虚高。
+    """
+    assert costs.infer_limit_pct(symbol, "*ST某某") == expected
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("ST路桥", True), ("*ST海投", True), ("sst前锋", True), (" ST带空格", True),
+    ("某某ST", False), ("EAST科技", False), ("", False), (None, False),
+])
+def test_is_st_name(name, expected):
+    assert costs.is_st_name(name) is expected
 
 
 def test_engine_reexports_infer_limit_pct():

@@ -61,6 +61,7 @@ import argparse
 import itertools
 import os
 import sys
+import time
 from datetime import date as _date, timedelta
 
 import numpy as np
@@ -73,7 +74,9 @@ from backtest.strategies import LuMACDBullStrategy
 from backtest.reports.plotting import (
     C_BG, C_FG, C_MUTED, setup_matplotlib, style_ax,
 )
-from backtest.lib.market_data import fetch_stock_data, fetch_index_data
+from backtest.lib.price_store import load_daily
+from backtest.lib.cli import base_parser
+from backtest.lib.manifest import write_run_manifest
 from backtest.strategies.bull_backtest import BullStrategyAdapter
 from backtest.lib.console import use_utf8
 from jcy.lib.common import (JSON_PATH, LONG_RATINGS, load_candidates,
@@ -123,13 +126,15 @@ DEFAULTS = {
 # ── 行情缓存 ──────────────────────────────────────────────────────────────────
 
 _price_cache: dict[tuple, pd.DataFrame] = {}
+_offline = False   # 由 main() 按 --offline 设置；True 时只读本地缓存不联网
 
 
 def _cached_stock(symbol: str, start: str, end: str) -> pd.DataFrame:
-    """同一只股票在整个网格里只拉一次行情。"""
+    """同一只股票在整个网格里只拉一次行情。统一走本地仓库（评审项 1）。"""
     key = (symbol, start, end)
     if key not in _price_cache:
-        _price_cache[key] = fetch_stock_data(symbol, start, end)
+        _price_cache[key] = load_daily(symbol, start, end,
+                                       auto_update=not _offline, verbose=False)
     return _price_cache[key]
 
 
@@ -339,7 +344,10 @@ def resolve_universe(args) -> tuple[list[dict], str]:
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="策略参数敏感性扫描")
+    p = argparse.ArgumentParser(description="策略参数敏感性扫描",
+                                # 起点由各票推荐日（或 --codes-start）决定
+                                parents=[base_parser(start=False)])
+    p.set_defaults(capital=100000, output="output/sweep")
     p.add_argument("--axis", nargs=2, default=["expand_bars", "cross_window"],
                    metavar=("X", "Y"),
                    help=f"扫描的两个参数轴，可选：{list(AXES)}")
@@ -359,15 +367,16 @@ def parse_args():
     p.add_argument("--oos-frac", type=float, default=0.0, metavar="FRAC",
                    help="按推荐日留出最近 FRAC 比例的候选股做样本外验证，"
                         "如 0.3；0=关闭（纯样本内，结论不足以支撑实盘）")
-    p.add_argument("--capital", type=float, default=100000)
-    p.add_argument("--index", type=str, default="000300")
-    p.add_argument("--output", type=str, default="output/sweep")
+    p.add_argument("--index",     type=str,   default="000300")
     return p.parse_args()
 
 
 def main():
     use_utf8()
     args = parse_args()
+    t0 = time.time()
+    global _offline
+    _offline = args.offline
     axis_x, axis_y = args.axis
     for a in (axis_x, axis_y):
         if a not in AXES:
@@ -413,7 +422,9 @@ def main():
     print("─" * 66)
 
     print(f"\n  获取大盘指数 {args.index}（{index_start} → {end_date}）...")
-    index_df = fetch_index_data(args.index, index_start, end_date)
+    index_df = load_daily(args.index, index_start, end_date,
+                          adjust="none", kind="index",
+                          auto_update=not args.offline, verbose=False)
 
     os.makedirs(args.output, exist_ok=True)
     rows, cells = [], {}
@@ -462,6 +473,14 @@ def main():
     else:
         print("\n  ⚠️ 本次为纯样本内扫描：最优格是在同一批数据上挑出来的，"
               "不能作为实盘依据。\n     加 --oos-frac 0.3 做时序留出验证。")
+
+    # 可复现清单（评审项 2）：扫参结果尤其需要能回答「这是哪次跑的」
+    write_run_manifest(args.output,
+                       symbols=[c["code"] for c in candidates]
+                               + [(args.index, "none")],
+                       started_at=t0,
+                       extra={"axis": [axis_x, axis_y], "metric": args.metric,
+                              "oos_frac": args.oos_frac})
 
 
 def run_oos_check(best_key, default_key, axis_x: str, axis_y: str,

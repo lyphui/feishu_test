@@ -38,7 +38,8 @@ import pandas as pd
 
 from backtest.lib import store_base
 from backtest.lib.market_data import (DEFAULT_ADJUST, fetch_etf_data, fetch_hk_data,
-                             fetch_index_data, fetch_stock_data, to_baostock_code)
+                             fetch_index_data, fetch_index_tr_data,
+                             fetch_stock_data, to_baostock_code)
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 STORE_DIR = os.path.join(_BASE_DIR, "data", "market")
@@ -105,7 +106,15 @@ def read_meta(symbol: str, adjust: str = DEFAULT_ADJUST) -> dict:
 
 
 def write_meta(symbol: str, adjust: str, *, req_start: str, req_end: str,
-               df: pd.DataFrame, kind: str) -> None:
+               df: pd.DataFrame, kind: str, source: str | None = None) -> None:
+    """
+    写 meta.json。
+
+    source : 本次抓取实际命中的数据源（akshare / baostock / yfinance / csindex）。
+             三源回退是静默的，而它们的 hfq 基准并不相同——不记下来，事后就
+             没法判断仓库里哪些文件是回退源写的。本次没抓数（纯本地命中）时
+             传 None，沿用旧值而不是抹成空。
+    """
     os.makedirs(DAILY_DIR, exist_ok=True)
     old = read_meta(symbol, adjust)
     meta = {
@@ -118,6 +127,7 @@ def write_meta(symbol: str, adjust: str, *, req_start: str, req_end: str,
         "data_start": _to_ymd(df.index[0]) if len(df) else None,
         "data_end": _to_ymd(df.index[-1]) if len(df) else None,
         "rows": int(len(df)),
+        "source": source or old.get("source"),
         "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     with open(meta_path(symbol, adjust), "w", encoding="utf-8") as f:
@@ -130,6 +140,9 @@ def _fetch(symbol: str, start: str, end: str, kind: str, adjust: str,
            proxy: str = "") -> pd.DataFrame:
     if kind == "index":
         df = fetch_index_data(symbol, start, end)
+    elif kind == "index_tr":
+        # 全收益指数（如 H00300）：只做选股 alpha 分母，见 market_data docstring
+        df = fetch_index_tr_data(symbol, start, end)
     elif kind == "hk":
         df = fetch_hk_data(symbol, start, end)
     elif kind == "etf":
@@ -164,6 +177,17 @@ def update_daily(
 
     增量算法本体在 `store_base.incremental_update`（与 intraday_store 共用）。
     """
+    # 本次实际命中的数据源。`_fetch` 可能被调用多次（头段 + 尾段），三源回退
+    # 又是静默的，所以用一个可变盒子在抓取与 write_meta 之间传递——最后一次
+    # 成功抓取的源即本次写入的源。全程本地命中时保持 None，write_meta 沿用旧值。
+    hit = {"source": None}
+
+    def _remember(df: pd.DataFrame) -> pd.DataFrame:
+        src = df.attrs.get("source") if hasattr(df, "attrs") else None
+        if src:
+            hit["source"] = src
+        return df
+
     return store_base.incremental_update(
         symbol, start, end,
         columns=OHLCV,
@@ -176,9 +200,10 @@ def update_daily(
         write_local=lambda df: write_daily(df, symbol, adjust),
         read_meta=lambda: read_meta(symbol, adjust),
         write_meta=lambda req_start, req_end, df: write_meta(
-            symbol, adjust, req_start=req_start, req_end=req_end, df=df, kind=kind),
-        fetch_full=lambda s, e: _fetch(symbol, s, e, kind, adjust, proxy),
-        fetch_gap=lambda s, e: _fetch_safe(symbol, s, e, kind, adjust, proxy),
+            symbol, adjust, req_start=req_start, req_end=req_end, df=df,
+            kind=kind, source=hit["source"]),
+        fetch_full=lambda s, e: _remember(_fetch(symbol, s, e, kind, adjust, proxy)),
+        fetch_gap=lambda s, e: _remember(_fetch_safe(symbol, s, e, kind, adjust, proxy)),
         local_bounds=lambda df: (_to_ymd(df.index[0]), _to_ymd(df.index[-1])),
         overlap_check=_overlap_matches,
         merge_pieces=_merge_by_index,

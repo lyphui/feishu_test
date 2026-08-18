@@ -13,8 +13,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 仅需安装第三方依赖：
   ```bash
   pip install pandas numpy matplotlib requests openai python-dotenv pyyaml akshare yfinance pytest
-  # 强烈建议装上：行情第二数据源（akshare 失败时自动回退，且能给出正确的 hfq 后复权口径）
+  # 必装：**A 股个股行情的首选源**（2026-08 起），因为只有它的 hfq 是真·全收益口径
+  # ——东财(akshare) 的 hfq 分红再投累积不同，601225 实测 8.6 年年化差 4.1pp
   # 也是**派息数据的唯一来源**（`lib/price_store.update_dividends`），缺了它算不出股息率
+  # akshare 仍必装：ETF、指数、分时都靠它，个股则降为 baostock 的回退源
   pip install baostock
   ```
 - `authorize/` 下的一次性授权脚本另需 `flask flask-sslify pyOpenSSL`（不在主流水线依赖内，仅手动获取/刷新飞书 token 时用到）。
@@ -97,7 +99,7 @@ feishu_test/
 │   │   ├── lu_macd_bull_config.ini # 卢式牛市策略回测预设
 │   │   └── rjgd_syr_260130.ini    # 其他回测预设示例
 │   └── lib/                       # backtest 内部工具（无绘图的计算与数据工具，from backtest.lib.x import）
-│       ├── market_data.py         # 行情数据获取：个股 + 指数（akshare → baostock → yfinance 三源，统一后复权 hfq）
+│       ├── market_data.py         # 行情数据获取：个股(baostock→akshare→yfinance) / 指数(akshare新浪源优先) / ETF / 港股，统一后复权 hfq
 │       ├── price_store.py         # 本地行情仓库：增量更新 + 重叠对账 + 分红记录（data/market/）
 │       ├── intraday_store.py      # 本地分时仓库：**不复权**含 amount，供 execution.py 用（不入库）
 │       ├── store_base.py          # price_store / intraday_store 共用的增量更新骨架（头尾缺口 + 重叠对账 + 重建）
@@ -161,7 +163,7 @@ feishu_test/
 | 4d | 日内下单测算 | `lib/execution.py` + `backtest/scripts/compare_exec_plans.py`：VWAP 基准、买卖双向度量、JCY/油气两池实测结论表；末节含远距离限价单（`lib/fatfinger.py` + `backtest/scripts/backtest_fatfinger.py`）实测 | [docs/execution-bench.md](docs/execution-bench.md) |
 | 4e | 港股原油 ETF 择时 | `lib/trend_stop.py` + `backtest/scripts/track_hk_oil_etf.py`：月末均线 + 移动止损，含港股最低佣金成本模型；留档两个否定结论（展期收益不可择时、港股油气股不是油价工具） | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) |
 | 4f | MA5/8 分品类实测 | `backtest/strategies/ma_cross.py` + `backtest/scripts/compare_ma_cross.py`：6 个品类桶 × 8 个变体（含零成本对照与参数邻域）；**证伪留档**——MA5/8 在 30 个标的上 0 个跑赢买入持有，零成本下仍全负，回撤反而更深 | [docs/ma-cross-5-8.md](docs/ma-cross-5-8.md) |
-| 4g | 单票打法对比 | `backtest/scripts/compare_playbooks.py`：把 `engine`/`ladder`/`trend_stop` 的 14 种打法放进同一张表（满仓/定投/梯度/网格/自适应/月频趋势/日频择时），含标的画像与回撤修复剖面；寒武纪实测留档 | [docs/stock-playbook.md](docs/stock-playbook.md) |
+| 4g | 单票打法对比 | `backtest/scripts/compare_playbooks.py`：把 `engine`/`ladder`/`trend_stop` 的 15 种打法放进同一张表（满仓/定投/梯度/网格/自适应/月频趋势/日频择时），含标的画像与回撤修复剖面；寒武纪实测留档 | [docs/stock-playbook.md](docs/stock-playbook.md) |
 | 5 | 包内工具层参考表 | `jcy/lib/` 与 `backtest/lib/` 全部模块的速查表 | [docs/lib-reference.md](docs/lib-reference.md) |
 
 ---
@@ -338,5 +340,7 @@ pytest
 | [docs/execution-bench.md](docs/execution-bench.md) | 日内下单方案测算方法论 + JCY/油气两池实测结论 |
 | [docs/hk-oil-etf-trend-stop.md](docs/hk-oil-etf-trend-stop.md) | 港股原油 ETF 月频均线+移动止损：规则、参数扫描、港股成本模型、局限清单 |
 | [docs/ma-cross-5-8.md](docs/ma-cross-5-8.md) | MA5/MA8 金叉死叉分品类实测：方法、六个品类桶的完整结果、证伪结论与局限 |
-| [docs/stock-playbook.md](docs/stock-playbook.md) | 单票打法对比台：14 种打法的口径与读表方法，寒武纪两个起点的完整实测 |
+| [docs/stock-playbook.md](docs/stock-playbook.md) | 单票打法对比台：15 种打法的口径与读表方法，寒武纪两个起点的完整实测 |
 | [docs/lib-reference.md](docs/lib-reference.md) | `jcy/lib/` 与 `backtest/lib/` 全部模块速查表 |
+| [docs/backtest-review.md](docs/backtest-review.md) | backtest/ 系统评审与分优先级路线图：P0 取数统一与可复现 → P1 成本与税收口径 → P2 结论可信度 → P3 组合与账户层，含两处现场核实 |
+| [docs/hfq-caliber.md](docs/hfq-caliber.md) | hfq 口径边界（税前股息、无成本即时再投）与 A 股红利税分档实测：为什么现有打法不加「税后修正」列 |

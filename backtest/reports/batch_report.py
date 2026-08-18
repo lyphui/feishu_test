@@ -64,7 +64,7 @@ from backtest.reports.plotting import (
 
 SUMMARY_COLUMNS = [
     "代码", "名称", "评级", "推荐日", "统计交易日数",
-    "策略收益%", "基准收益%", "指数收益%",
+    "策略收益%", "基准收益%", "指数收益%", "指数代码",
     "超额收益%", "日均超额bp", "选股alpha%",
     "在场比例%", "平均持仓天数",
     "最大回撤%", "夏普", "交易次数", "胜率%", "盈亏比",
@@ -103,12 +103,18 @@ def index_window_return(index_df: pd.DataFrame | None,
 
 
 def result_to_row(candidate: dict, result: dict,
-                  index_df: pd.DataFrame | None = None) -> dict:
+                  index_df: pd.DataFrame | None = None,
+                  index_label: str | None = None) -> dict:
     """
     单股回测结果 → 汇总表一行。
 
     index_df : 大盘指数日线。传了才算得出「指数收益%」与「选股alpha%」
                ——即研报推荐本身相对大盘的超额，与择时无关（见模块 docstring）。
+    index_label : 该指数的代码（如 "H00300" 全收益 / "000300" 价格指数），
+               原样落进「指数代码」列。**必须落表**：分母是价格指数还是全收益
+               指数，会让选股alpha% 整体差出一个股息率的量级（沪深300 实测
+               2.45%/年），而 CSV 里只有一列光秃秃的「指数收益%」时，事后
+               完全看不出用的是哪条——同目录的组合净值图画的又是价格指数。
     """
     blocked = result.get("blocked_trades")
     sharpe = result["sharpe_ratio"]
@@ -127,6 +133,7 @@ def result_to_row(candidate: dict, result: dict,
         "策略收益%":    round(result["total_return"], 2),
         "基准收益%":    round(result["benchmark_return"], 2),
         "指数收益%":    None if index_return is None else round(index_return, 2),
+        "指数代码":     index_label,
         # 择时 alpha：策略进出 vs 一直拿着这只票
         "超额收益%":    round(excess, 2),
         # 对窗口长度线性归一，跨标的唯一可比的收益口径

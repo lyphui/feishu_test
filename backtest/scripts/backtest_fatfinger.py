@@ -133,7 +133,8 @@ def run_symbol(symbol: str, df: pd.DataFrame, ks, capital: float, fast: bool) ->
 def main():
     use_utf8()
     ap = argparse.ArgumentParser(description="乌龙指捕捉策略实测",
-                                 parents=[base_parser()])
+                                 # 不继承 --start：取数起点固定为 HISTORY_START
+                                 parents=[base_parser(start=False)])
     ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     ap.add_argument("--k", nargs="+", type=float, default=DEFAULT_KS,
                     help="挂单相对锚价的偏离幅度，可给多个")

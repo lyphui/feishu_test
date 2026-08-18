@@ -142,6 +142,7 @@ import argparse
 import os
 import re
 import sys
+import time
 import warnings
 from dataclasses import dataclass
 from datetime import date as _date, timedelta
@@ -152,7 +153,9 @@ warnings.filterwarnings("ignore")
 
 from backtest.strategies import LuMACDBullStrategy
 from backtest.config import index_history_start
-from backtest.lib.market_data import fetch_stock_data, fetch_index_data
+from backtest.lib.cli import base_parser
+from backtest.lib.manifest import write_run_manifest
+from backtest.lib.price_store import load_daily
 from backtest.strategies.bull_backtest import BullStrategyAdapter
 from backtest.lib.console import use_utf8
 # 仓位管理 / 分时取数 / MACD·GO·计价已拆进 lib，绘图已拆进 reports，本脚本只做编排
@@ -247,7 +250,7 @@ def print_timing_table(exec_bars: pd.DataFrame, summary: TimingSummary,
 def _fetch_daily_signals(
     code: str, name: str, trade_start: str,
     index_symbol: str, lookback_days: int,
-    warmup_days: int = WARMUP_DAYS,
+    warmup_days: int = WARMUP_DAYS, offline: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame] | None:
     """
     获取日线+大盘数据，运行 LuMACDBull 策略，返回 lookback 窗口内的信号。
@@ -259,14 +262,18 @@ def _fetch_daily_signals(
                        int(trade_start[6:]))
     data_start = (trade_dt - timedelta(days=warmup_days)).strftime("%Y%m%d")
 
-    daily_df = fetch_stock_data(code, data_start, today_str)
+    # 统一走本地仓库（评审项 1）：默认增量补齐；--offline 纯读缓存
+    daily_df = load_daily(code, data_start, today_str,
+                          auto_update=not offline, verbose=False)
     if daily_df.empty or len(daily_df) < 50:
         print(f"    日线数据不足，跳过")
         return None
 
     # 指数起点用绝对日期，不跟着个股的 data_start 走：否则每只票看到的月线
     # MACD 预热长度都不一样，同一天的 bull_market 可能因股而异（见 config.py）
-    index_df = fetch_index_data(index_symbol, index_history_start(), today_str)
+    index_df = load_daily(index_symbol, index_history_start(), today_str,
+                          adjust="none", kind="index",
+                          auto_update=not offline, verbose=False)
     if index_df.empty:
         print(f"    大盘数据为空，跳过")
         return None
@@ -459,6 +466,8 @@ def analyze_candidate(
     period: int,
     exec_day_mode: str,
     save_dir: str,
+    offline: bool = False,
+    capital: float = 100_000.0,
 ) -> tuple[list[SignalTimingResult], PositionTracker | None]:
     """
     对单只股票：
@@ -473,7 +482,8 @@ def analyze_candidate(
 
     try:
         fetched = _fetch_daily_signals(
-            code, name, candidate["date"], index_symbol, lookback_days)
+            code, name, candidate["date"], index_symbol, lookback_days,
+            offline=offline)
         if fetched is None:
             return [], None
         df_sig, signal_days = fetched
@@ -528,7 +538,9 @@ def analyze_candidate(
             ))
 
         # ── 第二阶段：仓位管理，使用分时确认后的价格计算收益 ─────────────────
-        tracker = PositionTracker(capital=100_000)
+        # 本金走 --capital：此前这里硬编码 100_000，而 base_parser 又把
+        # --capital 挂在了命令行上——传了不报错也不生效，是最坏的一种默默无效
+        tracker = PositionTracker(capital=capital)
         tracker.run(df_sig, intraday_map)
         _print_trade_log(tracker, code, name)
         if tracker.trades:
@@ -547,8 +559,11 @@ def analyze_candidate(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="JCY 日线信号 + 分时择时（多周期共振）"
+        description="JCY 日线信号 + 分时择时（多周期共振）",
+        # 不继承 --start：起点由各票推荐日与 --lookback 决定
+        parents=[base_parser(start=False)],
     )
+    parser.set_defaults(output="output/intraday", capital=100_000.0)
     parser.add_argument("--lookback",  type=int, default=None,
                         help="向前查找信号的天数；不指定时，按各股首次增持日起算")
     parser.add_argument("--period",    type=int, default=5,
@@ -561,14 +576,13 @@ def parse_args():
                         help="执行日：next=信号次日（默认），same=信号当日")
     parser.add_argument("--code",      type=str, default="300274",
                         help="只分析指定股票代码，留空则分析全部")
-    parser.add_argument("--output",    type=str, default="output/intraday",
-                        help="输出目录，默认 output/intraday/")
     return parser.parse_args()
 
 
 def main():
     use_utf8()
     args = parse_args()
+    t0 = time.time()
 
     print("\n" + "─" * 65)
     print("  JCY 日线信号 + 分时择时（多周期共振）")
@@ -617,6 +631,8 @@ def main():
             period=args.period,
             exec_day_mode=args.exec_day,
             save_dir=args.output,
+            offline=args.offline,
+            capital=args.capital,
         )
         all_results.extend(results)
         if tracker and tracker.trades:
@@ -689,6 +705,12 @@ def main():
     # ── 交易记录导出 CSV ─────────────────────────────────────────────────────
     if all_trackers:
         export_trades_csv(all_trackers, args.output)
+
+    # 可复现清单（评审项 2）
+    write_run_manifest(args.output,
+                       symbols=[c["code"] for c in candidates]
+                               + [(args.index, "none")],
+                       started_at=t0)
 
     print("\n" + "─" * 65)
     print(f"  完成。结果已保存至：{os.path.abspath(args.output)}/")

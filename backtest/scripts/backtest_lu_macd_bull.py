@@ -20,7 +20,7 @@ from backtest.reports.bull_report import export_bull_daily_status, plot_bull_bac
 
 from backtest.strategies import LuMACDBullStrategy
 from backtest.reports.plotting import setup_matplotlib
-from backtest.lib.market_data import fetch_index_data
+from backtest.lib.price_store import load_daily
 from backtest.lib.console import use_utf8
 
 setup_matplotlib()
@@ -99,10 +99,14 @@ def main():
         # 月线 EMA(26) 用 .ini 里那段区间预热远远不够，会让 bull_market 失真。
         index_start = index_history_start(cfg.start_date)
         print(f"\n  正在获取大盘指数数据（{cfg.index_symbol}，{index_start} 起）...")
-        index_df = fetch_index_data(cfg.index_symbol, index_start, cfg.end_date)
+        index_df = load_daily(cfg.index_symbol, index_start, cfg.end_date,
+                              adjust="none", kind="index", verbose=False)
         if index_df.empty:
             raise ValueError(f"大盘指数 {cfg.index_symbol} 数据为空，请检查代码")
         print(f"  大盘指数获取到 {len(index_df)} 个交易日数据")
+
+        # 个股同样走本地仓库注入（评审项 1），不再由引擎默认路径直连网络
+        df = load_daily(cfg.symbol, cfg.start_date, cfg.end_date, verbose=False)
 
         strategy = LuMACDBullStrategy(shrink_exit=shrink_exit, index_df=index_df)
 
@@ -114,6 +118,7 @@ def main():
             initial_capital=cfg.capital,
             stop_loss=cfg.stop_loss,
             take_profit=cfg.take_profit,
+            df=df,
             **execution_kwargs(cfg),
             verbose=True,
         )

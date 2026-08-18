@@ -27,9 +27,9 @@ import pandas as pd
 
 # 成本假设与 `engine.py` 共用同一份定义（`lib/costs.py`），不在这里另写字面量——
 # 两套撮合骨架的数字一旦漂开，梯度/网格与满仓持有的横向比较就失去意义。
-from backtest.lib.costs import (COMMISSION_RATE, LIMIT_PCT_MAIN, LOT,
-                       MIN_COMMISSION, SLIPPAGE, STAMP_DUTY, commission,
-                       tradability)
+from backtest.lib.costs import (CASH_RATE, COMMISSION_RATE, LIMIT_PCT_MAIN, LOT,
+                       MIN_COMMISSION, RISK_FREE_RATE, SLIPPAGE, STAMP_DUTY,
+                       commission, tradability)
 
 
 # ── 成交约束 ──────────────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ def summarize(name, equity, exposure, trades, capital) -> LadderResult:
         # 只按实际压上去的钱算收益：分批策略手里长期有现金，
         # 用总资金算会低估选股/择时本身的效果
         "deployed_return": float(total / avg_exp) if avg_exp > 1e-6 else 0.0,
-        "sharpe": float((ret.mean() * 252 - 0.02) / (ret.std() * np.sqrt(252)))
+        "sharpe": float((ret.mean() * 252 - RISK_FREE_RATE) / (ret.std() * np.sqrt(252)))
                   if ret.std() > 0 else float("nan"),
         "n_trades": len(trades),
         "days": len(eq),
@@ -83,7 +83,7 @@ def summarize(name, equity, exposure, trades, capital) -> LadderResult:
 # ── 通用回测骨架 ──────────────────────────────────────────────────────────────
 
 def _run(df: pd.DataFrame, capital: float, decide, name: str,
-         cash_rate: float = 0.015,
+         cash_rate: float = CASH_RATE,
          limit_pct: float = LIMIT_PCT_MAIN) -> LadderResult:
     """
     `decide(ctx) -> list[order]`：在 T 日收盘调用，返回 T+1 开盘要执行的指令。

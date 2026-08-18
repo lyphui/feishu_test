@@ -13,6 +13,11 @@
 
 | 日期 | 条目 | 主题 | 含行为变更 |
 |------|------|------|:----------:|
+| 2026-08-18 | [baostock-as-primary](2026-08-18-baostock-as-primary.md) | A 股个股首选源改为 baostock（东财 hfq 非全收益口径，年化差 4.1pp）+ 全量重建 | **是** |
+| 2026-08-14 | [run-manifest](2026-08-14-run-manifest.md) | 批量脚本输出 run.json 可复现清单 | 否 |
+| 2026-08-14 | [st-limit-by-name](2026-08-14-st-limit-by-name.md) | ST 涨跌停按名称判定（板块优先于 ST） | 是（当前池零命中） |
+| 2026-08-14 | [price-store-unified](2026-08-14-price-store-unified.md) | 取数统一走 price_store，--offline 全线生效 | 否 |
+| 2026-08-14 | [cost-assumptions-consolidated](2026-08-14-cost-assumptions-consolidated.md) | rf/cash_rate 与港股成本收编 costs.py | 否 |
 | 2026-08-13 | [backtest 重构收尾](2026-08-13-backtest-refactor-wrap-up.md) | 包化（`backtest.*` 绝对导入、删 12 段 bootstrap，运行统一 `python -m backtest.scripts.x`）；12 个 CLI 按动词前缀改名（backtest_/compare_/sweep_/track_）；缓存双实现收成 `lib/store_base.py`；`PositionTracker` 拆进 `lib/`、绘图拆进 `reports/`；分层规则写死（出图进 `reports/`、策略相关进 `strategies/`）；新增 `pytest.ini` 与子进程级脚本可运行测试 | 否（回测逻辑与数值不变，343 passed） |
 | 2026-08-13 | [涨跌停/停牌判定统一](2026-08-13-tradability-unified.md) | `engine._tradability` 与 `lib/ladder._tradable` 两份行为不同的实现合并为 `lib/costs.tradability`（采用 engine 的严格口径：容差 1e-4、`volume<=0`、prev_close 非法放行）；ladder/fatfinger 转调并改用公开 `commission`/`summarize`，fatfinger 常量直取 `costs` | **是**（实测 601857/600938 两样本回测数字逐字不变） |
 | 2026-08-13 | [目录结构重排](2026-08-13-backtest-directory-restructure.md) | 12 个 CLI 入口全部移入 `backtest/scripts/`，`strategies/` 并入 `backtest/strategies/`；库层（engine/config/report/batch_report/bull_report）与 `lib/`、`presets/` 原地不动；运行命令变为 `python backtest/scripts/x.py` | 否（纯目录与运行命令变化，回测逻辑与数值不变） |

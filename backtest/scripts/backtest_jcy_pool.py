@@ -69,17 +69,21 @@ JCY 推荐股票批量回测 —— 卢麒元 MACD 牛市动能截取策略
 import argparse
 import os
 import sys
+import time
 from datetime import date as _date, timedelta
 
 from backtest.engine import run_backtest, fmt_sharpe
 from backtest.config import OutputPaths, index_history_start
+from backtest.lib.manifest import write_run_manifest
 from backtest.reports.bull_report import export_bull_daily_status, plot_bull_backtest
 from backtest.reports.batch_report import (result_to_row, normalized_equity, write_batch_report,
                           compare_rating_pools)
 
 from backtest.strategies import LuMACDBullStrategy
 from backtest.reports.plotting import setup_matplotlib
-from backtest.lib.market_data import fetch_index_data
+from backtest.lib.cli import base_parser
+from backtest.lib.costs import infer_limit_pct, is_st_name
+from backtest.lib.price_store import load_daily
 from backtest.strategies.bull_backtest import BullStrategyAdapter
 from backtest.lib.console import use_utf8
 from jcy.lib.common import (JSON_PATH, LONG_RATINGS, CONTROL_RATINGS,
@@ -107,7 +111,7 @@ def backtest_one(candidate: dict, end_date: str, index_df,
                  capital: float,
                  stop_loss: float | None, take_profit: float | None,
                  shrink_exit: bool, base_output_dir: str,
-                 warmup_days: int = 600) -> dict | None:
+                 warmup_days: int = 600, offline: bool = False) -> dict | None:
     """
     对单只股票执行回测并保存结果。
     返回 run_backtest 的结果 dict；失败返回 None。
@@ -156,6 +160,11 @@ def backtest_one(candidate: dict, end_date: str, index_df,
         if index_df is None or index_df.empty:
             raise ValueError("大盘指数数据为空")
 
+        # 个股行情统一走本地仓库（评审项 1）：默认增量补齐后返回，
+        # --offline 时纯读缓存、无缓存则抛错走下方失败计数。
+        df = load_daily(code, data_start, end_date,
+                        auto_update=not offline, verbose=False)
+
         inner_strategy = LuMACDBullStrategy(shrink_exit=shrink_exit)
         strategy       = BullStrategyAdapter(inner_strategy, index_df,
                                              trade_start_date=trade_start_date)
@@ -169,6 +178,8 @@ def backtest_one(candidate: dict, end_date: str, index_df,
             stop_loss=stop_loss,
             take_profit=take_profit,
             eval_start=trade_start_date,  # 预热期不计入收益/回撤/夏普/基准
+            limit_pct=infer_limit_pct(code, name),  # ST 股按 5%（评审项 7）
+            df=df,
         )
 
         blocked = result.get("blocked_trades")
@@ -202,8 +213,11 @@ def backtest_one(candidate: dict, end_date: str, index_df,
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="JCY 推荐股票批量回测（卢麒元 MACD 牛市动能截取策略）"
+        description="JCY 推荐股票批量回测（卢麒元 MACD 牛市动能截取策略）",
+        # 不继承 --start：每只票的回测起点是它自己的推荐日，统一起点无从谈起
+        parents=[base_parser(start=False)],
     )
+    parser.set_defaults(capital=100000, output="output")
     parser.add_argument("--ratings",     type=parse_ratings,
                         default=LONG_RATINGS,
                         help=f"进入回测的评级，逗号分隔，默认 {','.join(LONG_RATINGS)}")
@@ -214,15 +228,17 @@ def parse_args():
                         help="止损比例，默认 0.10；传 none/空 关闭")
     parser.add_argument("--take_profit", type=_ratio_or_none, default=None,
                         help="止盈比例，默认关闭（由 shrink_exit 决定离场）")
-    parser.add_argument("--capital",     type=float, default=100000,
-                        help="初始资金，默认 100000")
     parser.add_argument("--index",       type=str,   default="000300",
                         help="大盘指数代码，默认 000300（沪深300）")
+    # help 串里的 % 必须写成 %%：argparse 对 help 做 %-格式化，裸 % 后跟中文会
+    # 在 add_argument 阶段就抛 ValueError("badly formed help string")，整个脚本
+    # 连 --help 都出不来（tests/test_scripts_runnable.py 拦的正是这类）。
+    parser.add_argument("--index-tr",    type=str,   default="H00300",
+                        help="选股alpha%% 的全收益指数分母，默认 H00300"
+                             "（沪深300全收益）；传 none 退回价格指数口径")
     parser.add_argument("--shrink_exit", type=lambda x: x.lower() != "false",
                         default=True,
                         help="红柱缩短即离场，默认 True；传 false 则等死叉")
-    parser.add_argument("--output",      type=str,   default="output",
-                        help="输出根目录，默认 output/")
     return parser.parse_args()
 
 
@@ -230,15 +246,39 @@ WARMUP_DAYS = 600      # 个股行情在推荐日前多取的自然日数（指�
 
 
 def run_pool(candidates: list[dict], label: str, output_dir: str,
-             end_date: str, index_df, args) -> "tuple[object, dict]":
+             end_date: str, index_df, args, index_tr_df=None) -> "tuple[object, dict]":
     """把一个候选池整体跑完，写出该池的汇总，返回 (summary_df, curves)。
 
     正向池与对照池共用这个函数——策略、参数、成本、指数完全相同，
     两池的差异才只来自评级本身。
+
+    index_df    : 价格指数——牛市过滤器输入与对比曲线（「大盘在不在牛市」
+                  讲的是点位，不是全收益）
+    index_tr_df : 全收益指数——只作选股alpha% 的分母（评审 3.2）。个股 hfq
+                  含股息再投，分母用价格指数会把 alpha 系统性抬高约 2.4%/年。
+                  None 时退回价格指数（旧口径）。
     """
+    alpha_df = index_tr_df if index_tr_df is not None else index_df
+    # 分母指数的代码要一路带到 summary.csv 的「指数代码」列——控制台提示和
+    # run.json 都只在当次可见，CSV 才是事后翻的那份
+    alpha_label = args.index_tr if index_tr_df is not None else args.index
     print("\n" + "─" * 60)
     print(f"  {label}：{len(candidates)} 只  →  {output_dir}/")
+    print(f"  选股alpha% 分母：{'全收益指数 ' + args.index_tr if index_tr_df is not None else '价格指数（旧口径）'}")
     print("─" * 60)
+    # ST 判定依赖名称（代码前缀看不出来）；jcy 候选池自带 name。
+    # 两个计数都走 c.get("name")：曾经 n_st 直接 c["name"].upper()、n_unknown
+    # 才防空，真出现空名称时会先在前一行崩掉，后一行的守卫永远轮不到。
+    # 只数主板 ST——创业板/科创板/北交所的 ST 仍按各自板块幅度（见 infer_limit_pct）。
+    st_codes = [c["code"] for c in candidates
+                if is_st_name(c.get("name"))
+                and not c["code"].startswith(("688", "689", "300", "301", "4", "8"))]
+    n_unknown = sum(1 for c in candidates if not c.get("name"))
+    if st_codes:
+        print(f"  ⚠️ 本池含 {len(st_codes)} 只主板 ST 标的，涨跌停按 ±5% 处理："
+              f"{'、'.join(st_codes)}")
+    if n_unknown:
+        print(f"  ⚠️ 本池含 {n_unknown} 只无名称标的，无法判定 ST，按板块默认幅度处理")
     for c in candidates:
         print(f"    {c['code']}  {c['name']:8s}  [{c.get('rating', '')}]  "
               f"起始日期：{c['date'][:4]}-{c['date'][4:6]}-{c['date'][6:]}")
@@ -257,11 +297,13 @@ def run_pool(candidates: list[dict], label: str, output_dir: str,
             shrink_exit   = args.shrink_exit,
             base_output_dir = output_dir,
             warmup_days   = WARMUP_DAYS,
+            offline       = args.offline,
         )
         if result is None:
             fail_count += 1
             continue
-        rows.append(result_to_row(candidate, result, index_df=index_df))
+        rows.append(result_to_row(candidate, result, index_df=alpha_df,
+                                  index_label=alpha_label))
         curves[f"{candidate['code']} {candidate['name']}"] = normalized_equity(result)
 
     print("\n" + "─" * 60)
@@ -274,12 +316,24 @@ def run_pool(candidates: list[dict], label: str, output_dir: str,
     summary = write_batch_report(rows, curves, output_dir,
                                  index_df=index_df, index_name=args.index,
                                  label=label)
+    # 可复现清单：git/argv/成本常量/各标的数据截止日（评审项 2）
+    write_run_manifest(output_dir,
+                       symbols=[c["code"] for c in candidates]
+                               + [(args.index, "none")]
+                               + ([(args.index_tr, "none")]
+                                  if index_tr_df is not None else []),
+                       started_at=getattr(args, "_t0", None),
+                       extra={"pool": label,
+                              "alpha_denominator": (args.index_tr
+                                                    if index_tr_df is not None
+                                                    else f"{args.index}(价格指数)")})
     return summary, curves
 
 
 def main():
     use_utf8()
     args = parse_args()
+    args._t0 = time.time()   # run.json 记耗时用
 
     if not args.ratings:
         print("  ❌ --ratings 不能为空")
@@ -324,18 +378,36 @@ def main():
     index_start = index_history_start()
     print(f"\n  获取大盘指数 {args.index} 数据（{index_start} → {end_date}）...")
     try:
-        index_df = fetch_index_data(args.index, index_start, end_date)
+        index_df = load_daily(args.index, index_start, end_date,
+                              adjust="none", kind="index",
+                              auto_update=not args.offline, verbose=False)
     except Exception as e:
         print(f"  ❌ 大盘指数获取失败：{e}")
         sys.exit(1)
 
+    # 全收益指数只作选股alpha% 的分母（评审 3.2 陷阱框：两条指数必须分开取，
+    # 牛市过滤器留在价格指数一侧）。取不到不致命——退回旧口径并明说。
+    index_tr_df = None
+    if args.index_tr and args.index_tr.lower() != "none":
+        print(f"  获取全收益指数 {args.index_tr}（选股alpha% 分母）...")
+        try:
+            index_tr_df = load_daily(args.index_tr, index_start, end_date,
+                                     adjust="none", kind="index_tr",
+                                     auto_update=not args.offline, verbose=False)
+            if index_tr_df.empty:
+                raise ValueError("返回空数据")
+        except Exception as e:
+            print(f"  ⚠️ 全收益指数获取失败：{e}，选股alpha% 分母退回价格指数")
+            index_tr_df = None
+
     summary, _ = run_pool(candidates, long_label, args.output,
-                          end_date, index_df, args)
+                          end_date, index_df, args, index_tr_df=index_tr_df)
 
     if control_candidates:
         control_dir = os.path.join(args.output, "control")
         control_summary, _ = run_pool(control_candidates, control_label,
-                                      control_dir, end_date, index_df, args)
+                                      control_dir, end_date, index_df, args,
+                                      index_tr_df=index_tr_df)
         if not summary.empty and not control_summary.empty:
             compare_rating_pools(summary, control_summary, args.output,
                                  long_label=long_label,

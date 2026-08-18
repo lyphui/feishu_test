@@ -13,7 +13,7 @@
 - **`lib/ladder.py`** — 分批建仓模拟器。引擎 `run_backtest` 是二元仓位（全仓/空仓），承载不了"三成仓/满仓/闲置现金"这些中间状态，故另起一套；成本与 T+1 口径与 `engine.py` 对齐，闲置现金按 `cash_rate` 计息。
   止损型离场后**锁住再入场**直到趋势转好，否则下跌途中会刷出成百上千笔来回交易。
   `PLAYBOOK` 定义每个状态的打法，`simulate_adaptive()` 按状态切换。
-- **`lib/oil_price.py`** — Brent/WTI/SC 原油价格，走**新浪财经**（`futures_foreign_hist` / `futures_main_sina`）而不是 `market_data.py` 的 akshare→baostock→yfinance 三源：那三源里油价相关接口大多打 eastmoney 域名，本机 eastmoney 被主动阻断（DPI 重置特征）、yfinance 商品期货长期 429，只有新浪这条线通；baostock 不提供商品期货，没有备用可回退。
+- **`lib/oil_price.py`** — Brent/WTI/SC 原油价格，走**新浪财经**（`futures_foreign_hist` / `futures_main_sina`）而不是 `market_data.py` 的多源回退：那三源里油价相关接口大多打 eastmoney 域名，本机 eastmoney 被主动阻断（DPI 重置特征）、yfinance 商品期货长期 429，只有新浪这条线通；baostock 不提供商品期货，没有备用可回退。
   新浪这两个接口不支持增量拉取（每次全量返回），所以本地缓存 `data/market/oil/{symbol}.csv` 每次整表覆盖，没有 `price_store.py` 那套头尾段 + 重叠对账逻辑。
   `transmission_table()` 算油价对股价的**领先滞后相关系数**（`merge_asof` 对齐两套不同的交易日历后再算收益率相关性）：纯描述性统计，不是回测信号。实测 601857/600938 上 WTI/Brent 在 **lag=1**（隔夜美盘收盘 → 次日 A 股）相关性明显高于 lag=0，SC（人民币计价、与 A 股同日历）反而在 **lag=0** 最高——原始信号被隔夜时区错位，同日对齐会低估外盘油价的传导。
 

@@ -1,0 +1,12 @@
+{
+  "symbol": "H00300",
+  "adjust": "none",
+  "kind": "index_tr",
+  "requested_start": "20150101",
+  "requested_end": "20260814",
+  "data_start": "20150105",
+  "data_end": "20260813",
+  "rows": 2823,
+  "source": "csindex",
+  "updated_at": "2026-08-14 16:01:28"
+}

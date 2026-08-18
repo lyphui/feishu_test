@@ -41,45 +41,9 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-# 港股法定/结算费率（与盘型无关，只跟成交金额挂钩）
-SFC_LEVY = 0.000027          # 证监会交易征费
-AFRC_LEVY = 0.0000015        # 财汇局交易征费
-HKEX_TRADING_FEE = 0.0000565  # 联交所交易费
-CCASS_RATE = 0.00002          # 中央结算费
-CCASS_MIN, CCASS_MAX = 2.0, 100.0
-STAMP_DUTY = 0.001            # 印花税，ETF 豁免
-
-
-def hk_trade_cost(
-    value: float,
-    *,
-    commission_rate: float = 0.0025,
-    commission_min: float = 100.0,
-    platform_fee: float = 30.0,
-    is_etf: bool = True,
-) -> float:
-    """
-    单边交易总成本（港币）。默认参数取自中银香港零售网上渠道。
-
-    `commission_min` 是这套策略全部设计的起点：成交额低于
-    `commission_min / commission_rate`（默认 4 万港币）时，佣金按最低收，
-    费用率随金额下降而爆炸——600 股 ≈ 5,790 港币的单子费用率高达 2.29%。
-
-    `platform_fee` 是银行自定的固定服务费，各家不同，按成交单实际列示调整。
-    ETF 在香港豁免印花税（`is_etf=True`），个股要另加 0.1%。
-    """
-    if value <= 0:
-        return 0.0
-    commission = max(value * commission_rate, commission_min)
-    levies = value * (SFC_LEVY + AFRC_LEVY + HKEX_TRADING_FEE)
-    ccass = min(max(value * CCASS_RATE, CCASS_MIN), CCASS_MAX)
-    stamp = 0.0 if is_etf else value * STAMP_DUTY
-    return commission + platform_fee + levies + ccass + stamp
-
-
-def hk_fee_rate(value: float, **kw) -> float:
-    """单边成本占成交额的比例。回测里的 `fee` 参数就用它算。"""
-    return hk_trade_cost(value, **kw) / value if value > 0 else 0.0
+# 港股成本模型已收编进 `lib/costs.py`（成本与费率假设的唯一真值源，评审项 6）。
+# 这里保留同名 re-export，`track_hk_oil_etf` / `compare_ma_cross` 等历史导入不受影响。
+from backtest.lib.costs import hk_fee_rate, hk_trade_cost   # noqa: F401
 
 
 def month_end_flags(index) -> pd.Series:

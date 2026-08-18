@@ -55,13 +55,16 @@ MA5/MA8 金叉死叉：分品类实测台
 import argparse
 import os
 import sys
+import time
 from datetime import date as _date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
 
 from backtest.engine import run_backtest
+from backtest.lib.cli import base_parser
 from backtest.lib.console import fmt_table, use_utf8
+from backtest.lib.manifest import write_run_manifest
 from backtest.lib.price_store import load_daily
 from backtest.lib import costs, trend_stop
 from backtest.strategies import MACrossStrategy
@@ -379,11 +382,12 @@ def print_variant_table(summary: pd.DataFrame, buckets: list[str],
 
 def main():
     use_utf8()
-    ap = argparse.ArgumentParser(description="MA5/MA8 金叉死叉分品类实测")
-    ap.add_argument("--start", default=DEFAULT_START, help="统计窗口起点 YYYYMMDD")
+    t0 = time.time()
+    ap = argparse.ArgumentParser(description="MA5/MA8 金叉死叉分品类实测",
+                                 parents=[base_parser()])
+    ap.set_defaults(start=DEFAULT_START, capital=100_000.0,
+                    output="output/ma_cross_bench")
     ap.add_argument("--end", default=_date.today().strftime("%Y%m%d"))
-    ap.add_argument("--capital", type=float, default=100_000.0,
-                    help="A 股/ETF 本金下限，高价股按 MIN_LOTS 手自动放大")
     ap.add_argument("--hk-capital", type=float, default=100_000.0,
                     help="港股一节的本金（港币）；最低佣金 HK$100 的影响与它直接相关")
     ap.add_argument("--buckets", nargs="+", default=list(BUCKETS),
@@ -394,8 +398,6 @@ def main():
     ap.add_argument("--quick", action="store_true",
                     help="只跑核心 4 个变体（MA5/8、+量能、零成本、MA20/60）")
     ap.add_argument("--no-hk", action="store_true", help="跳过港股 ETF 一节")
-    ap.add_argument("--offline", action="store_true", help="不联网，只读本地缓存")
-    ap.add_argument("--output", default="output/ma_cross_bench")
     args = ap.parse_args()
 
     if args.codes:
@@ -516,6 +518,15 @@ def main():
 
     if not args.no_hk:
         run_hk_section(variants, args)
+
+    # 可复现清单（评审项 2）。文件名跟着 prefix 走：`--codes` 跑一次就把
+    # 六桶标准跑的 run.json 覆盖掉的话，清单描述的运行与旁边的 CSV 对不上。
+    symbols = [(code, spec["adjust"])
+               for spec in buckets.values() for code in spec["members"]]
+    if not args.no_hk:
+        symbols.append((HK_SYMBOL, "qfq"))
+    write_run_manifest(args.output, symbols=symbols, started_at=t0,
+                       filename=f"{prefix}run.json")
 
 
 # ── 港股 ETF：最低佣金 HK$100 的现实 ─────────────────────────────────────────

@@ -20,7 +20,8 @@ from backtest.lib.market_data import fetch_stock_data   # noqa: F401 — re-expo
 # 成本假设与 `lib/ladder.py` 共用同一份定义，不在这里另写字面量——两套撮合骨架的
 # 数字一旦漂开，二元引擎与分批建仓模拟器的结果就不可横向比较。
 # `_commission` / `infer_limit_pct` / `_tradability` 保留旧名 re-export，历史导入不受影响。
-from backtest.lib.costs import (COMMISSION_RATE, LOT, MIN_COMMISSION, SLIPPAGE,
+from backtest.lib.costs import (COMMISSION_RATE, LOT, MIN_COMMISSION,
+                       RISK_FREE_RATE, SLIPPAGE,
                        STAMP_DUTY, infer_limit_pct,
                        tradability as _tradability)   # noqa: F401
 from backtest.lib.costs import commission as _commission
@@ -386,7 +387,7 @@ def run_backtest(
     return result
 
 
-def _calc_sharpe(returns: pd.Series, annual_days: int = 252, rf: float = 0.02,
+def _calc_sharpe(returns: pd.Series, annual_days: int = 252, rf: float = RISK_FREE_RATE,
                  min_obs: int = 20):
     """
     年化夏普比率。样本过少时不可靠，返回 None（展示层标注 N/A）。

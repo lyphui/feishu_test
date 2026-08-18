@@ -1,0 +1,12 @@
+{
+  "symbol": "301171",
+  "adjust": "hfq",
+  "kind": "stock",
+  "requested_start": "20180101",
+  "requested_end": "20260814",
+  "data_start": "20220819",
+  "data_end": "20260814",
+  "rows": 966,
+  "source": "baostock",
+  "updated_at": "2026-08-18 10:11:47"
+}

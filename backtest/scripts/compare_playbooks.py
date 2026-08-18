@@ -51,13 +51,16 @@
 import argparse
 import os
 import sys
+import time
 
 import numpy as np
 import pandas as pd
 
 from backtest.engine import run_backtest
 from backtest.lib import costs, trend_stop
+from backtest.lib.cli import base_parser
 from backtest.lib.console import print_wide, use_utf8
+from backtest.lib.manifest import write_run_manifest
 from backtest.lib.ladder import (simulate_adaptive, simulate_buy_hold, simulate_dca,
                         simulate_grid, simulate_ladder)
 from backtest.lib.price_store import load_daily
@@ -102,7 +105,7 @@ def eval_start_of(df: pd.DataFrame) -> pd.Timestamp:
     return df.index[min(warm, len(df) - 1)]
 
 
-def _sharpe(ret: pd.Series, rf: float = 0.02, min_obs: int = 20):
+def _sharpe(ret: pd.Series, rf: float = costs.RISK_FREE_RATE, min_obs: int = 20):
     """年化夏普，公式与 `engine._calc_sharpe` 一致（含无风险利率项）。
 
     三套模拟器自带的 `sharpe` 口径并不相同（`trend_stop` 不减无风险利率、
@@ -196,7 +199,7 @@ def build_rows(df: pd.DataFrame, symbol: str, capital: float, *,
     """
     limit_pct = costs.infer_limit_pct(symbol)       # 科创板/创业板 20%，别用主板 10%
     reg = classify(df)["regime"]
-    lad = dict(cash_rate=0.015, limit_pct=limit_pct)
+    lad = dict(cash_rate=costs.CASH_RATE, limit_pct=limit_pct)
     eval_start = eval_start_of(df)
 
     rows, curves = [], {}
@@ -378,16 +381,16 @@ def print_regime_mix(reg: pd.Series) -> None:
 
 def main():
     use_utf8()
-    ap = argparse.ArgumentParser(description="单票打法对比")
+    t0 = time.time()
+    ap = argparse.ArgumentParser(description="单票打法对比",
+                                 parents=[base_parser()])
+    ap.set_defaults(start=DEFAULT_START, capital=100_000.0,
+                    output="output/stock_playbook")
     ap.add_argument("--code", required=True, help="股票代码，如 688256")
     ap.add_argument("--name", default="", help="显示用名称")
-    ap.add_argument("--start", default=DEFAULT_START)
     ap.add_argument("--end", default=None)
-    ap.add_argument("--capital", type=float, default=100_000.0)
-    ap.add_argument("--offline", action="store_true", help="不联网，只读本地缓存")
     ap.add_argument("--min-days", type=int, default=20,
                     help="阶段最短交易日数，短于它的段落不单列（默认 20）")
-    ap.add_argument("--output", default="output/stock_playbook")
     args = ap.parse_args()
 
     df = load_daily(args.code, args.start, args.end, adjust="hfq",
@@ -511,6 +514,9 @@ def main():
         meta.columns = ["阶段", "起", "止", "交易日", "标的涨跌%"]
         meta.join(epi).to_csv(epi_path, encoding="utf-8-sig", index_label="阶段标签")
         print(f"  → {epi_path}")
+
+    # 可复现清单（评审项 2）
+    write_run_manifest(args.output, symbols=[args.code], started_at=t0)
 
 
 if __name__ == "__main__":
